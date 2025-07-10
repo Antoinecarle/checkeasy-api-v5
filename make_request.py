@@ -757,11 +757,11 @@ IMPORTANT :
         
         logger.info(f"📷 Images valides envoyées à OpenAI: {len(valid_images)}/{len(all_pictures_processed)}")
         
-        # Si aucune image valide, ajouter une note
+        # Si aucune image valide, ajouter une note et adapter le prompt
         if len(valid_images) == 0:
             user_message["content"].append({
                 "type": "text",
-                "text": "⚠️ Aucune image disponible - Classification basée uniquement sur le nom de la pièce si fourni."
+                "text": f"⚠️ Aucune image disponible - Classification basée uniquement sur le nom de la pièce: '{input_data.nom}'. Si le nom n'est pas fourni ou peu informatif, utiliser 'autre' avec une confiance faible."
             })
         
         # Appel à l'API OpenAI avec gestion d'erreurs robuste
@@ -823,7 +823,12 @@ IMPORTANT :
                 raise HTTPException(status_code=500, detail=f"Erreur de l'API OpenAI: {error_str}")
         
         # Parser la réponse
-        response_content = response.choices[0].message.content.strip()
+        response_content = response.choices[0].message.content
+        if response_content is None:
+            logger.error("❌ Réponse OpenAI vide")
+            raise ValueError("Réponse OpenAI vide")
+            
+        response_content = response_content.strip()
         logger.info(f"Réponse brute de classification: {response_content}")
         
         classification_result = json.loads(response_content)
@@ -832,11 +837,18 @@ IMPORTANT :
         detected_room_type = classification_result.get("room_type", "autre")
         confidence = classification_result.get("confidence", 50)
         
+        # Si confiance = 0, l'ajuster à 10 minimum pour éviter les problèmes
+        if confidence == 0:
+            confidence = 10
+            logger.info(f"📊 Confiance ajustée de 0 à {confidence} pour éviter une valeur nulle")
+        
         # Vérifier que le type détecté existe dans nos templates
         if detected_room_type not in ROOM_TEMPLATES["room_types"]:
             logger.warning(f"Type de pièce non reconnu: {detected_room_type}, utilisation de 'autre'")
             detected_room_type = "autre"
             confidence = max(confidence - 20, 10)  # Réduire la confiance
+        else:
+            logger.info(f"✅ Type de pièce '{detected_room_type}' reconnu avec succès")
         
         # Récupérer les informations du template
         room_info = ROOM_TEMPLATES["room_types"][detected_room_type]
@@ -857,11 +869,38 @@ IMPORTANT :
         
     except json.JSONDecodeError as e:
         logger.error(f"Erreur de parsing JSON: {e}")
-        logger.error(f"Contenu reçu: {response_content}")
-        raise HTTPException(status_code=500, detail="Erreur de parsing de la réponse de classification")
+        try:
+            logger.error(f"Contenu reçu: {response_content}")
+        except NameError:
+            logger.error("Contenu de réponse non disponible")
+        # Retourner une classification par défaut en cas d'erreur de parsing
+        return RoomClassificationResponse(
+            piece_id=input_data.piece_id,
+            room_type="autre",
+            room_name="Autre",
+            room_icon="📦",
+            confidence=10,
+            verifications=RoomVerifications(
+                elements_critiques=["État général des surfaces", "Propreté générale"],
+                points_ignorables=["Petites traces d'usage"],
+                defauts_frequents=["Traces diverses", "Poussière"]
+            )
+        )
     except Exception as e:
         logger.error(f"Erreur lors de la classification: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Erreur lors de la classification: {str(e)}")
+        # Retourner une classification par défaut en cas d'erreur générale
+        return RoomClassificationResponse(
+            piece_id=input_data.piece_id,
+            room_type="autre",
+            room_name="Autre",
+            room_icon="📦",
+            confidence=10,
+            verifications=RoomVerifications(
+                elements_critiques=["État général des surfaces", "Propreté générale"],
+                points_ignorables=["Petites traces d'usage"],
+                defauts_frequents=["Traces diverses", "Poussière"]
+            )
+        )
 
 @app.post("/classify-room", response_model=RoomClassificationResponse)
 async def classify_room(input_data: RoomClassificationInput):
