@@ -1,0 +1,136 @@
+{
+  "room_types": {
+    "cuisine": {
+      "name": "Cuisine",
+      "icon": "🍽️",
+      "verifications": {
+        "elements_critiques": [
+          "Électroménager"
+        ],
+        "points_ignorables": [
+          "Petites traces sur murs",
+          "Variations couleur joints",
+          "Usure normale plan de travail"
+        ],
+        "defauts_frequents": [
+          "Graisse sur surfaces"
+        ]
+      }
+    },
+    "salle_de_bain": {
+      "name": "Salle de bain",
+      "icon": "🚿",
+      "verifications": {
+        "elements_critiques": [
+          "Étanchéité douche/baignoire",
+          "Ventilation",
+          "Joints sanitaires",
+          "Robinetterie",
+          "Évacuation",
+          "Carrelage"
+        ],
+        "points_ignorables": [
+          "Traces de calcaire légères",
+          "Petites traces sur miroir",
+          "Usure normale joints"
+        ],
+        "defauts_frequents": [
+          "Moisissures plafond",
+          "Joints silicone noirs",
+          "Fuites cachées",
+          "Calcaire excessif"
+        ]
+      }
+    },
+    "chambre": {
+      "name": "Chambre",
+      "icon": "🛏️",
+      "verifications": {
+        "elements_critiques": [
+          "Murs (trous, impacts)",
+          "Prises électriques",
+          "Stores/volets",
+          "Plinthes",
+          "Placard",
+          "Fenêtres"
+        ],
+        "points_ignorables": [
+          "Traces légères aux murs",
+          "Petites marques sur plinthes",
+          "Usure normale poignées"
+        ],
+        "defauts_frequents": [
+          "Traces de meubles",
+          "Impacts portes",
+          "Trous fixations",
+          "Rayures parquet"
+        ]
+      }
+    },
+    "salon": {
+      "name": "Salon",
+      "icon": "🛋️",
+      "verifications": {
+        "elements_critiques": [
+          "État des murs",
+          "Revêtement sol",
+          "Prises électriques",
+          "Éclairage",
+          "Fenêtres",
+          "Radiateurs"
+        ],
+        "points_ignorables": [
+          "Traces minimes murs",
+          "Légères marques sol",
+          "Poussière normale"
+        ],
+        "defauts_frequents": [
+          "Impacts meubles",
+          "Rayures sol",
+          "Trous fixations",
+          "Traces doigts interrupteurs"
+        ]
+      }
+    },
+    "wc": {
+      "name": "WC",
+      "icon": "🚽",
+      "verifications": {
+        "elements_critiques": [
+          "Cuvette WC",
+          "Chasse d'eau",
+          "Sol carrelage",
+          "Joints sanitaires",
+          "Ventilation",
+          "Lavabo si présent"
+        ],
+        "points_ignorables": [
+          "Traces calcaire légères",
+          "Petites taches sol",
+          "Usure normale abattant"
+        ],
+        "defauts_frequents": [
+          "Tartre excessif",
+          "Joints noircis",
+          "Odeurs persistantes",
+          "Fuites base WC"
+        ]
+      }
+    },
+    "exterieur": {
+      "name": "exterieur",
+      "icon": "a",
+      "verifications": {
+        "elements_critiques": [
+          "Éléments critiques à vérifier"
+        ],
+        "points_ignorables": [
+          "Points ignorables"
+        ],
+        "defauts_frequents": [
+          "Défauts fréquents"
+        ]
+      }
+    }
+  }
+}

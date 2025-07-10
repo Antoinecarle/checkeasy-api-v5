@@ -1,0 +1,1 @@
+web: uvicorn make_request:app --host 0.0.0.0 --port $PORT 
