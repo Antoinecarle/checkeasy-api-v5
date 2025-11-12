@@ -159,3 +159,7 @@ logs/
 # Temporary files
 tmp/
 temp/ 
+
+# Configuration des prompts (éviter d'écraser les modifications en production)
+front/prompts-config.json
+prompts-config.json 
