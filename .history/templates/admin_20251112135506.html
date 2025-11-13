@@ -1020,12 +1020,12 @@
             }
 
             try {
-                const response = await fetch(`${API_BASE_URL}/room-templates/${key}?type=${currentParcoursType}`, {
+                const response = await fetch(`${API_BASE_URL}/room-templates/${key}`, {
                     method: 'DELETE'
                 });
 
                 const result = await response.json();
-
+                
                 if (result.success) {
                     await loadRooms();
                     showSuccess(result.message);
@@ -1067,7 +1067,7 @@
         // Fonction d'export vers Railway
         async function exportToRailway() {
             try {
-                const response = await fetch(`${API_BASE_URL}/room-templates/export/railway-env?type=${currentParcoursType}`);
+                const response = await fetch(`${API_BASE_URL}/room-templates/export/railway-env`);
                 const data = await response.json();
 
                 if (data.success) {

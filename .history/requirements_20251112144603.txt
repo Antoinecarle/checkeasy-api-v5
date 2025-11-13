@@ -26,4 +26,3 @@ imageio>=2.31.0
 
 # Système d'analyse des logs
 tqdm>=4.66.0
-colorama>=0.4.6

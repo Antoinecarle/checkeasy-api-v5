@@ -554,28 +554,12 @@
                     <span class="search-icon">🔍</span>
                     <input type="text" id="searchInput" placeholder="Rechercher un type de pièce...">
                 </div>
-                <div style="display: flex; gap: 0.5rem; align-items: center;">
-                    <!-- Sélecteur de type de parcours -->
-                    <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; background: white; border-radius: 8px; border: 2px solid var(--border);">
-                        <span style="font-weight: 600; color: var(--text-secondary);">Type:</span>
-                        <select id="parcoursTypeSelector" style="padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; font-size: 1rem; cursor: pointer; background: white;">
-                            <option value="Voyageur">🧳 Voyageur</option>
-                            <option value="Ménage">🧹 Ménage</option>
-                        </select>
-                    </div>
-                    <a href="/scoring-config" class="btn btn-secondary" style="text-decoration: none;">
-                        ⚙️ Config Scoring
-                    </a>
-                    <a href="/prompts-admin" class="btn btn-secondary" style="text-decoration: none;">
-                        📝 Config Prompts
-                    </a>
-                    <button class="btn btn-primary" onclick="openCreateModal()">
-                        ➕ Nouveau Type de Pièce
-                    </button>
-                    <button class="btn btn-warning" onclick="exportToRailway()" style="background: var(--warning);">
-                        🚀 Export Railway
-                    </button>
-                </div>
+                <button class="btn btn-primary" onclick="openCreateModal()">
+                    ➕ Nouveau Type de Pièce
+                </button>
+                <button class="btn btn-warning" onclick="exportToRailway()" style="background: var(--warning); margin-left: 0.5rem;">
+                    🚀 Export Railway
+                </button>
             </div>
 
             <div class="content-area">
@@ -728,24 +712,17 @@
     <script>
         let roomData = {};
         let currentEditingKey = null;
-        let currentParcoursType = 'Voyageur'; // Type de parcours actuel
-
+        
         // Configuration de l'URL de base de l'API
         const API_BASE_URL = window.location.origin;
 
         // Initialisation
         document.addEventListener('DOMContentLoaded', function() {
             loadRooms();
-
+            
             // Recherche en temps réel
             document.getElementById('searchInput').addEventListener('input', function() {
                 filterRooms(this.value);
-            });
-
-            // Changement de type de parcours
-            document.getElementById('parcoursTypeSelector').addEventListener('change', function() {
-                currentParcoursType = this.value;
-                loadRooms();
             });
 
             // Initialiser le sélecteur d'icônes
@@ -756,15 +733,12 @@
         async function loadRooms() {
             try {
                 showLoading();
-                // Ajouter le paramètre type à la requête
-                const response = await fetch(`${API_BASE_URL}/room-templates?type=${currentParcoursType}`);
+                const response = await fetch(`${API_BASE_URL}/room-templates`);
                 const data = await response.json();
-
+                
                 if (data.success) {
                     roomData = data.room_types;
                     renderRooms();
-                    // Mettre à jour l'indicateur visuel
-                    updateParcoursIndicator();
                 } else {
                     showError('Erreur lors du chargement des types de pièces');
                 }
@@ -774,13 +748,6 @@
             } finally {
                 hideLoading();
             }
-        }
-
-        // Mettre à jour l'indicateur visuel du type de parcours
-        function updateParcoursIndicator() {
-            const header = document.querySelector('.header p');
-            const typeEmoji = currentParcoursType === 'Voyageur' ? '🧳' : '🧹';
-            header.textContent = `${typeEmoji} Gestion des Types de Pièces - Parcours ${currentParcoursType}`;
         }
 
         // Affichage des types de pièces
@@ -980,7 +947,7 @@
                 if (currentEditingKey) {
                     // Mise à jour
                     delete roomData.room_type_key; // Ne pas envoyer la clé pour l'update
-                    response = await fetch(`${API_BASE_URL}/room-templates/${currentEditingKey}?type=${currentParcoursType}`, {
+                    response = await fetch(`${API_BASE_URL}/room-templates/${currentEditingKey}`, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json'
@@ -989,7 +956,7 @@
                     });
                 } else {
                     // Création
-                    response = await fetch(`${API_BASE_URL}/room-templates?type=${currentParcoursType}`, {
+                    response = await fetch(`${API_BASE_URL}/room-templates`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -1020,12 +987,12 @@
             }
 
             try {
-                const response = await fetch(`${API_BASE_URL}/room-templates/${key}?type=${currentParcoursType}`, {
+                const response = await fetch(`${API_BASE_URL}/room-templates/${key}`, {
                     method: 'DELETE'
                 });
 
                 const result = await response.json();
-
+                
                 if (result.success) {
                     await loadRooms();
                     showSuccess(result.message);
@@ -1067,7 +1034,7 @@
         // Fonction d'export vers Railway
         async function exportToRailway() {
             try {
-                const response = await fetch(`${API_BASE_URL}/room-templates/export/railway-env?type=${currentParcoursType}`);
+                const response = await fetch(`${API_BASE_URL}/room-templates/export/railway-env`);
                 const data = await response.json();
 
                 if (data.success) {

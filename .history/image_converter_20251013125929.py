@@ -59,7 +59,7 @@ def normalize_url(url: str) -> str:
     url = url.strip()
 
     # 🔍 DEBUG: Logger l'URL après strip pour diagnostiquer
-    logger.info(f"🔍 normalize_url - URL après strip: '{url}' (premiers chars: {repr(url[:10]) if len(url) >= 10 else repr(url)})")
+    logger.debug(f"🔍 normalize_url - URL après strip: '{url}' (premiers chars: {repr(url[:10]) if len(url) >= 10 else repr(url)})")
 
     # Cas 1: URL commence par "//" (protocole manquant)
     # Exemple: "//cdn.bubble.io/image.jpg" -> "https://cdn.bubble.io/image.jpg"
@@ -71,7 +71,7 @@ def normalize_url(url: str) -> str:
         # Cas où l'URL commence par un seul slash (chemin relatif invalide)
         logger.warning(f"⚠️ URL commence par un seul slash (invalide): {url}")
     else:
-        logger.info(f"🔍 URL ne commence pas par // : {url[:50]}...")
+        logger.debug(f"🔍 URL ne commence pas par // : {url[:50]}...")
 
     # Cas 2: Double protocole "https:https://"
     # Exemple: "https:https://cdn.bubble.io/image.jpg" -> "https://cdn.bubble.io/image.jpg"

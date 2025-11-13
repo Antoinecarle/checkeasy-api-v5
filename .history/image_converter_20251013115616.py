@@ -58,20 +58,11 @@ def normalize_url(url: str) -> str:
     # Nettoyer les espaces
     url = url.strip()
 
-    # 🔍 DEBUG: Logger l'URL après strip pour diagnostiquer
-    logger.info(f"🔍 normalize_url - URL après strip: '{url}' (premiers chars: {repr(url[:10]) if len(url) >= 10 else repr(url)})")
-
     # Cas 1: URL commence par "//" (protocole manquant)
     # Exemple: "//cdn.bubble.io/image.jpg" -> "https://cdn.bubble.io/image.jpg"
     if url.startswith('//'):
         logger.info(f"🔧 Ajout du protocole https: à l'URL: {url}")
         url = 'https:' + url
-        logger.info(f"✅ URL normalisée: {url}")
-    elif url.startswith('/'):
-        # Cas où l'URL commence par un seul slash (chemin relatif invalide)
-        logger.warning(f"⚠️ URL commence par un seul slash (invalide): {url}")
-    else:
-        logger.info(f"🔍 URL ne commence pas par // : {url[:50]}...")
 
     # Cas 2: Double protocole "https:https://"
     # Exemple: "https:https://cdn.bubble.io/image.jpg" -> "https://cdn.bubble.io/image.jpg"
@@ -90,33 +81,21 @@ def normalize_url(url: str) -> str:
 
     # Cas 4: Caractères problématiques en fin d'URL
     # Exemple: "image.jpg." -> "image.jpg" ou "image.jpg," -> "image.jpg"
+    problematic_chars = ['.', ',', ';', ':', '!', '?']
     original_url = url
-
-    # Supprimer les points, virgules, etc. en fin d'URL
-    # Mais garder le point de l'extension (ex: .jpg, .png)
-    while url and len(url) > 0:
-        last_char = url[-1]
-
-        # Si c'est un point
-        if last_char == '.':
+    while url and url[-1] in problematic_chars:
+        # Vérifier que ce n'est pas le point d'une extension valide
+        # On ne supprime que si c'est vraiment en trop (après l'extension)
+        if url[-1] == '.' and len(url) > 4:
             # Vérifier si c'est un double point (ex: .jpg.)
-            # En regardant s'il y a déjà un point dans le nom de fichier
-            filename = url.split('/')[-1]  # Dernière partie après /
-            # Si le nom de fichier a déjà un point avant le dernier caractère
-            if '.' in filename[:-1]:
-                # C'est un point en trop, on le supprime
+            extension_part = url.split('/')[-1]  # Dernière partie après /
+            if '.' in extension_part[:-1]:  # Il y a déjà un point avant le dernier caractère
                 url = url[:-1]
                 continue
-            else:
-                # C'est le point de l'extension, on le garde
-                break
-
-        # Pour les autres caractères problématiques, toujours supprimer
-        elif last_char in [',', ';', ':', '!', '?', ' ']:
+        # Pour les autres caractères, toujours supprimer
+        if url[-1] in [',', ';', ':', '!', '?']:
             url = url[:-1]
             continue
-
-        # Caractère normal, on arrête
         break
 
     if url != original_url:

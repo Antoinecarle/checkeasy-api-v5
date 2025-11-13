@@ -2,18 +2,43 @@
   "room_types": {
     "cuisine": {
       "name": "Cuisine",
-      "icon": "🍽️",
+      "icon": "🍽",
       "verifications": {
         "elements_critiques": [
-          "Électroménager"
+          "plan de travail complet",
+          "crédence / tiroirs/placards façades",
+          "plaques de cuisson",
+          "élément de décoration",
+          "évier",
+          "frigo extérieur",
+          "lave-vaisselle façade",
+          "micro-ondes posé ou encastré",
+          "four",
+          "appareils petits (grille-pain, bouilloire )",
+          "livret de bienvenue",
+          "vase décoratif (le contenant, pas son contenu)",
+          "VOYAGUER"
         ],
         "points_ignorables": [
-          "Petites traces sur murs",
-          "Variations couleur joints",
-          "Usure normale plan de travail"
+          "torchon / torchons",
+          "bouteille d eau / bouteilles d eau",
+          "chiffon / chiffons",
+          "sachet de the / sachets de the",
+          "variation de couleur ou de modèle d'électroménager (frigo, four, micro-ondes, etc.)",
+          "papier toilette",
+          "bouteille d'eau",
+          "contenu du vase / fleurs / bouquet"
         ],
         "defauts_frequents": [
-          "Graisse sur surfaces"
+          "trace grasse crédence",
+          "brûlure ou fissure plan travail",
+          "changement d'emplacement d'un objet",
+          "porte placard désalignée",
+          "éclat carrelage sol",
+          "ustensiles entassés désordonnés",
+          "objet décoratif absent",
+          "emplacement de l'électroménager",
+          "vase manquant / déplacé"
         ]
       }
     },
@@ -22,113 +47,278 @@
       "icon": "🚿",
       "verifications": {
         "elements_critiques": [
-          "Étanchéité douche/baignoire",
-          "Ventilation",
-          "Joints sanitaires",
-          "Robinetterie",
-          "Évacuation",
-          "Carrelage"
+          "Vasque et robinet",
+          "Plan vasque ou meuble dessous",
+          "miroir",
+          "baignoire complet",
+          "robinetterie",
+          "joints silicone périphérie",
+          "joints carrelage murs et sol",
+          "colonne de rangement ou étagères",
+          "porte-serviettes",
+          "plafonnier/applique",
+          "Accessoires de salle de bain",
+          "élément de décoration"
         ],
         "points_ignorables": [
-          "Traces de calcaire légères",
-          "Petites traces sur miroir",
-          "Usure normale joints"
+          "Position de la serviettes",
+          "Couleur Tapis de bain",
+          "légère eau résiduelle"
         ],
         "defauts_frequents": [
-          "Moisissures plafond",
-          "Joints silicone noirs",
-          "Fuites cachées",
-          "Calcaire excessif"
+          "calcaire épais robinet",
+          "joint silicone noirci ou manquant",
+          "tache incrustée vasque",
+          "trace de savon sur paroi",
+          "carreau fissuré/manquant",
+          "élément de décoration manquant"
         ]
       }
     },
     "chambre": {
       "name": "Chambre",
-      "icon": "🛏️",
+      "icon": "🛏",
       "verifications": {
         "elements_critiques": [
-          "Murs (trous, impacts)",
-          "Prises électriques",
-          "Stores/volets",
-          "Plinthes",
-          "Placard",
-          "Fenêtres"
+          "oreillers",
+          "chevets & tiroirs",
+          "lampes chevet",
+          "commode/tiroirs",
+          "mur",
+          "plafonnier/abat-jour",
+          "tapis de sol",
+          "Cadres",
+          "élément de décoration",
+          "Télécommande",
+          "Meuble TV"
         ],
         "points_ignorables": [
-          "Traces légères aux murs",
-          "Petites marques sur plinthes",
-          "Usure normale poignées"
+          "COULEUR DES DRAPS ET DE LA COUETTE",
+          "état d'éclairage (lumière allumée ou éteinte)"
         ],
         "defauts_frequents": [
-          "Traces de meubles",
-          "Impacts portes",
-          "Trous fixations",
-          "Rayures parquet"
+          "lampe chevet absente",
+          "rideau sorti de rail",
+          "Tâches sur le mur",
+          "élément de décoration manquant"
         ]
       }
     },
     "salon": {
       "name": "Salon",
-      "icon": "🛋️",
+      "icon": "🛋",
       "verifications": {
         "elements_critiques": [
-          "État des murs",
-          "Revêtement sol",
-          "Prises électriques",
-          "Éclairage",
-          "Fenêtres",
-          "Radiateurs"
+          "canapé (structure, accoudoirs, coussins)",
+          "fauteuils",
+          "table basse (plateau, pieds)",
+          "télécommandes",
+          "meuble TV",
+          "TV & câbles visibles",
+          "tapis",
+          "décor mural (cadres, horloge)",
+          "radiateurs ou clim apparente",
+          "sols et plinthes",
+          "élément de décoration",
+          "livret de bienvenue"
         ],
         "points_ignorables": [
-          "Traces minimes murs",
-          "Légères marques sol",
-          "Poussière normale"
+          "Couleur des cousins",
+          "état d'éclairage (lumière allumée ou éteinte)",
+          "état d'éclairage des lampes ou guirlandes (allumées, éteintes, mode clignotant)",
+          "torchon / torchons"
         ],
         "defauts_frequents": [
-          "Impacts meubles",
-          "Rayures sol",
-          "Trous fixations",
-          "Traces doigts interrupteurs"
+          "coussin manquant",
+          "déchirure assise",
+          "tache visible table/Tapis",
+          "Télécommande manquante",
+          "cadre mural de traviole",
+          "élément de décoration manquant",
+          "Changement de meuble"
         ]
       }
     },
     "wc": {
-      "name": "WC",
+      "name": "toilettes",
       "icon": "🚽",
       "verifications": {
         "elements_critiques": [
           "Cuvette WC",
-          "Chasse d'eau",
+          "abattant de toilettes",
           "Sol carrelage",
           "Joints sanitaires",
-          "Ventilation",
-          "Lavabo si présent"
+          "bouton ou tirette chasse",
+          "Lavabo",
+          "balai brosse",
+          "mur",
+          "Papier toilette",
+          "élement de décoration"
         ],
         "points_ignorables": [
-          "Traces calcaire légères",
-          "Petites taches sol",
-          "Usure normale abattant"
+          "Nombre exact de rouleau papier",
+          "Légère eau résiduelle laissée sur les surfaces suite au ménage"
         ],
         "defauts_frequents": [
-          "Tartre excessif",
-          "Joints noircis",
-          "Odeurs persistantes",
-          "Fuites base WC"
+          "abattant cassé",
+          "tache au sol pied WC",
+          "fissure carrelage",
+          "Cuvette salle"
         ]
       }
     },
     "exterieur": {
       "name": "exterieur",
-      "icon": "a",
+      "icon": "🌳",
       "verifications": {
         "elements_critiques": [
-          "Éléments critiques à vérifier"
+          "sol",
+          "garde-corps",
+          "mobilier extérieur (table, chaises, transats, poufs)",
+          "pots de fleurs / plantes en pot décoratives",
+          "élément de décoration fixe (tapis d’extérieur, coussins décoratifs)",
+          "BBQ"
         ],
         "points_ignorables": [
-          "Points ignorables"
+          "plantes privées hors pot (par exemple : arbre voisin)",
+          "variation d’état naturel des plantes (floraison / flétrissure légères)",
+          "traces de pluie récentes ou gouttes d’arrosage"
         ],
         "defauts_frequents": [
-          "Défauts fréquents"
+          "dalle fissurée",
+          "latte terrasse soulevée",
+          "chaise cassée ou manquante",
+          "parasol troué",
+          "détritus visibles",
+          "table instable ou rayée",
+          "pot de fleurs manquant ou renversé",
+          "détritus visibles (canettes, mégots)",
+          "tache grasse / résidus barbecue sur le sol"
+        ]
+      }
+    },
+    "salle_de_bain_et_toilettee": {
+      "name": "Salle de bain et Toilettes",
+      "icon": "🛁",
+      "verifications": {
+        "elements_critiques": [
+          "vasque",
+          "bac douche ou baignoire surface complète",
+          "robinetterie douche (pommeau, flexible)",
+          "joints silicone",
+          "paroi fixe, porte douche ou rideau",
+          "cuvette WC",
+          "porte-serviettes",
+          "plafonnier",
+          "WC"
+        ],
+        "points_ignorables": [
+          "Position de la serviettes",
+          "Couleur tapis de bain",
+          "légère eau résiduelle"
+        ],
+        "defauts_frequents": [
+          "joint silicone noirci"
+        ]
+      }
+    },
+    "salle_d_eau": {
+      "name": "Salle d'eau",
+      "icon": "🚿",
+      "verifications": {
+        "elements_critiques": [
+          "Douche",
+          "robinetterie douche (pommeau, flexible, barre)",
+          "paroi fixe ou rideau ou cabine de douche",
+          "rideau / cabine complète",
+          "élément de décoration",
+          "Miroir & éclairage miroir",
+          "porte-savon",
+          "Éléments de décoration (plantes, cadres, bougies, etc.)",
+          "Produits d'entretiens"
+        ],
+        "points_ignorables": [
+          "Couleur ou motif du tapis de bain",
+          "Position exacte du tapis (s’il n’entrave pas l’usage)",
+          "Couleur ou motif des serviettes / gants",
+          "Légères éclaboussures d’eau fraîche",
+          "Flacons de shampoing / gel douche laissés par l’occupant"
+        ],
+        "defauts_frequents": [
+          "Joints noircits",
+          "calcaire épais robinet",
+          "tache incrustée vasque",
+          "Traces de savon ou dépôt blanchâtre sur parois / vitrage",
+          "Objets de toilette entassés de façon désordonnée"
+        ]
+      }
+    },
+    "salle_d_eau_et_wc": {
+      "name": "Salle d'eau et toilettes",
+      "icon": "🚿",
+      "verifications": {
+        "elements_critiques": [
+          "Vasque et robinet",
+          "bac douche",
+          "robinetterie douche (pommeau, flexible, barre)",
+          "paroi fixe ou rideau ou cabine de douche",
+          "Accessoires de salle de bain",
+          "élément de décoration",
+          "WC",
+          "abattant de toilettes",
+          "Joints sanitaires",
+          "balai brosse",
+          "Papier toilette",
+          "élement de décoration"
+        ],
+        "points_ignorables": [
+          "Position de la serviettes",
+          "Couleur tapis de bain",
+          "légère eau résiduelle",
+          "Nombre exact de rouleau papier"
+        ],
+        "defauts_frequents": [
+          "calcaire épais robinet",
+          "joint silicone noirci ou manquant",
+          "tache incrustée vasque",
+          "trace de savon sur paroi",
+          "pommeau douche tombé",
+          "élément de décoration manquant",
+          "carreau fissuré/manquant",
+          "abattant cassé",
+          "tache au sol pied WC",
+          "Cuvette salle"
+        ]
+      }
+    },
+    "bureau": {
+      "name": "bureau",
+      "icon": "📚",
+      "verifications": {
+        "elements_critiques": [
+          "bureau",
+          "chaise"
+        ],
+        "points_ignorables": [
+          "position exact des classeurs"
+        ],
+        "defauts_frequents": [
+          "bureau sale"
+        ]
+      }
+    },
+    "entree": {
+      "name": "Entrée",
+      "icon": "🔄",
+      "verifications": {
+        "elements_critiques": [
+          "porte",
+          "paillasson",
+          "meuble d'entrée"
+        ],
+        "points_ignorables": [],
+        "defauts_frequents": [
+          "trace sur le sol"
         ]
       }
     }

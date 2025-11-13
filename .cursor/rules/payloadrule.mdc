@@ -1,0 +1,4 @@
+---
+alwaysApply: true
+---
+Ne jamais modifier la structure du Json à envoyé sur le endpoint finale bubble  https://checkeasy-57905.bubbleapps.io/version-test/api/1.1/wf/webhookia , la structure ne dois jamais être modifié 

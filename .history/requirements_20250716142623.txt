@@ -22,8 +22,4 @@ pyheif>=0.7.0
 Wand>=0.6.13
 
 # Utilitaires de conversion supplémentaires
-imageio>=2.31.0
-
-# Système d'analyse des logs
-tqdm>=4.66.0
-colorama>=0.4.6
+imageio>=2.31.0 

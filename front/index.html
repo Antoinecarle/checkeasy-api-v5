@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CheckEasy - Gestionnaire de Prompts IA</title>
+    <link rel="stylesheet" href="/front/styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <i class="fas fa-robot"></i>
+                    <h1>CheckEasy - Gestionnaire de Prompts IA</h1>
+                </div>
+                <div class="header-actions">
+                    <!-- Sélecteur de type de parcours -->
+                    <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; background: rgba(255,255,255,0.1); border-radius: 8px; margin-right: 1rem;">
+                        <span style="font-weight: 600; color: white;">Type:</span>
+                        <select id="parcoursTypeSelector" style="padding: 0.5rem; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; font-size: 1rem; cursor: pointer; background: white;">
+                            <option value="Voyageur">🧳 Voyageur</option>
+                            <option value="Ménage">🧹 Ménage</option>
+                        </select>
+                    </div>
+                    <button id="saveAllBtn" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Sauvegarder Tout
+                    </button>
+                    <button id="exportBtn" class="btn btn-secondary">
+                        <i class="fas fa-download"></i> Exporter JSON
+                    </button>
+                    <button id="importBtn" class="btn btn-secondary">
+                        <i class="fas fa-upload"></i> Importer JSON
+                    </button>
+                    <input type="file" id="importFile" accept=".json" style="display: none;">
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="app-nav">
+            <div class="nav-content">
+                <button class="nav-item active" data-section="overview">
+                    <i class="fas fa-dashboard"></i> Vue d'ensemble
+                </button>
+                <button class="nav-item" data-section="analyze_main">
+                    <i class="fas fa-search"></i> Analyse Principal
+                </button>
+                <button class="nav-item" data-section="classify_room">
+                    <i class="fas fa-home"></i> Classification Pièces
+                </button>
+                <button class="nav-item" data-section="analyze_etapes">
+                    <i class="fas fa-tasks"></i> Analyse Étapes
+                </button>
+                <button class="nav-item" data-section="synthesis_global">
+                    <i class="fas fa-chart-line"></i> Synthèse Globale
+                </button>
+                <button class="nav-item" data-section="user_messages">
+                    <i class="fas fa-comments"></i> Messages Utilisateur
+                </button>
+                <button class="nav-item" data-section="preview">
+                    <i class="fas fa-eye"></i> Prévisualisation
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="app-main">
+            
+            <!-- Vue d'ensemble -->
+            <section id="overview" class="content-section active">
+                <div class="section-header">
+                    <h2><i class="fas fa-dashboard"></i> Vue d'ensemble des Prompts</h2>
+                    <p>Gérez tous les prompts utilisés par l'API CheckEasy V5</p>
+                </div>
+                
+                <div class="overview-stats">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-robot"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="totalPrompts">0</h3>
+                            <p>Prompts Système</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-comments"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="totalUserMessages">0</h3>
+                            <p>Messages Utilisateur</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-puzzle-piece"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="totalSections">0</h3>
+                            <p>Sections Total</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-edit"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="unsavedChanges">0</h3>
+                            <p>Modifications Non Sauvées</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="prompts-overview">
+                    <h3>Liste des Prompts</h3>
+                    <div id="promptsList" class="prompts-list"></div>
+                </div>
+            </section>
+
+            <!-- Sections pour chaque prompt -->
+            <section id="analyze_main" class="content-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-search"></i> Analyse Principale des Pièces</h2>
+                    <p>Prompt principal pour l'analyse comparative des images</p>
+                    <div class="prompt-meta">
+                        <span class="endpoint-tag">/analyze, /analyze-with-classification, /analyze-complete</span>
+                    </div>
+                </div>
+                <div id="analyze_main_editor" class="prompt-editor"></div>
+            </section>
+
+            <section id="classify_room" class="content-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-home"></i> Classification Type de Pièce</h2>
+                    <p>Prompt pour identifier automatiquement le type d'une pièce</p>
+                    <div class="prompt-meta">
+                        <span class="endpoint-tag">/classify-room, /analyze-with-classification</span>
+                    </div>
+                </div>
+                <div id="classify_room_editor" class="prompt-editor"></div>
+            </section>
+
+            <section id="analyze_etapes" class="content-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-tasks"></i> Analyse Spécifique des Étapes</h2>
+                    <p>Prompt pour analyser si une tâche ménagère a été correctement exécutée</p>
+                    <div class="prompt-meta">
+                        <span class="endpoint-tag">/analyze-etapes, /analyze-complete</span>
+                    </div>
+                </div>
+                <div id="analyze_etapes_editor" class="prompt-editor"></div>
+            </section>
+
+            <section id="synthesis_global" class="content-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-chart-line"></i> Synthèse Globale du Logement</h2>
+                    <p>Prompt pour générer une synthèse complète avec recommandations</p>
+                    <div class="prompt-meta">
+                        <span class="endpoint-tag">/analyze-complete</span>
+                    </div>
+                </div>
+                <div id="synthesis_global_editor" class="prompt-editor"></div>
+            </section>
+
+            <section id="user_messages" class="content-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-comments"></i> Messages Utilisateur</h2>
+                    <p>Templates des messages envoyés par les utilisateurs</p>
+                </div>
+                <div id="user_messages_editor" class="prompt-editor"></div>
+            </section>
+
+            <!-- Prévisualisation -->
+            <section id="preview" class="content-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-eye"></i> Prévisualisation</h2>
+                    <p>Prévisualisez vos prompts avec des variables d'exemple</p>
+                </div>
+                
+                <div class="preview-controls">
+                    <div class="control-group">
+                        <label for="previewPromptSelect">Sélectionner un prompt :</label>
+                        <select id="previewPromptSelect" class="form-control">
+                            <option value="">-- Choisir un prompt --</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label for="previewVariables">Variables d'exemple (JSON) :</label>
+                        <textarea id="previewVariables" class="form-control" rows="6" placeholder='{"piece_nom": "Cuisine", "commentaire_ia": "Attention aux détails"}'></textarea>
+                    </div>
+                    <button id="generatePreview" class="btn btn-primary">
+                        <i class="fas fa-play"></i> Générer Prévisualisation
+                    </button>
+                </div>
+
+                <div id="previewResult" class="preview-result">
+                    <h3>Prompt généré :</h3>
+                    <pre><code id="previewContent" class="language-text"></code></pre>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Notifications -->
+        <div id="notifications" class="notifications-container"></div>
+
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script src="/front/app.js"></script>
+</body>
+</html> 

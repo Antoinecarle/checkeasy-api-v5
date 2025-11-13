@@ -42,95 +42,13 @@ SUPPORTED_FORMATS = {'png', 'jpeg', 'jpg', 'gif', 'webp'}
 # Formats qui nécessitent une conversion
 CONVERSION_FORMATS = {'heic', 'heif', 'bmp', 'tiff', 'tif'}
 
-def normalize_url(url: str) -> str:
-    """
-    Normalise une URL en corrigeant les problèmes courants
-
-    Args:
-        url: L'URL à normaliser
-
-    Returns:
-        str: URL normalisée
-    """
-    if not url or not isinstance(url, str):
-        return url
-
-    # Nettoyer les espaces
-    url = url.strip()
-
-    # 🔍 DEBUG: Logger l'URL après strip pour diagnostiquer
-    logger.info(f"🔍 normalize_url - URL après strip: '{url}' (premiers chars: {repr(url[:10]) if len(url) >= 10 else repr(url)})")
-
-    # Cas 1: URL commence par "//" (protocole manquant)
-    # Exemple: "//cdn.bubble.io/image.jpg" -> "https://cdn.bubble.io/image.jpg"
-    if url.startswith('//'):
-        logger.info(f"🔧 Ajout du protocole https: à l'URL: {url}")
-        url = 'https:' + url
-        logger.info(f"✅ URL normalisée: {url}")
-    elif url.startswith('/'):
-        # Cas où l'URL commence par un seul slash (chemin relatif invalide)
-        logger.warning(f"⚠️ URL commence par un seul slash (invalide): {url}")
-    else:
-        logger.info(f"🔍 URL ne commence pas par // : {url[:50]}...")
-
-    # Cas 2: Double protocole "https:https://"
-    # Exemple: "https:https://cdn.bubble.io/image.jpg" -> "https://cdn.bubble.io/image.jpg"
-    if url.startswith('https:https://'):
-        logger.info(f"🔧 Correction du double protocole: {url}")
-        url = url.replace('https:https://', 'https://', 1)
-    elif url.startswith('http:http://'):
-        logger.info(f"🔧 Correction du double protocole: {url}")
-        url = url.replace('http:http://', 'http://', 1)
-
-    # Cas 3: Protocole sans slashes "https:cdn.bubble.io"
-    # Exemple: "https:cdn.bubble.io/image.jpg" -> "https://cdn.bubble.io/image.jpg"
-    if re.match(r'^https?:[^/]', url):
-        logger.info(f"🔧 Ajout des slashes manquants: {url}")
-        url = url.replace('https:', 'https://', 1).replace('http:', 'http://', 1)
-
-    # Cas 4: Caractères problématiques en fin d'URL
-    # Exemple: "image.jpg." -> "image.jpg" ou "image.jpg," -> "image.jpg"
-    original_url = url
-
-    # Supprimer les points, virgules, etc. en fin d'URL
-    # Mais garder le point de l'extension (ex: .jpg, .png)
-    while url and len(url) > 0:
-        last_char = url[-1]
-
-        # Si c'est un point
-        if last_char == '.':
-            # Vérifier si c'est un double point (ex: .jpg.)
-            # En regardant s'il y a déjà un point dans le nom de fichier
-            filename = url.split('/')[-1]  # Dernière partie après /
-            # Si le nom de fichier a déjà un point avant le dernier caractère
-            if '.' in filename[:-1]:
-                # C'est un point en trop, on le supprime
-                url = url[:-1]
-                continue
-            else:
-                # C'est le point de l'extension, on le garde
-                break
-
-        # Pour les autres caractères problématiques, toujours supprimer
-        elif last_char in [',', ';', ':', '!', '?', ' ']:
-            url = url[:-1]
-            continue
-
-        # Caractère normal, on arrête
-        break
-
-    if url != original_url:
-        logger.info(f"🔧 Nettoyage des caractères en fin d'URL: {original_url} -> {url}")
-
-    return url
-
 def is_valid_image_url(url: str) -> bool:
     """
     Valide si une URL d'image est correctement formée et potentiellement accessible
-
+    
     Args:
         url: L'URL à valider
-
+        
     Returns:
         bool: True si l'URL semble valide, False sinon
     """
@@ -139,9 +57,9 @@ def is_valid_image_url(url: str) -> bool:
         if not url or not isinstance(url, str):
             logger.warning(f"⚠️ URL invalide: vide ou non-string: {url}")
             return False
-
-        # Normaliser l'URL (corriger les problèmes courants)
-        url = normalize_url(url)
+        
+        # Nettoyer l'URL
+        url = url.strip()
         
         # Vérifier les cas problématiques courants
         invalid_patterns = [
@@ -588,19 +506,17 @@ class ImageConverter:
     def process_image_url(url: str, use_placeholder_for_invalid: bool = True) -> Optional[str]:
         """
         Fonction principale : traite une URL d'image et retourne une URL compatible OpenAI
-
+        
         Args:
             url: URL à traiter
             use_placeholder_for_invalid: Si False, retourne None pour les URLs invalides au lieu d'un placeholder
-
+            
         Returns:
             URL traitée ou None si invalide et use_placeholder_for_invalid=False
         """
         try:
-            # Normaliser l'URL avant traitement
-            url = normalize_url(url)
             logger.info(f"🔍 Traitement de l'image: {url}")
-
+            
             # ÉTAPE 1: Validation préliminaire de l'URL
             if not is_valid_image_url(url):
                 if use_placeholder_for_invalid:
@@ -997,18 +913,15 @@ def process_pictures_list(pictures_list: list) -> list:
                 # Traiter l'URL de l'image - picture est maintenant un dictionnaire
                 picture_url = picture['url'] if isinstance(picture, dict) else picture.url
                 piece_id = picture['piece_id'] if isinstance(picture, dict) else picture.piece_id
-
+                
                 logger.info(f"📸 Traitement image {i+1}/{len(pictures_list)} pour piece {piece_id}")
-
+                
                 # Vérification préliminaire : ignorer les URLs complètement invalides
                 if not picture_url or picture_url.strip() == "":
                     logger.warning(f"⚠️ URL vide pour piece {piece_id}, ignorée")
                     invalid_count += 1
                     continue
-
-                # NORMALISER L'URL AVANT TRAITEMENT
-                picture_url = normalize_url(picture_url)
-
+                
                 # Traiter l'image (ceci retournera un placeholder si nécessaire)
                 converted_url = ImageConverter.process_image_url(picture_url)
                 
@@ -1091,16 +1004,13 @@ def process_etapes_images(etapes_list: list) -> list:
                 consigne = etape['consigne'] if isinstance(etape, dict) else etape.consigne
                 
                 logger.info(f"🔄 Traitement étape {i+1}/{len(etapes_list)} - ID: {etape_id}")
-
+                
                 # Traiter l'image de checking - ne pas créer de placeholder pour les URLs invalides
                 if not checking_picture or checking_picture.strip() == "":
                     logger.warning(f"⚠️ checking_picture vide pour étape {etape_id}")
                     converted_checking = None
                     issues_count += 1
                 else:
-                    # NORMALISER L'URL AVANT VALIDATION
-                    checking_picture = normalize_url(checking_picture)
-
                     # Vérifier si l'URL est valide avant traitement
                     if is_valid_image_url(checking_picture):
                         converted_checking = ImageConverter.process_image_url(checking_picture, use_placeholder_for_invalid=False)
@@ -1108,16 +1018,13 @@ def process_etapes_images(etapes_list: list) -> list:
                         logger.warning(f"⚠️ checking_picture invalide pour étape {etape_id}: {checking_picture}")
                         converted_checking = None
                         issues_count += 1
-
+                
                 # Traiter l'image de checkout - ne pas créer de placeholder pour les URLs invalides
                 if not checkout_picture or checkout_picture.strip() == "":
                     logger.warning(f"⚠️ checkout_picture vide pour étape {etape_id}")
                     converted_checkout = None
                     issues_count += 1
                 else:
-                    # NORMALISER L'URL AVANT VALIDATION
-                    checkout_picture = normalize_url(checkout_picture)
-
                     # Vérifier si l'URL est valide avant traitement
                     if is_valid_image_url(checkout_picture):
                         converted_checkout = ImageConverter.process_image_url(checkout_picture, use_placeholder_for_invalid=False)
