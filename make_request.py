@@ -8,7 +8,16 @@ import os
 from openai import OpenAI
 import asyncio
 import aiohttp
+import nest_asyncio
 from fastapi import FastAPI, HTTPException, Request
+
+# 🔧 FIX WINDOWS: Forcer SelectorEventLoop pour compatibilité aiodns
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+# 🔧 Permettre les boucles asyncio imbriquées (nécessaire pour compatibilité)
+# Note: DOUBLE_PASS est désactivé mais nest_asyncio reste pour éviter les conflits
+nest_asyncio.apply()
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
@@ -32,8 +41,10 @@ class RailwayJSONFormatter(logging.Formatter):
     
     def format(self, record):
         # Créer un objet de log structuré
+        from datetime import datetime
+        timestamp = datetime.fromtimestamp(record.created).strftime("%Y-%m-%d %H:%M:%S")
         log_obj = {
-            "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S.%fZ"),
+            "timestamp": timestamp,
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -272,7 +283,47 @@ class RoomClassificationResponse(BaseModel):
     room_name: str
     room_icon: str
     confidence: int
+    is_valid_room: bool  # True si les photos montrent un intérieur de logement, False sinon
+    validation_message: str  # Message explicatif si is_valid_room = False
     verifications: RoomVerifications
+
+# ═══════════════════════════════════════════════════════════════
+# MODÈLES POUR LE SYSTÈME DOUBLE-PASS (Inventaire + Vérification)
+# ═══════════════════════════════════════════════════════════════
+
+class InventoryObject(BaseModel):
+    """Un objet détecté dans l'inventaire"""
+    object_id: str = Field(description="ID unique de l'objet (ex: obj_001)")
+    name: str = Field(description="Nom de l'objet (ex: 'Lampe de chevet')")
+    location: str = Field(description="Localisation précise (ex: 'Sur la table de nuit à gauche du lit')")
+    description: str = Field(description="Description visuelle (ex: 'Lampe blanche avec abat-jour beige')")
+    category: str = Field(description="Catégorie: furniture, decoration, electronic, textile, accessory, appliance")
+    importance: str = Field(description="Importance: essential, important, decorative")
+
+class InventoryExtractionResponse(BaseModel):
+    """Réponse de l'extraction d'inventaire"""
+    piece_id: str
+    total_objects: int
+    objects: List[InventoryObject]
+
+class ObjectVerificationResult(BaseModel):
+    """Résultat de vérification d'un objet"""
+    object_id: str
+    name: str
+    location: str
+    status: str = Field(description="present, missing, moved, damaged")
+    confidence: int = Field(ge=0, le=100)
+    details: str = Field(description="Détails de la vérification")
+
+class InventoryVerificationResponse(BaseModel):
+    """Réponse de la vérification d'inventaire"""
+    piece_id: str
+    total_checked: int
+    missing_objects: List[ObjectVerificationResult]
+    moved_objects: List[ObjectVerificationResult]
+    present_objects: List[ObjectVerificationResult]
+
+# ═══════════════════════════════════════════════════════════════
 
 # Créer l'application FastAPI
 app = FastAPI(
@@ -291,15 +342,36 @@ app.add_middleware(
 )
 
 # Monter les fichiers statiques
-app.mount("/static", StaticFiles(directory="templates"), name="static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/templates-static", StaticFiles(directory="templates"), name="templates-static")
 
 @app.get("/admin")
 async def serve_admin_interface():
     """Servir l'interface d'administration pour gérer les room templates"""
     return FileResponse("templates/admin.html")
 
+@app.get("/tester")
+async def serve_api_tester():
+    """Servir l'interface de test avancée de l'API"""
+    return FileResponse("templates/api-tester.html")
+
+@app.get("/parcourtest.json")
+async def get_parcourtest_json():
+    """Servir le fichier parcourtest.json pour l'interface de test"""
+    return FileResponse("parcourtest.json")
+
 # Client OpenAI global
 import os
+
+# Charger les variables d'environnement depuis .env si le fichier existe
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    logger.info("✅ Fichier .env chargé avec succès")
+except ImportError:
+    logger.warning("⚠️ Module python-dotenv non installé - utilisation des variables d'environnement système uniquement")
+except Exception as e:
+    logger.warning(f"⚠️ Erreur lors du chargement du fichier .env: {e}")
 
 # Configuration de la clé API - priorité aux variables d'environnement Railway
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
@@ -466,10 +538,10 @@ def detect_environment() -> str:
 def get_webhook_url(environment: str) -> str:
     """
     Retourne l'URL du webhook selon l'environnement
-    
+
     Args:
         environment: "staging" ou "production"
-        
+
     Returns:
         str: URL du webhook Bubble
     """
@@ -477,6 +549,24 @@ def get_webhook_url(environment: str) -> str:
         return "https://checkeasy-57905.bubbleapps.io/version-live/api/1.1/wf/webhookia"
     else:  # staging par défaut
         return "https://checkeasy-57905.bubbleapps.io/version-test/api/1.1/wf/webhookia"
+
+def get_webhook_url_individual_report(environment: str) -> str:
+    """
+    Retourne l'URL du webhook individual-report selon l'environnement
+
+    Ce webhook reçoit le payload au format individual-report-data-model.json
+    pour la page de rapport détaillé.
+
+    Args:
+        environment: "staging" ou "production"
+
+    Returns:
+        str: URL du webhook Bubble pour le rapport individuel
+    """
+    if environment == "production":
+        return "https://checkeasy-57905.bubbleapps.io/version-live/api/1.1/wf/individual-report-webhook"
+    else:  # staging par défaut
+        return "https://checkeasy-57905.bubbleapps.io/version-test/api/1.1/wf/individual-report-webhook"
 
 async def send_webhook(payload: dict, webhook_url: str) -> bool:
     """
@@ -996,7 +1086,7 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur") -> An
         # Faire l'appel API avec response_format et gestion d'erreurs robuste
         try:
             response = client.chat.completions.create(
-                model= "gpt-4.1-2025-04-14", #"o3-2025-04-16",
+                model="gpt-5.1-2025-11-13",
                 messages=[
                     {
                         "role": "system",
@@ -1005,8 +1095,7 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur") -> An
                     user_message
                 ],
                 response_format={"type": "json_object"},
-                temperature=0,  # 🔧 Changé de 0.2 à 0 pour plus de déterminisme
-                max_tokens=16000
+                max_completion_tokens=16000
                 #temperature=1,
                 #max_completion_tokens=16000
             )
@@ -1043,7 +1132,7 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur") -> An
 
                     # Réessayer avec les data URIs
                     response = client.chat.completions.create(
-                        model="gpt-4.1-2025-04-14",
+                        model="gpt-5.1-2025-11-13",
                         messages=[
                             {
                                 "role": "system",
@@ -1052,8 +1141,7 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur") -> An
                             user_message_with_data_uris
                         ],
                         response_format={"type": "json_object"},
-                        temperature=0.2,
-                        max_tokens=16000
+                        max_completion_tokens=16000
                     )
                     logger.info("✅ Analyse réussie avec Data URIs (fallback téléchargement)")
 
@@ -1075,7 +1163,7 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur") -> An
 
                     try:
                         response = client.chat.completions.create(
-                            model="gpt-4.1-2025-04-14",
+                            model="gpt-5.1-2025-11-13",
                             messages=[
                                 {
                                     "role": "system",
@@ -1084,8 +1172,7 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur") -> An
                                 fallback_message
                             ],
                             response_format={"type": "json_object"},
-                            temperature=0.2,
-                            max_tokens=16000
+                            max_completion_tokens=16000
                         )
                         logger.info("✅ Analyse réussie en mode fallback (sans images)")
                     except Exception as final_error:
@@ -1127,7 +1214,7 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur") -> An
                 try:
                     # Tentative sans images
                     response = client.chat.completions.create(
-                        model="gpt-4.1-2025-04-14",
+                        model="gpt-5.1-2025-11-13",
                         messages=[
                             {
                                 "role": "system",
@@ -1136,8 +1223,7 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur") -> An
                             fallback_message
                         ],
                         response_format={"type": "json_object"},
-                        temperature=0.2,
-                        max_tokens=16000
+                        max_completion_tokens=16000
                     )
                     logger.info("✅ Analyse réussie en mode fallback (sans images)")
                 except Exception as fallback_error:
@@ -1323,6 +1409,924 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur") -> An
     except Exception as e:
         logger.error(f"Erreur lors de l'analyse: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SYSTÈME DOUBLE-PASS : EXTRACTION D'INVENTAIRE + VÉRIFICATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+INVENTORY_EXTRACTION_PROMPT = """🔍 PHASE 1 : EXTRACTION D'INVENTAIRE
+
+Tu es un expert en inventaire visuel. Ta SEULE mission est d'identifier et lister TOUS les objets visibles sur les photos de RÉFÉRENCE (checkin).
+
+⚠️ RÈGLES ABSOLUES :
+1. Liste UNIQUEMENT les objets clairement visibles
+2. Sois EXHAUSTIF - ne manque aucun objet
+3. Donne une localisation PRÉCISE pour chaque objet
+4. Catégorise chaque objet correctement
+
+📦 CATÉGORIES D'OBJETS :
+- furniture : meubles (lit, table, chaise, armoire, canapé...)
+- decoration : décoration (cadre, vase, sculpture, plante, miroir...)
+- electronic : électronique (TV, télécommande, lampe, réveil...)
+- textile : textiles (coussin, couverture, rideau, tapis...)
+- accessory : accessoires (poubelle, panier, porte-manteau...)
+- appliance : électroménager (micro-ondes, bouilloire, grille-pain...)
+
+🎯 IMPORTANCE :
+- essential : objets fonctionnels indispensables (lit, frigo, TV, lampes...)
+- important : objets utiles au quotidien (télécommande, miroir, poubelle...)
+- decorative : objets purement décoratifs (vase, cadre, sculpture...)
+
+📋 FORMAT DE RÉPONSE JSON :
+{
+    "piece_id": "ID_PIECE",
+    "total_objects": NOMBRE,
+    "objects": [
+        {
+            "object_id": "obj_001",
+            "name": "Nom de l'objet",
+            "location": "Localisation précise dans la pièce",
+            "description": "Description visuelle détaillée",
+            "category": "furniture|decoration|electronic|textile|accessory|appliance",
+            "importance": "essential|important|decorative"
+        }
+    ]
+}
+
+🚫 NE PAS inclure :
+- Les éléments fixes (murs, portes, fenêtres, prises)
+- Les objets trop petits pour être vérifiés (stylos, clés...)
+- Les consommables (papier toilette, savon...)
+"""
+
+INVENTORY_VERIFICATION_PROMPT = """🔎 PHASE 2 : VÉRIFICATION D'INVENTAIRE
+
+Tu es un expert en vérification d'inventaire. Ta mission est de vérifier la PRÉSENCE de chaque objet de l'inventaire sur les photos de SORTIE (checkout).
+
+📋 INVENTAIRE À VÉRIFIER :
+{inventory_list}
+
+⚠️ RÈGLES DE VÉRIFICATION :
+1. Pour CHAQUE objet de l'inventaire, cherche-le sur TOUTES les photos de sortie
+2. Vérifie sa présence à la localisation indiquée OU ailleurs dans la pièce
+3. Si l'objet n'apparaît sur AUCUNE photo de sortie → status = "missing"
+4. Si l'objet a changé de place → status = "moved"
+5. Si l'objet est visiblement endommagé → status = "damaged"
+6. Si l'objet est bien présent → status = "present"
+
+🎯 SEUIL DE CONFIANCE :
+- 95-100% : Certitude absolue (objet clairement visible ou clairement absent)
+- 85-94% : Haute confiance (identification quasi certaine)
+- 70-84% : Confiance moyenne (quelques doutes)
+- <70% : Ne pas remonter (trop incertain)
+
+📋 FORMAT DE RÉPONSE JSON :
+{
+    "piece_id": "ID_PIECE",
+    "total_checked": NOMBRE,
+    "missing_objects": [
+        {
+            "object_id": "obj_XXX",
+            "name": "Nom",
+            "location": "Dernière localisation connue",
+            "status": "missing",
+            "confidence": 95,
+            "details": "Non visible sur aucune des X photos de sortie"
+        }
+    ],
+    "moved_objects": [...],
+    "present_objects": [...]
+}
+
+🚨 IMPORTANT : Sois TRÈS RIGOUREUX. Un objet est "missing" UNIQUEMENT s'il n'apparaît sur AUCUNE photo de sortie, même partiellement.
+"""
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SYSTÈME MULTI-MODÈLES OPENROUTER - CONSENSUS VOTING (5 modèles)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+OPENROUTER_API_KEY = "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"
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# 5 modèles de vision économiques pour le consensus
+VISION_MODELS = [
+    {"id": "anthropic/claude-3-haiku", "name": "Claude 3 Haiku", "weight": 1.2},  # Claude - prioritaire
+    {"id": "google/gemini-2.5-flash", "name": "Gemini 2.5 Flash", "weight": 1.0},
+    {"id": "openai/gpt-4o-mini", "name": "GPT-4o Mini", "weight": 1.0},
+    {"id": "amazon/nova-2-lite-v1", "name": "Amazon Nova 2 Lite", "weight": 0.9},
+    # ❌ Mistral Large 3 supprimé: ne supporte que 8 images max
+]
+
+MINIMUM_MODELS_FOR_CONSENSUS = 3  # Minimum 3 modèles doivent répondre
+CONSENSUS_THRESHOLD = 2  # 2/4 pour valider une détection (assouplissement pour meilleure détection)
+
+# 🔴 DÉSACTIVATION TEMPORAIRE DU SYSTÈME DOUBLE-PASS (OpenRouter)
+# Mettre à True pour réactiver le système d'inventaire/vérification des objets manquants
+DOUBLE_PASS_ENABLED = False
+
+
+def call_openrouter_vision(
+    model_id: str,
+    system_prompt: str,
+    user_content: list,
+    model_name: str = ""
+) -> dict:
+    """
+    Appeler un modèle de vision via OpenRouter API (synchrone avec requests)
+
+    Args:
+        model_id: ID du modèle OpenRouter (ex: "anthropic/claude-3-haiku")
+        system_prompt: Prompt système
+        user_content: Liste de contenu (texte + images)
+        model_name: Nom du modèle pour les logs
+
+    Returns:
+        dict: {"success": bool, "model": str, "response": dict ou None, "error": str ou None}
+    """
+    import requests as req  # Utiliser requests au lieu de aiohttp (plus fiable)
+
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://checkeasy.io",
+        "X-Title": "CheckEasy Double-Pass"
+    }
+
+    payload = {
+        "model": model_id,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content}
+        ],
+        "temperature": 0.1,
+        "max_tokens": 8000
+    }
+
+    try:
+        response = req.post(
+            OPENROUTER_API_URL,
+            headers=headers,
+            json=payload,
+            timeout=120
+        )
+
+        if response.status_code == 200:
+            result = response.json()
+
+            # 🆕 Supporter les deux formats de réponse OpenRouter
+            content = None
+
+            # Format 1: OpenAI-compatible (choices[].message.content)
+            if "choices" in result and len(result["choices"]) > 0:
+                content = result["choices"][0].get("message", {}).get("content", "")
+
+            # Format 2: Nouveau format OpenRouter (output[].content[].text)
+            elif "output" in result and len(result["output"]) > 0:
+                output_item = result["output"][0]
+                if "content" in output_item and len(output_item["content"]) > 0:
+                    content = output_item["content"][0].get("text", "")
+
+            if content:
+                try:
+                    # 🆕 Nettoyer le contenu: supprimer les backticks markdown et texte avant JSON
+                    cleaned_content = content.strip()
+
+                    # Supprimer les backticks markdown
+                    if cleaned_content.startswith("```"):
+                        cleaned_content = cleaned_content.lstrip("`").lstrip("json").lstrip("`").strip()
+                    if cleaned_content.endswith("```"):
+                        cleaned_content = cleaned_content.rstrip("`").strip()
+
+                    # 🆕 Supprimer le texte avant le JSON (chercher le premier "{")
+                    json_start = cleaned_content.find("{")
+                    if json_start > 0:
+                        cleaned_content = cleaned_content[json_start:]
+
+                    # 🆕 Supprimer le texte après le JSON (chercher le dernier "}")
+                    json_end = cleaned_content.rfind("}")
+                    if json_end >= 0:
+                        cleaned_content = cleaned_content[:json_end + 1]
+
+                    parsed = json.loads(cleaned_content)
+                    logger.info(f"✅ [OPENROUTER] {model_name} répondu avec succès")
+                    return {"success": True, "model": model_id, "response": parsed, "error": None}
+                except json.JSONDecodeError as e:
+                    logger.warning(f"⚠️ [OPENROUTER] {model_name} JSON invalide: {e}")
+                    logger.warning(f"   Contenu brut: {content[:200]}...")
+                    return {"success": False, "model": model_id, "response": None, "error": f"JSON invalide: {e}"}
+            else:
+                logger.warning(f"⚠️ [OPENROUTER] {model_name} réponse vide ou format inconnu")
+                logger.warning(f"   Réponse brute: {str(result)[:300]}...")
+                return {"success": False, "model": model_id, "response": None, "error": "Réponse vide"}
+        else:
+            error_text = response.text
+            logger.warning(f"⚠️ [OPENROUTER] {model_name} erreur HTTP {response.status_code}: {error_text[:200]}")
+            return {"success": False, "model": model_id, "response": None, "error": f"HTTP {response.status_code}"}
+
+    except req.exceptions.Timeout:
+        logger.warning(f"⚠️ [OPENROUTER] {model_name} timeout (120s)")
+        return {"success": False, "model": model_id, "response": None, "error": "Timeout"}
+    except Exception as e:
+        logger.error(f"❌ [OPENROUTER] {model_name} erreur: {e}")
+        return {"success": False, "model": model_id, "response": None, "error": str(e)}
+
+
+def call_multi_models_parallel(
+    system_prompt: str,
+    user_content: list,
+    phase_name: str = "Double-Pass"
+) -> list:
+    """
+    Appeler les 5 modèles de vision en parallèle via OpenRouter (utilise ThreadPool)
+
+    Args:
+        system_prompt: Prompt système commun
+        user_content: Liste de contenu (texte + images)
+        phase_name: Nom de la phase pour les logs
+
+    Returns:
+        list: Liste des réponses réussies [{"model": str, "response": dict}, ...]
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeoutError
+
+    logger.info(f"")
+    logger.info(f"      🔄 [MULTI-MODEL] {phase_name}")
+    logger.info(f"      📊 Appel parallèle de {len(VISION_MODELS)} modèles:")
+    for model in VISION_MODELS:
+        logger.info(f"         • {model['name']} (poids: {model['weight']})")
+    logger.info(f"      ⏳ Attente des réponses (timeout: 120s par modèle)...")
+
+    # Exécuter les appels en parallèle avec ThreadPoolExecutor
+    results = []
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {
+            executor.submit(
+                call_openrouter_vision,
+                model["id"],
+                system_prompt,
+                user_content,
+                model["name"]
+            ): model for model in VISION_MODELS
+        }
+
+        for future in as_completed(futures, timeout=150):  # 150s timeout total
+            model = futures[future]
+            try:
+                result = future.result(timeout=120)  # 120s timeout par modèle
+                results.append((model, result))
+            except FutureTimeoutError:
+                logger.warning(f"         ⏱️ [MULTI-MODEL] {model['name']} TIMEOUT (120s)")
+                results.append((model, {"success": False, "error": "Timeout (120s)"}))
+            except Exception as e:
+                logger.warning(f"         ❌ [MULTI-MODEL] {model['name']} exception: {e}")
+                results.append((model, {"success": False, "error": str(e)}))
+
+    # Filtrer les réponses réussies
+    successful_responses = []
+    logger.info(f"      📋 Résultats:")
+    for model, result in results:
+        if result.get("success"):
+            successful_responses.append({
+                "model": result["model"],
+                "model_name": model["name"],
+                "weight": model["weight"],
+                "response": result["response"]
+            })
+            logger.info(f"         ✅ {model['name']}: OK")
+        else:
+            logger.warning(f"         ❌ {model['name']}: {result.get('error', 'Erreur inconnue')}")
+
+    logger.info(f"      ✅ {len(successful_responses)}/{len(VISION_MODELS)} modèles ont répondu avec succès")
+    logger.info(f"")
+    return successful_responses
+
+
+def aggregate_inventory_responses(responses: list, piece_id: str) -> InventoryExtractionResponse:
+    """
+    Agréger les réponses d'inventaire de plusieurs modèles (PHASE 1)
+
+    Utilise un système de vote pondéré pour déterminer quels objets inclure.
+    Un objet est inclus s'il est détecté par au moins 3 modèles sur 5.
+
+    Args:
+        responses: Liste des réponses des modèles
+        piece_id: ID de la pièce
+
+    Returns:
+        InventoryExtractionResponse agrégée
+    """
+    logger.info(f"      🔀 [AGGREGATE] Début agrégation...")
+
+    if not responses:
+        logger.warning("      ⚠️ [AGGREGATE] Aucune réponse à agréger")
+        return InventoryExtractionResponse(piece_id=piece_id, total_objects=0, objects=[])
+
+    logger.info(f"      🔀 [AGGREGATE] Agrégation de {len(responses)} réponses d'inventaire...")
+
+    # 🆕 DEBUG: Afficher ce que chaque modèle a retourné
+    logger.info(f"      📋 Détail des réponses:")
+    for resp in responses:
+        model_name = resp.get("model_name", "Unknown")
+        raw_response = resp.get("response", {})
+        objects = raw_response.get("objects", [])
+        logger.info(f"         📊 {model_name}: {len(objects)} objets détectés")
+        if len(objects) > 0:
+            obj_names = [obj.get('name', 'N/A') for obj in objects[:3]]
+            logger.info(f"            ✅ Exemples: {obj_names}")
+        else:
+            logger.warning(f"            ⚠️ Aucun objet détecté")
+
+    # Collecter tous les objets avec leur fréquence de détection
+    object_votes = {}  # clé: nom_objet_normalisé -> {count, weight_sum, best_description}
+
+    logger.info(f"      🔄 Collecte des votes...")
+    try:
+        for resp in responses:
+            model_weight = resp.get("weight", 1.0)
+            objects = resp.get("response", {}).get("objects", [])
+            logger.info(f"         Processing {len(objects)} objects from model...")
+
+            for obj in objects:
+                # Normaliser le nom pour le regroupement
+                name = obj.get("name", "").lower().strip()
+                if not name:
+                    continue
+
+                # Clé de regroupement (nom + localisation approximative)
+                location = obj.get("location", "").lower().strip()
+                key = f"{name}|{location[:30]}"  # Limiter la location pour le regroupement
+
+                if key not in object_votes:
+                    object_votes[key] = {
+                        "count": 0,
+                        "weight_sum": 0.0,
+                        "examples": [],
+                        "name": obj.get("name", ""),
+                        "location": obj.get("location", ""),
+                        "category": obj.get("category", "accessory"),
+                        "importance": obj.get("importance", "decorative")
+                    }
+
+                object_votes[key]["count"] += 1
+                object_votes[key]["weight_sum"] += model_weight
+                object_votes[key]["examples"].append(obj)
+
+        logger.info(f"      ✅ Collecte terminée: {len(object_votes)} objets candidats")
+    except Exception as e:
+        logger.error(f"      ❌ Erreur lors de la collecte des votes: {e}")
+        raise
+
+    # Filtrer par consensus (au moins 3 détections ou poids suffisant)
+    consensus_objects = []
+    obj_counter = 1
+
+    logger.info(f"      🔍 Filtrage par consensus (seuil: {CONSENSUS_THRESHOLD}/5)...")
+    try:
+        for key, data in object_votes.items():
+            # Consensus: détecté par au moins 3 modèles OU poids pondéré >= 2.5
+            if data["count"] >= CONSENSUS_THRESHOLD or data["weight_sum"] >= 2.5:
+                # Prendre la meilleure description (la plus longue)
+                best_example = max(data["examples"], key=lambda x: len(x.get("description", "")))
+
+                consensus_objects.append(InventoryObject(
+                    object_id=f"obj_{obj_counter:03d}",
+                    name=best_example.get("name", data["name"]),
+                    location=best_example.get("location", data["location"]),
+                    description=best_example.get("description", ""),
+                    category=best_example.get("category", data["category"]),
+                    importance=best_example.get("importance", data["importance"])
+                ))
+                obj_counter += 1
+                logger.info(f"         ✓ {data['name']} (votes: {data['count']}/5, poids: {data['weight_sum']:.1f})")
+
+        logger.info(f"      ✅ [AGGREGATE] {len(consensus_objects)} objets validés par consensus sur {len(object_votes)} candidats")
+    except Exception as e:
+        logger.error(f"      ❌ Erreur lors du filtrage par consensus: {e}")
+        raise
+
+    return InventoryExtractionResponse(
+        piece_id=piece_id,
+        total_objects=len(consensus_objects),
+        objects=consensus_objects
+    )
+
+
+def aggregate_verification_responses(
+    responses: list,
+    piece_id: str,
+    inventory: InventoryExtractionResponse
+) -> InventoryVerificationResponse:
+    """
+    Agréger les réponses de vérification de plusieurs modèles (PHASE 2)
+
+    Utilise un système de vote pour déterminer le statut de chaque objet.
+    Un objet est considéré manquant/déplacé si au moins 3 modèles sur 5 le détectent ainsi.
+
+    Args:
+        responses: Liste des réponses des modèles
+        piece_id: ID de la pièce
+        inventory: Inventaire de référence (PHASE 1)
+
+    Returns:
+        InventoryVerificationResponse agrégée
+    """
+    if not responses:
+        logger.warning("⚠️ [AGGREGATE] Aucune réponse de vérification à agréger")
+        return InventoryVerificationResponse(
+            piece_id=piece_id,
+            total_checked=0,
+            missing_objects=[],
+            moved_objects=[],
+            present_objects=[]
+        )
+
+    logger.info(f"🔀 [AGGREGATE] Agrégation de {len(responses)} réponses de vérification...")
+
+    # Collecter les votes pour chaque objet de l'inventaire
+    object_status_votes = {}  # object_id -> {missing: count, moved: count, present: count, details: []}
+
+    for resp in responses:
+        model_weight = resp.get("weight", 1.0)
+
+        # Traiter les objets manquants
+        for obj in resp.get("response", {}).get("missing_objects", []):
+            obj_id = obj.get("object_id", "")
+            if not obj_id:
+                continue
+            if obj_id not in object_status_votes:
+                object_status_votes[obj_id] = {"missing": 0, "moved": 0, "present": 0, "details": [], "name": obj.get("name", ""), "location": obj.get("location", "")}
+            object_status_votes[obj_id]["missing"] += model_weight
+            object_status_votes[obj_id]["details"].append(obj.get("details", ""))
+
+        # Traiter les objets déplacés
+        for obj in resp.get("response", {}).get("moved_objects", []):
+            obj_id = obj.get("object_id", "")
+            if not obj_id:
+                continue
+            if obj_id not in object_status_votes:
+                object_status_votes[obj_id] = {"missing": 0, "moved": 0, "present": 0, "details": [], "name": obj.get("name", ""), "location": obj.get("location", "")}
+            object_status_votes[obj_id]["moved"] += model_weight
+            object_status_votes[obj_id]["details"].append(obj.get("details", ""))
+
+        # Traiter les objets présents
+        for obj in resp.get("response", {}).get("present_objects", []):
+            obj_id = obj.get("object_id", "")
+            if not obj_id:
+                continue
+            if obj_id not in object_status_votes:
+                object_status_votes[obj_id] = {"missing": 0, "moved": 0, "present": 0, "details": [], "name": obj.get("name", ""), "location": obj.get("location", "")}
+            object_status_votes[obj_id]["present"] += model_weight
+
+    # Déterminer le statut final par consensus
+    missing_objects = []
+    moved_objects = []
+    present_objects = []
+
+    for obj_id, votes in object_status_votes.items():
+        # Trouver le statut majoritaire
+        max_votes = max(votes["missing"], votes["moved"], votes["present"])
+
+        # Confidence basée sur le consensus
+        total_votes = votes["missing"] + votes["moved"] + votes["present"]
+        confidence = int((max_votes / total_votes) * 100) if total_votes > 0 else 50
+
+        # Meilleur détail (le plus long)
+        best_detail = max(votes["details"], key=len) if votes["details"] else ""
+
+        result = ObjectVerificationResult(
+            object_id=obj_id,
+            name=votes["name"],
+            location=votes["location"],
+            status="unknown",
+            confidence=confidence,
+            details=best_detail
+        )
+
+        # Seuil de consensus: au moins 3 votes pondérés
+        if votes["missing"] >= CONSENSUS_THRESHOLD and votes["missing"] == max_votes:
+            result.status = "missing"
+            if confidence >= 70:  # Seuil de confiance minimum
+                missing_objects.append(result)
+                logger.info(f"   ❌ MANQUANT: {votes['name']} (votes: {votes['missing']:.1f}, conf: {confidence}%)")
+        elif votes["moved"] >= CONSENSUS_THRESHOLD and votes["moved"] == max_votes:
+            result.status = "moved"
+            if confidence >= 70:
+                moved_objects.append(result)
+                logger.info(f"   🔄 DÉPLACÉ: {votes['name']} (votes: {votes['moved']:.1f}, conf: {confidence}%)")
+        else:
+            result.status = "present"
+            present_objects.append(result)
+
+    logger.info(f"✅ [AGGREGATE] Résultat: {len(missing_objects)} manquants, {len(moved_objects)} déplacés, {len(present_objects)} présents")
+
+    return InventoryVerificationResponse(
+        piece_id=piece_id,
+        total_checked=len(object_status_votes),
+        missing_objects=missing_objects,
+        moved_objects=moved_objects,
+        present_objects=present_objects
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FIN SYSTÈME MULTI-MODÈLES OPENROUTER
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def extract_inventory_from_images(piece_id: str, nom_piece: str, checkin_pictures: List[Picture]) -> InventoryExtractionResponse:
+    """
+    PHASE 1 : Extraire l'inventaire complet des objets visibles sur les photos checkin
+
+    🆕 MULTI-MODÈLES: Utilise 5 modèles de vision via OpenRouter pour un consensus robuste
+    """
+    logger.info(f"")
+    logger.info(f"{'='*80}")
+    logger.info(f"📦 PHASE 1 - EXTRACTION INVENTAIRE")
+    logger.info(f"{'='*80}")
+    logger.info(f"   📍 Pièce: {nom_piece} (ID: {piece_id})")
+    logger.info(f"   📸 Photos de référence: {len(checkin_pictures)}")
+    logger.info(f"   🔄 Mode MULTI-MODÈLES activé ({len(VISION_MODELS)} modèles)")
+    logger.info(f"   🎯 Seuil consensus: {CONSENSUS_THRESHOLD}/5 modèles")
+
+    # 🔄 CONVERSION DES IMAGES - Utiliser le système de conversion existant
+    logger.info(f"   [ÉTAPE 1.1] 🔄 Conversion des images checkin pour compatibilité...")
+    processed_pictures = process_pictures_list([pic.dict() for pic in checkin_pictures])
+    logger.info(f"   [ÉTAPE 1.1] ✅ {len(processed_pictures)}/{len(checkin_pictures)} images converties avec succès")
+
+    if not processed_pictures:
+        logger.error(f"   [ÉTAPE 1.1] ❌ Aucune image valide après conversion pour {piece_id}")
+        return InventoryExtractionResponse(piece_id=piece_id, total_objects=0, objects=[])
+
+    # 🆕 LIMITATION: Mistral supporte max 8 images
+    MAX_IMAGES_FOR_MODELS = 8
+    if len(processed_pictures) > MAX_IMAGES_FOR_MODELS:
+        logger.warning(f"   [ÉTAPE 1.1] ⚠️ {len(processed_pictures)} images détectées, limitation à {MAX_IMAGES_FOR_MODELS} pour compatibilité Mistral")
+        processed_pictures = processed_pictures[:MAX_IMAGES_FOR_MODELS]
+        logger.info(f"   [ÉTAPE 1.1] ✅ Limitation appliquée: {len(processed_pictures)} images utilisées")
+
+    # Construire le message avec les images CONVERTIES
+    user_content = [{"type": "text", "text": f"Pièce: {nom_piece} (ID: {piece_id})\n\nAnalyse les photos de RÉFÉRENCE suivantes et liste TOUS les objets visibles:"}]
+
+    for processed_pic in processed_pictures:
+        user_content.append({
+            "type": "image_url",
+            "image_url": {"url": processed_pic["url"], "detail": "high"}
+        })
+
+    try:
+        # 🆕 APPEL MULTI-MODÈLES EN PARALLÈLE (synchrone avec ThreadPool)
+        logger.info(f"   [ÉTAPE 1.2] 🔄 Appel parallèle des 5 modèles OpenRouter...")
+        responses = call_multi_models_parallel(
+            system_prompt=INVENTORY_EXTRACTION_PROMPT,
+            user_content=user_content,
+            phase_name="PHASE 1 - Inventaire"
+        )
+        logger.info(f"   [ÉTAPE 1.2] ✅ {len(responses)}/5 modèles ont répondu avec succès")
+
+        # Vérifier le minimum de réponses
+        if len(responses) < MINIMUM_MODELS_FOR_CONSENSUS:
+            logger.error(f"   [ÉTAPE 1.2] ❌ Seulement {len(responses)} modèles ont répondu (minimum: {MINIMUM_MODELS_FOR_CONSENSUS})")
+            # Fallback vers OpenAI si pas assez de réponses
+            logger.warning(f"   [ÉTAPE 1.2] 🔄 Fallback vers OpenAI GPT-4.1...")
+            return _extract_inventory_fallback_openai(piece_id, nom_piece, user_content)
+
+        # 🆕 AGRÉGATION PAR CONSENSUS
+        logger.info(f"   [ÉTAPE 1.3] 🔀 Agrégation des réponses par consensus...")
+        result = aggregate_inventory_responses(responses, piece_id)
+        logger.info(f"   [ÉTAPE 1.3] ✅ Agrégation terminée: {result.total_objects} objets validés par consensus")
+        logger.info(f"")
+        logger.info(f"{'='*80}")
+        logger.info(f"✅ PHASE 1 TERMINÉE - {result.total_objects} objets inventoriés")
+        logger.info(f"{'='*80}")
+        logger.info(f"")
+
+        return result
+
+    except Exception as e:
+        logger.error(f"   [ÉTAPE 1.X] ❌ Erreur extraction inventaire multi-modèles: {e}")
+        # Fallback vers OpenAI
+        logger.warning(f"   [ÉTAPE 1.X] 🔄 Fallback vers OpenAI GPT-4.1...")
+        return _extract_inventory_fallback_openai(piece_id, nom_piece, user_content)
+
+
+def _extract_inventory_fallback_openai(piece_id: str, nom_piece: str, user_content: list) -> InventoryExtractionResponse:
+    """
+    Fallback vers OpenAI si le système multi-modèles échoue
+    """
+    if client is None:
+        logger.error("❌ Client OpenAI non disponible pour fallback")
+        return InventoryExtractionResponse(piece_id=piece_id, total_objects=0, objects=[])
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-5-mini-2025-08-07",
+            messages=[
+                {"role": "system", "content": INVENTORY_EXTRACTION_PROMPT},
+                {"role": "user", "content": user_content}
+            ],
+            response_format={"type": "json_object"},
+            max_completion_tokens=8000
+        )
+
+        response_text = response.choices[0].message.content
+        response_json = json.loads(response_text)
+
+        # Parser les objets
+        objects = []
+        for obj in response_json.get("objects", []):
+            try:
+                objects.append(InventoryObject(
+                    object_id=obj.get("object_id", f"obj_{len(objects)+1:03d}"),
+                    name=obj.get("name", "Objet inconnu"),
+                    location=obj.get("location", "Non spécifié"),
+                    description=obj.get("description", ""),
+                    category=obj.get("category", "accessory"),
+                    importance=obj.get("importance", "decorative")
+                ))
+            except Exception as e:
+                logger.warning(f"⚠️ Objet invalide ignoré: {e}")
+
+        logger.info(f"✅ PHASE 1 terminée (FALLBACK OpenAI): {len(objects)} objets inventoriés")
+
+        return InventoryExtractionResponse(
+            piece_id=piece_id,
+            total_objects=len(objects),
+            objects=objects
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Erreur fallback OpenAI: {e}")
+        return InventoryExtractionResponse(piece_id=piece_id, total_objects=0, objects=[])
+
+
+def verify_inventory_on_checkout(
+    piece_id: str,
+    inventory: InventoryExtractionResponse,
+    checkout_pictures: List[Picture]
+) -> InventoryVerificationResponse:
+    """
+    PHASE 2 : Vérifier chaque objet de l'inventaire sur les photos de sortie
+
+    🆕 MULTI-MODÈLES: Utilise 5 modèles de vision via OpenRouter pour un consensus robuste
+    """
+    logger.info(f"")
+    logger.info(f"{'='*80}")
+    logger.info(f"🔎 PHASE 2 - VÉRIFICATION INVENTAIRE")
+    logger.info(f"{'='*80}")
+    logger.info(f"   📍 Pièce ID: {piece_id}")
+    logger.info(f"   📦 Objets à vérifier: {inventory.total_objects}")
+    logger.info(f"   📸 Photos de sortie: {len(checkout_pictures)}")
+    logger.info(f"   🔄 Mode MULTI-MODÈLES activé ({len(VISION_MODELS)} modèles)")
+    logger.info(f"   🎯 Seuil consensus: {CONSENSUS_THRESHOLD}/5 modèles")
+
+    if inventory.total_objects == 0:
+        logger.warning(f"   ⚠️ Aucun objet à vérifier (inventaire vide)")
+        logger.info(f"{'='*80}")
+        return InventoryVerificationResponse(
+            piece_id=piece_id,
+            total_checked=0,
+            missing_objects=[],
+            moved_objects=[],
+            present_objects=[]
+        )
+
+    # 🔄 CONVERSION DES IMAGES - Utiliser le système de conversion existant
+    logger.info(f"   🔄 Conversion des images checkout pour compatibilité...")
+    processed_pictures = process_pictures_list([pic.dict() for pic in checkout_pictures])
+    logger.info(f"   ✅ {len(processed_pictures)} images converties avec succès")
+
+    if not processed_pictures:
+        logger.warning(f"⚠️ Aucune image checkout valide après conversion pour {piece_id}")
+        return InventoryVerificationResponse(
+            piece_id=piece_id,
+            total_checked=0,
+            missing_objects=[],
+            moved_objects=[],
+            present_objects=[]
+        )
+
+    # Construire la liste d'inventaire formatée
+    inventory_list = "\n".join([
+        f"- [{obj.object_id}] {obj.name} | Localisation: {obj.location} | {obj.importance.upper()}"
+        for obj in inventory.objects
+    ])
+
+    system_prompt = INVENTORY_VERIFICATION_PROMPT.replace("{inventory_list}", inventory_list)
+
+    # Construire le message avec les images de sortie CONVERTIES
+    user_content = [{"type": "text", "text": f"Pièce ID: {piece_id}\n\nVérifie la présence de chaque objet de l'inventaire sur ces photos de SORTIE:"}]
+
+    for processed_pic in processed_pictures:
+        user_content.append({
+            "type": "image_url",
+            "image_url": {"url": processed_pic["url"], "detail": "high"}
+        })
+
+    try:
+        # 🆕 APPEL MULTI-MODÈLES EN PARALLÈLE (synchrone avec ThreadPool)
+        logger.info(f"   [ÉTAPE 2.1] 🔄 Appel parallèle des 5 modèles OpenRouter...")
+        responses = call_multi_models_parallel(
+            system_prompt=system_prompt,
+            user_content=user_content,
+            phase_name="PHASE 2 - Vérification"
+        )
+        logger.info(f"   [ÉTAPE 2.1] ✅ {len(responses)}/5 modèles ont répondu avec succès")
+
+        # Vérifier le minimum de réponses
+        if len(responses) < MINIMUM_MODELS_FOR_CONSENSUS:
+            logger.error(f"   [ÉTAPE 2.1] ❌ Seulement {len(responses)} modèles ont répondu (minimum: {MINIMUM_MODELS_FOR_CONSENSUS})")
+            # Fallback vers OpenAI si pas assez de réponses
+            logger.warning(f"   [ÉTAPE 2.1] 🔄 Fallback vers OpenAI GPT-4.1...")
+            return _verify_inventory_fallback_openai(piece_id, inventory, system_prompt, user_content)
+
+        # 🆕 AGRÉGATION PAR CONSENSUS
+        logger.info(f"   [ÉTAPE 2.2] 🔀 Agrégation des réponses par consensus...")
+        result = aggregate_verification_responses(responses, piece_id, inventory)
+        logger.info(f"   [ÉTAPE 2.2] ✅ Agrégation terminée:")
+        logger.info(f"      - Objets manquants: {len(result.missing_objects)}")
+        logger.info(f"      - Objets déplacés: {len(result.moved_objects)}")
+        logger.info(f"      - Objets présents: {len(result.present_objects)}")
+        logger.info(f"")
+        logger.info(f"{'='*80}")
+        logger.info(f"✅ PHASE 2 TERMINÉE - {len(result.missing_objects)} manquants détectés")
+        logger.info(f"{'='*80}")
+        logger.info(f"")
+
+        return result
+
+    except Exception as e:
+        logger.error(f"   [ÉTAPE 2.X] ❌ Erreur vérification inventaire multi-modèles: {e}")
+        # Fallback vers OpenAI
+        logger.warning(f"   [ÉTAPE 2.X] 🔄 Fallback vers OpenAI GPT-4.1...")
+        return _verify_inventory_fallback_openai(piece_id, inventory, system_prompt, user_content)
+
+
+def _verify_inventory_fallback_openai(
+    piece_id: str,
+    inventory: InventoryExtractionResponse,
+    system_prompt: str,
+    user_content: list
+) -> InventoryVerificationResponse:
+    """
+    Fallback vers OpenAI si le système multi-modèles échoue
+    """
+    if client is None:
+        logger.error("❌ Client OpenAI non disponible pour fallback")
+        return InventoryVerificationResponse(
+            piece_id=piece_id,
+            total_checked=0,
+            missing_objects=[],
+            moved_objects=[],
+            present_objects=[]
+        )
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-5-mini-2025-08-07",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
+            ],
+            response_format={"type": "json_object"},
+            max_completion_tokens=8000
+        )
+
+        response_text = response.choices[0].message.content
+        response_json = json.loads(response_text)
+
+        # Parser les résultats
+        missing = []
+        moved = []
+        present = []
+
+        for obj in response_json.get("missing_objects", []):
+            if obj.get("confidence", 0) >= 85:
+                missing.append(ObjectVerificationResult(
+                    object_id=obj.get("object_id", ""),
+                    name=obj.get("name", ""),
+                    location=obj.get("location", ""),
+                    status="missing",
+                    confidence=obj.get("confidence", 90),
+                    details=obj.get("details", "")
+                ))
+
+        for obj in response_json.get("moved_objects", []):
+            if obj.get("confidence", 0) >= 85:
+                moved.append(ObjectVerificationResult(
+                    object_id=obj.get("object_id", ""),
+                    name=obj.get("name", ""),
+                    location=obj.get("location", ""),
+                    status="moved",
+                    confidence=obj.get("confidence", 90),
+                    details=obj.get("details", "")
+                ))
+
+        for obj in response_json.get("present_objects", []):
+            present.append(ObjectVerificationResult(
+                object_id=obj.get("object_id", ""),
+                name=obj.get("name", ""),
+                location=obj.get("location", ""),
+                status="present",
+                confidence=obj.get("confidence", 95),
+                details=obj.get("details", "Présent")
+            ))
+
+        logger.info(f"✅ PHASE 2 terminée (FALLBACK OpenAI): {len(missing)} manquants, {len(moved)} déplacés")
+
+        return InventoryVerificationResponse(
+            piece_id=piece_id,
+            total_checked=inventory.total_objects,
+            missing_objects=missing,
+            moved_objects=moved,
+            present_objects=present
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Erreur fallback OpenAI: {e}")
+        return InventoryVerificationResponse(
+            piece_id=piece_id,
+            total_checked=0,
+            missing_objects=[],
+            moved_objects=[],
+            present_objects=[]
+        )
+
+
+def convert_inventory_to_issues(verification: InventoryVerificationResponse) -> List[Probleme]:
+    """
+    Convertir les résultats de vérification d'inventaire en issues standard
+    """
+    issues = []
+
+    # Objets manquants → missing_item
+    for obj in verification.missing_objects:
+        # Déterminer la sévérité selon l'importance de l'objet
+        severity = "high" if "essential" in obj.details.lower() or obj.confidence >= 95 else "medium"
+
+        issues.append(Probleme(
+            description=f"Objet manquant: {obj.name} - {obj.location}. {obj.details}",
+            category="missing_item",
+            severity=severity,
+            confidence=obj.confidence
+        ))
+
+    # Objets déplacés → positioning (sévérité basse)
+    for obj in verification.moved_objects:
+        issues.append(Probleme(
+            description=f"Objet déplacé: {obj.name} - {obj.details}",
+            category="positioning",
+            severity="low",
+            confidence=obj.confidence
+        ))
+
+    logger.info(f"🔄 Conversion: {len(issues)} issues générées depuis l'inventaire")
+    return issues
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FIN SYSTÈME DOUBLE-PASS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@app.post("/extract-inventory", response_model=InventoryExtractionResponse)
+async def extract_inventory_endpoint(input_data: RoomClassificationInput):
+    """
+    PHASE 1 du système Double-Pass : Extraire l'inventaire des objets visibles
+
+    Analyse les photos checkin et retourne une liste structurée de tous les objets détectés.
+    """
+    logger.info(f"📦 API /extract-inventory - Pièce: {input_data.nom} ({input_data.piece_id})")
+
+    return extract_inventory_from_images(
+        piece_id=input_data.piece_id,
+        nom_piece=input_data.nom,
+        checkin_pictures=input_data.checkin_pictures
+    )
+
+
+class VerifyInventoryInput(BaseModel):
+    piece_id: str
+    inventory: InventoryExtractionResponse
+    checkout_pictures: List[Picture]
+
+
+@app.post("/verify-inventory", response_model=InventoryVerificationResponse)
+async def verify_inventory_endpoint(input_data: VerifyInventoryInput):
+    """
+    PHASE 2 du système Double-Pass : Vérifier les objets sur les photos de sortie
+
+    Prend l'inventaire extrait en Phase 1 et vérifie chaque objet sur les photos checkout.
+    """
+    logger.info(f"🔎 API /verify-inventory - {input_data.inventory.total_objects} objets à vérifier")
+
+    return verify_inventory_on_checkout(
+        piece_id=input_data.piece_id,
+        inventory=input_data.inventory,
+        checkout_pictures=input_data.checkout_pictures
+    )
+
 
 @app.post("/analyze", response_model=AnalyseResponse)
 async def analyze_room(input_data: InputData):
@@ -1565,10 +2569,9 @@ RÉPONDS EN JSON:
         # Appel à l'API OpenAI avec gestion d'erreurs robuste
         try:
             response = client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-5-mini-2025-08-07",
                 messages=[user_message],
-                max_tokens=200,
-                temperature=0.1,
+                max_completion_tokens=1000,  # Augmenté pour GPT-5 mini
                 response_format={"type": "json_object"}
             )
         except Exception as openai_error:
@@ -1604,10 +2607,9 @@ RÉPONDS EN JSON:
 
                     # Réessayer avec les data URIs
                     response = client.chat.completions.create(
-                        model="gpt-4o",
+                        model="gpt-5-mini-2025-08-07",
                         messages=[user_message_with_data_uris],
-                        max_tokens=200,
-                        temperature=0.1,
+                        max_completion_tokens=1000,  # Augmenté pour GPT-5 mini
                         response_format={"type": "json_object"}
                     )
                     logger.info("✅ Classification réussie avec Data URIs (fallback téléchargement)")
@@ -1630,10 +2632,9 @@ RÉPONDS EN JSON:
 
                     try:
                         response = client.chat.completions.create(
-                            model="gpt-4o",
+                            model="gpt-5-mini-2025-08-07",
                             messages=[fallback_message],
-                            max_tokens=200,
-                            temperature=0.1,
+                            max_completion_tokens=1000,  # Augmenté pour GPT-5 mini
                             response_format={"type": "json_object"}
                         )
                         logger.info("✅ Classification réussie en mode fallback (sans images)")
@@ -1645,6 +2646,8 @@ RÉPONDS EN JSON:
                             room_name="Pièce",
                             room_icon="🏠",
                             confidence=10,
+                            is_valid_room=True,
+                            validation_message="Classification par défaut (erreur technique)",
                             verifications=RoomVerifications(
                                 elements_critiques=["État général des surfaces", "Propreté générale"],
                                 points_ignorables=["Petites traces d'usage"],
@@ -1670,10 +2673,9 @@ RÉPONDS EN JSON:
                 try:
                     # Tentative sans images
                     response = client.chat.completions.create(
-                        model="gpt-4o",
+                        model="gpt-5-mini-2025-08-07",
                         messages=[fallback_message],
-                        max_tokens=200,
-                        temperature=0.1,
+                        max_completion_tokens=1000,  # Augmenté pour GPT-5 mini
                         response_format={"type": "json_object"}
                     )
                     logger.info("✅ Classification réussie en mode fallback (sans images)")
@@ -1686,6 +2688,8 @@ RÉPONDS EN JSON:
                         room_name="Pièce",
                         room_icon="🏠",
                         confidence=10,
+                        is_valid_room=True,
+                        validation_message="Classification par défaut (erreur technique)",
                         verifications=RoomVerifications(
                             elements_critiques=["État général des surfaces", "Propreté générale"],
                             points_ignorables=["Petites traces d'usage"],
@@ -1702,39 +2706,78 @@ RÉPONDS EN JSON:
         if response_content is None:
             logger.error("❌ Réponse OpenAI vide")
             raise ValueError("Réponse OpenAI vide")
-            
+
         response_content = response_content.strip()
-        logger.info(f"Réponse brute de classification: {response_content}")
-        
-        classification_result = json.loads(response_content)
-        
+        logger.info(f"📄 Réponse brute de classification (longueur: {len(response_content)} caractères)")
+        logger.info(f"📄 Contenu: {response_content[:500]}...")  # Afficher les 500 premiers caractères
+
+        # 🔧 NETTOYAGE ROBUSTE DU JSON
+        # GPT-5 mini peut retourner du texte avant/après le JSON
+        try:
+            # Essayer de trouver le JSON entre accolades
+            start_idx = response_content.find('{')
+            end_idx = response_content.rfind('}')
+
+            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                json_content = response_content[start_idx:end_idx+1]
+                logger.info(f"✂️ JSON extrait (de position {start_idx} à {end_idx})")
+                classification_result = json.loads(json_content)
+            else:
+                logger.warning("⚠️ Pas d'accolades trouvées, tentative de parsing direct")
+                classification_result = json.loads(response_content)
+        except json.JSONDecodeError as json_err:
+            logger.error(f"❌ Erreur parsing JSON après nettoyage: {json_err}")
+            logger.error(f"📄 Contenu complet reçu: {response_content}")
+            raise  # Re-lever l'exception pour être capturée par le bloc except principal
+
         # Extraire les résultats
         detected_room_type = classification_result.get("room_type", "autre")
         confidence = classification_result.get("confidence", 50)
-        
+        is_valid_room = classification_result.get("is_valid_room", True)  # Par défaut True pour rétrocompatibilité
+        validation_message = classification_result.get("validation_message", "Photos valides")
+
+        # 🚨 VALIDATION DES PHOTOS - Si photos invalides, forcer wrong_room
+        if not is_valid_room:
+            logger.warning(f"⚠️ PHOTOS INVALIDES DÉTECTÉES: {validation_message}")
+            logger.warning(f"🚫 Les photos ne montrent pas un intérieur de logement - Classification forcée à 'wrong_room'")
+            detected_room_type = "wrong_room"
+            confidence = 95
+
         # Si confiance = 0, l'ajuster à 10 minimum pour éviter les problèmes
         if confidence == 0:
             confidence = 10
             logger.info(f"📊 Confiance ajustée de 0 à {confidence} pour éviter une valeur nulle")
-        
-        # 🗺️ ÉTAPE DE MAPPING - Convertir les variations vers les types valides
+
+        # 🗺️ ÉTAPE DE MAPPING - Convertir les variations vers les types valides (sauf si wrong_room)
         original_detected_type = detected_room_type
-        detected_room_type = map_room_type_to_valid(detected_room_type)
+        if detected_room_type != "wrong_room":
+            detected_room_type = map_room_type_to_valid(detected_room_type)
 
-        # Vérifier que le type mappé existe dans nos templates
-        if detected_room_type not in room_templates["room_types"]:
-            logger.warning(f"⚠️ Type '{detected_room_type}' (mappé depuis '{original_detected_type}') non reconnu, utilisation de 'autre'")
-            detected_room_type = "autre"
-            confidence = max(confidence - 20, 10)  # Réduire la confiance
-        else:
-            if original_detected_type != detected_room_type:
-                logger.info(f"✅ Mapping réussi: '{original_detected_type}' → '{detected_room_type}' reconnu")
+            # Vérifier que le type mappé existe dans nos templates
+            if detected_room_type not in room_templates["room_types"]:
+                logger.warning(f"⚠️ Type '{detected_room_type}' (mappé depuis '{original_detected_type}') non reconnu, utilisation de 'autre'")
+                detected_room_type = "autre"
+                confidence = max(confidence - 20, 10)  # Réduire la confiance
             else:
-                logger.info(f"✅ Type de pièce '{detected_room_type}' reconnu directement")
+                if original_detected_type != detected_room_type:
+                    logger.info(f"✅ Mapping réussi: '{original_detected_type}' → '{detected_room_type}' reconnu")
+                else:
+                    logger.info(f"✅ Type de pièce '{detected_room_type}' reconnu directement")
 
-        # Récupérer les informations du template
-        room_info = room_templates["room_types"][detected_room_type]
-        
+        # Récupérer les informations du template (ou valeurs par défaut pour wrong_room)
+        if detected_room_type == "wrong_room":
+            room_info = {
+                "name": "Photos invalides",
+                "icon": "⚠️",
+                "verifications": {
+                    "elements_critiques": ["Photos montrant l'intérieur du logement"],
+                    "points_ignorables": [],
+                    "defauts_frequents": ["Photos hors sujet", "Photos floues", "Photos non pertinentes"]
+                }
+            }
+        else:
+            room_info = room_templates["room_types"][detected_room_type]
+
         # Créer la réponse
         return RoomClassificationResponse(
             piece_id=input_data.piece_id,
@@ -1742,6 +2785,8 @@ RÉPONDS EN JSON:
             room_name=room_info["name"],
             room_icon=room_info["icon"],
             confidence=confidence,
+            is_valid_room=is_valid_room,
+            validation_message=validation_message,
             verifications=RoomVerifications(
                 elements_critiques=room_info["verifications"]["elements_critiques"],
                 points_ignorables=room_info["verifications"]["points_ignorables"],
@@ -1762,6 +2807,8 @@ RÉPONDS EN JSON:
             room_name="Autre",
             room_icon="📦",
             confidence=10,
+            is_valid_room=True,
+            validation_message="Classification par défaut (erreur de parsing JSON)",
             verifications=RoomVerifications(
                 elements_critiques=["État général des surfaces", "Propreté générale"],
                 points_ignorables=["Petites traces d'usage"],
@@ -1777,6 +2824,8 @@ RÉPONDS EN JSON:
             room_name="Autre",
             room_icon="📦",
             confidence=10,
+            is_valid_room=True,
+            validation_message="Classification par défaut (erreur générale)",
             verifications=RoomVerifications(
                 elements_critiques=["État général des surfaces", "Propreté générale"],
                 points_ignorables=["Petites traces d'usage"],
@@ -1894,7 +2943,34 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
         
         logger.info(f"✅ Classification terminée: {classification_result.room_type} ({classification_result.confidence}%)")
         logger.info(f"📝 Nom détecté: {classification_result.room_name} {classification_result.room_icon}")
-        
+        logger.info(f"🔍 Validation photos: is_valid_room={classification_result.is_valid_room}, message={classification_result.validation_message}")
+
+        # 🚨 VÉRIFICATION: Si photos invalides, créer une issue critique
+        if not classification_result.is_valid_room:
+            logger.error(f"🚫 PHOTOS INVALIDES DÉTECTÉES - Création d'une issue critique 'wrong_room'")
+
+            # Créer une issue wrong_room avec sévérité high
+            wrong_room_issue = Probleme(
+                description=f"Photos invalides: {classification_result.validation_message}",
+                category="wrong_room",
+                severity="high",
+                confidence=95
+            )
+
+            # Retourner directement un résultat avec cette issue critique
+            return CombinedAnalysisResponse(
+                piece_id=input_data.piece_id,
+                nom_piece=f"{classification_result.room_name} {classification_result.room_icon}",
+                room_classification=classification_result,
+                analyse_globale=AnalyseGlobale(
+                    status="probleme",
+                    score=1.0,
+                    temps_nettoyage_estime="Non applicable",
+                    commentaire_global="Les photos fournies ne montrent pas un intérieur de logement identifiable. Veuillez soumettre des photos valides."
+                ),
+                issues=[wrong_room_issue]
+            )
+
         # ÉTAPE 2: Injection des critères dans les données d'analyse
         logger.info(f"🔧 ÉTAPE 2 - Injection des critères automatiques dans le payload d'analyse")
         
@@ -1932,6 +3008,69 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
                 logger.info(f"   [{idx+1}] {issue.description} ({issue.category}, {issue.severity}, {issue.confidence}%)")
         else:
             logger.warning(f"⚠️ DEBUG - AUCUNE ISSUE DÉTECTÉE par l'IA pour la pièce {input_data.piece_id}")
+
+        # ═══════════════════════════════════════════════════════════════
+        # ÉTAPE 3.5: SYSTÈME DOUBLE-PASS POUR OBJETS MANQUANTS
+        # 🔴 DÉSACTIVÉ TEMPORAIREMENT (DOUBLE_PASS_ENABLED = False)
+        # ═══════════════════════════════════════════════════════════════
+        if DOUBLE_PASS_ENABLED:
+            logger.info(f"📦 ÉTAPE 3.5 - DOUBLE-PASS: Vérification renforcée des objets manquants")
+
+            try:
+                # PHASE 1: Extraction de l'inventaire depuis les photos checkin
+                inventory = extract_inventory_from_images(
+                    piece_id=input_data.piece_id,
+                    nom_piece=f"{classification_result.room_name}",
+                    checkin_pictures=input_data.checkin_pictures
+                )
+
+                if inventory.total_objects > 0:
+                    logger.info(f"📦 PHASE 1 OK: {inventory.total_objects} objets inventoriés")
+
+                    # PHASE 2: Vérification sur les photos checkout
+                    verification = verify_inventory_on_checkout(
+                        piece_id=input_data.piece_id,
+                        inventory=inventory,
+                        checkout_pictures=input_data.checkout_pictures
+                    )
+
+                    logger.info(f"🔎 PHASE 2 OK: {len(verification.missing_objects)} manquants, {len(verification.moved_objects)} déplacés")
+
+                    # Convertir en issues et fusionner avec les issues existantes
+                    inventory_issues = convert_inventory_to_issues(verification)
+
+                    if inventory_issues:
+                        # Éviter les doublons: vérifier si l'objet n'est pas déjà signalé
+                        existing_descriptions = {issue.description.lower() for issue in analysis_result.preliminary_issues}
+
+                        new_issues = []
+                        for inv_issue in inventory_issues:
+                            # Vérifier si un issue similaire existe déjà
+                            is_duplicate = any(
+                                inv_issue.description.lower().split(':')[1].strip().split(' - ')[0] in existing_desc
+                                for existing_desc in existing_descriptions
+                                if ':' in inv_issue.description
+                            )
+
+                            if not is_duplicate:
+                                new_issues.append(inv_issue)
+                                logger.info(f"   ➕ Nouvel objet manquant détecté: {inv_issue.description}")
+
+                        # Ajouter les nouvelles issues
+                        analysis_result.preliminary_issues.extend(new_issues)
+                        logger.info(f"✅ DOUBLE-PASS: {len(new_issues)} issues ajoutées (total: {len(analysis_result.preliminary_issues)})")
+                else:
+                    logger.info(f"📦 PHASE 1: Aucun objet inventorié (pièce peut-être vide ou photos insuffisantes)")
+
+            except Exception as dp_error:
+                logger.warning(f"⚠️ DOUBLE-PASS: Erreur non bloquante - {dp_error}")
+                # Le double-pass est optionnel, on continue sans lui en cas d'erreur
+        else:
+            logger.info(f"📦 ÉTAPE 3.5 - DOUBLE-PASS: ⏸️ DÉSACTIVÉ (DOUBLE_PASS_ENABLED = False)")
+
+        # ═══════════════════════════════════════════════════════════════
+        # FIN DOUBLE-PASS
+        # ═══════════════════════════════════════════════════════════════
 
         # ÉTAPE 4: Combinaison des résultats
         logger.info(f"🔄 ÉTAPE 4 - Combinaison des résultats de classification et d'analyse")
@@ -2015,27 +3154,121 @@ async def analyze_with_classification(input_data: InputData):
         logger.error(f"❌ Erreur dans l'endpoint analyze-with-classification: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Nouveau modèle pour l'analyse des étapes
+# ═══════════════════════════════════════════════════════════════
+# NOUVEAUX MODÈLES POUR LE RAPPORT INDIVIDUAL-REPORT
+# ═══════════════════════════════════════════════════════════════
+
+class ChecklistItem(BaseModel):
+    """Item de la checklist finale"""
+    id: str
+    text: str
+    completed: bool
+    icon: str
+    photo: Optional[str] = None
+
+class UserReport(BaseModel):
+    """Signalement manuel effectué par l'opérateur"""
+    id: str
+    piece_id: str
+    titre: str
+    description: str
+    severite: Literal["basse", "moyenne", "haute"]
+    photo: Optional[str] = None
+    date_signalement: str  # Format ISO 8601
+
+# ═══════════════════════════════════════════════════════════════
+# MODÈLES POUR L'ANALYSE DES ÉTAPES (ENRICHIS)
+# ═══════════════════════════════════════════════════════════════
+
 class Etape(BaseModel):
+    """Étape/tâche à effectuer avec métadonnées de validation"""
     etape_id: str
     task_name: str
     consigne: str
     checking_picture: str
     checkout_picture: str
+    # 🆕 Métadonnées de validation de tâche (Phase 3)
+    tache_approuvee: Optional[bool] = None
+    tache_date_validation: Optional[str] = None  # Format ISO 8601
+    tache_commentaire: Optional[str] = None
 
 class PieceWithEtapes(BaseModel):
+    """Pièce avec étapes et métadonnées de validation"""
     piece_id: str
     nom: str
     commentaire_ia: str = ""
     checkin_pictures: List[Picture]
-    checkout_pictures: List[Picture] 
+    checkout_pictures: List[Picture]
     etapes: List[Etape]
+    # 🆕 Métadonnées par pièce (Phase 3)
+    photos_reference: Optional[List[str]] = None
+    check_entree_conforme: Optional[bool] = None
+    check_entree_date_validation: Optional[str] = None  # Format ISO 8601
+    check_entree_photos_reprises: Optional[List[str]] = None
+    check_sortie_valide: Optional[bool] = None
+    check_sortie_date_validation: Optional[str] = None  # Format ISO 8601
+    check_sortie_photos_non_conformes: Optional[List[str]] = None
 
 class EtapesAnalysisInput(BaseModel):
+    """
+    Input enrichi pour l'analyse complète avec toutes les métadonnées nécessaires
+    au rapport individual-report-data-model.json
+    """
+    # ✅ Champs existants
     logement_id: str
     rapport_id: str
     type: str = "Voyageur"  # Type de parcours: "Voyageur" ou "Ménage"
     pieces: List[PieceWithEtapes]
+
+    # 🆕 PHASE 1: Métadonnées critiques (priorité haute)
+    logement_adresse: Optional[str] = None
+    date_debut: Optional[str] = None  # Format: "DD/MM/YY"
+    date_fin: Optional[str] = None  # Format: "DD/MM/YY"
+    operateur_nom: Optional[str] = None
+    etat_lieux_moment: Optional[Literal["sortie", "arrivee-sortie"]] = None
+
+    # 🆕 PHASE 1: Informations voyageur (priorité haute)
+    voyageur_nom: Optional[str] = None
+    voyageur_email: Optional[str] = None
+    voyageur_telephone: Optional[str] = None
+
+    # 🆕 PHASE 2: Horaires des contrôles (priorité moyenne)
+    heure_checkin_debut: Optional[str] = None  # Format: "HH:MM"
+    heure_checkin_fin: Optional[str] = None  # Format: "HH:MM"
+    heure_checkout_debut: Optional[str] = None  # Format: "HH:MM"
+    heure_checkout_fin: Optional[str] = None  # Format: "HH:MM"
+
+    # 🆕 PHASE 2: Signalements utilisateurs (priorité moyenne)
+    signalements_utilisateur: Optional[List[UserReport]] = None
+
+    # 🆕 PHASE 3: Checklist finale (priorité basse)
+    checklist_finale: Optional[List[ChecklistItem]] = None
+
+    @field_validator('etat_lieux_moment', mode='before')
+    @classmethod
+    def normalize_etat_lieux_moment(cls, v):
+        """Normalise les différentes valeurs possibles pour etat_lieux_moment"""
+        if v is None:
+            return v
+
+        # Mapping des valeurs Bubble vers les valeurs attendues
+        mapping = {
+            "checkinandcheckout": "arrivee-sortie",
+            "checkoutonly": "sortie",
+            "arrivee-sortie": "arrivee-sortie",
+            "sortie": "sortie",
+            "checkout": "sortie",
+        }
+
+        # Normaliser en minuscules pour la recherche
+        normalized = mapping.get(v.lower() if isinstance(v, str) else v)
+
+        if normalized:
+            return normalized
+
+        # Si la valeur n'est pas dans le mapping, retourner telle quelle
+        # (Pydantic lèvera une erreur de validation si ce n'est pas une valeur valide)
+        return v
 
 class EtapeIssue(BaseModel):
     etape_id: str
@@ -2198,7 +3431,7 @@ Compare les photos avant/après et réponds en JSON:
                 # Faire l'appel API avec gestion d'erreurs robuste
                 try:
                     response = client.chat.completions.create(
-                        model="gpt-4.1-2025-04-14",
+                        model="gpt-5-mini-2025-08-07",
                         messages=[
                             {
                                 "role": "system",
@@ -2207,8 +3440,7 @@ Compare les photos avant/après et réponds en JSON:
                             user_message
                         ],
                         response_format={"type": "json_object"},
-                        temperature=0.2,
-                        max_tokens=16000
+                        max_completion_tokens=16000
                     )
                 except Exception as openai_error:
                     error_str = str(openai_error)
@@ -2237,7 +3469,7 @@ Compare les photos avant/après et réponds en JSON:
 
                             # Réessayer avec les data URIs
                             response = client.chat.completions.create(
-                                model="gpt-4.1-2025-04-14",
+                                model="gpt-5-mini-2025-08-07",
                                 messages=[
                                     {
                                         "role": "system",
@@ -2246,8 +3478,7 @@ Compare les photos avant/après et réponds en JSON:
                                     user_message_with_data_uris
                                 ],
                                 response_format={"type": "json_object"},
-                                temperature=0.2,
-                                max_tokens=16000
+                                max_completion_tokens=16000
                             )
                             logger.info(f"✅ Analyse de l'étape {etape.etape_id} réussie avec Data URIs (fallback téléchargement)")
 
@@ -2269,7 +3500,7 @@ Compare les photos avant/après et réponds en JSON:
 
                             try:
                                 response = client.chat.completions.create(
-                                    model="gpt-4.1-2025-04-14",
+                                    model="gpt-5-mini-2025-08-07",
                                     messages=[
                                         {
                                             "role": "system",
@@ -2278,8 +3509,7 @@ Compare les photos avant/après et réponds en JSON:
                                         fallback_message
                                     ],
                                     response_format={"type": "json_object"},
-                                    temperature=0.2,
-                                    max_tokens=16000
+                                    max_completion_tokens=16000
                                 )
                                 logger.info(f"✅ Analyse de l'étape {etape.etape_id} réussie en mode fallback (sans images)")
                             except Exception as final_error:
@@ -2312,7 +3542,7 @@ Compare les photos avant/après et réponds en JSON:
                         try:
                             # Tentative sans images
                             response = client.chat.completions.create(
-                                model="gpt-4.1-2025-04-14",
+                                model="gpt-5-mini-2025-08-07",
                                 messages=[
                                     {
                                         "role": "system",
@@ -2321,8 +3551,7 @@ Compare les photos avant/après et réponds en JSON:
                                     fallback_message
                                 ],
                                 response_format={"type": "json_object"},
-                                temperature=0.2,
-                                max_tokens=16000
+                                max_completion_tokens=16000
                             )
                             logger.info(f"✅ Analyse de l'étape {etape.etape_id} réussie en mode fallback (sans images)")
                         except Exception as fallback_error:
@@ -2351,7 +3580,30 @@ Compare les photos avant/après et réponds en JSON:
                 
                 # Parser la réponse
                 response_content = response.choices[0].message.content.strip()
-                etape_result = json.loads(response_content)
+
+                # 🔧 NETTOYAGE ROBUSTE DU JSON
+                try:
+                    # Essayer de trouver le JSON entre accolades
+                    start_idx = response_content.find('{')
+                    end_idx = response_content.rfind('}')
+
+                    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                        json_content = response_content[start_idx:end_idx+1]
+                        etape_result = json.loads(json_content)
+                    else:
+                        etape_result = json.loads(response_content)
+                except json.JSONDecodeError as json_err:
+                    logger.error(f"❌ Erreur parsing JSON pour étape {etape.etape_id}: {json_err}")
+                    logger.error(f"📄 Contenu reçu: {response_content[:500]}...")
+                    # Ajouter une issue d'erreur et continuer
+                    all_issues.append(EtapeIssue(
+                        etape_id=etape.etape_id,
+                        description=f"Erreur de parsing JSON pour l'étape '{etape.task_name}'",
+                        category="image_quality",
+                        severity="medium",
+                        confidence=100
+                    ))
+                    continue  # Passer à l'étape suivante
                 
                 # Ajouter les issues trouvées avec l'etape_id
                 if "issues" in etape_result and etape_result["issues"]:
@@ -2499,6 +3751,593 @@ class CompleteAnalysisResponse(BaseModel):
     general_issues_count: int
     # Enrichissement avec synthèse globale
     analysis_enrichment: LogementAnalysisEnrichment
+
+
+# ═══════════════════════════════════════════════════════════════
+# TRANSFORMATION VERS INDIVIDUAL-REPORT-DATA-MODEL
+# ═══════════════════════════════════════════════════════════════
+
+def calculate_category_scores(pieces_analysis: List[CombinedAnalysisResponse]) -> dict:
+    """
+    Calcule les scores par catégorie basés sur les issues détectées
+
+    Catégories :
+    - presenceObjets : missing_item
+    - etatObjets : damage
+    - proprete : cleanliness
+    - agencement : positioning
+
+    Returns:
+        dict: Scores /5 pour chaque catégorie
+    """
+
+    # Pondération par sévérité (même système que calculate_weighted_severity_score)
+    SEVERITY_WEIGHT = {
+        "low": 1,
+        "medium": 3,
+        "high": 10
+    }
+
+    # Accumulateurs par catégorie
+    category_scores = {
+        "presenceObjets": {"total_weight": 0, "count": 0},  # missing_item
+        "etatObjets": {"total_weight": 0, "count": 0},      # damage
+        "proprete": {"total_weight": 0, "count": 0},        # cleanliness
+        "agencement": {"total_weight": 0, "count": 0}       # positioning
+    }
+
+    # Parcourir toutes les issues de toutes les pièces
+    for piece in pieces_analysis:
+        for issue in piece.issues:
+            severity_weight = SEVERITY_WEIGHT.get(issue.severity, 1)
+
+            # Mapper les catégories d'issues aux sous-notes
+            if issue.category == "missing_item":
+                category_scores["presenceObjets"]["total_weight"] += severity_weight
+                category_scores["presenceObjets"]["count"] += 1
+            elif issue.category == "damage":
+                category_scores["etatObjets"]["total_weight"] += severity_weight
+                category_scores["etatObjets"]["count"] += 1
+            elif issue.category == "cleanliness":
+                category_scores["proprete"]["total_weight"] += severity_weight
+                category_scores["proprete"]["count"] += 1
+            elif issue.category == "positioning":
+                category_scores["agencement"]["total_weight"] += severity_weight
+                category_scores["agencement"]["count"] += 1
+
+    # Convertir les poids en scores /5
+    # Logique : Score parfait = 5.0, on soustrait selon la gravité
+    # Formule : 5.0 - (total_weight / max(1, count)) * facteur_reduction
+    final_scores = {}
+
+    for category, data in category_scores.items():
+        if data["count"] == 0:
+            # Aucune issue dans cette catégorie = score parfait
+            final_scores[category] = 5.0
+        else:
+            # Calculer la pénalité moyenne par issue
+            avg_weight = data["total_weight"] / data["count"]
+
+            # Convertir en score /5
+            # low (1) → -0.2, medium (3) → -0.6, high (10) → -2.0
+            penalty = avg_weight * 0.2 * data["count"]
+            score = max(1.0, 5.0 - penalty)
+
+            # Arrondir à 1 décimale
+            final_scores[category] = round(score, 1)
+
+    logger.info(f"📊 Scores par catégorie calculés :")
+    logger.info(f"   - Présence objets : {final_scores['presenceObjets']}/5 ({category_scores['presenceObjets']['count']} issues)")
+    logger.info(f"   - État objets : {final_scores['etatObjets']}/5 ({category_scores['etatObjets']['count']} issues)")
+    logger.info(f"   - Propreté : {final_scores['proprete']}/5 ({category_scores['proprete']['count']} issues)")
+    logger.info(f"   - Agencement : {final_scores['agencement']}/5 ({category_scores['agencement']['count']} issues)")
+
+    return final_scores
+
+def transform_to_individual_report(
+    analysis_response: CompleteAnalysisResponse,
+    input_data: EtapesAnalysisInput
+) -> dict:
+    """
+    Transforme CompleteAnalysisResponse + EtapesAnalysisInput enrichi
+    vers le format individual-report-data-model.json
+
+    Args:
+        analysis_response: Résultat de l'analyse complète
+        input_data: Données d'entrée enrichies avec métadonnées
+
+    Returns:
+        dict: Payload au format individual-report-data-model.json
+    """
+
+    # Helper: Mapper severity API -> severity UI
+    def map_severity(api_severity: str) -> str:
+        mapping = {
+            "low": "faible",
+            "medium": "moyenne",
+            "high": "elevee"
+        }
+        return mapping.get(api_severity, "faible")
+
+    # Helper: Mapper category API -> titre UI
+    def map_category_to_title(category: str) -> str:
+        mapping = {
+            "missing_item": "Objets manquants",
+            "added_item": "Objets ajoutés",
+            "damage": "Dégradation",
+            "cleanliness": "Propreté",
+            "positioning": "Agencement",
+            "image_quality": "Qualité image",
+            "wrong_room": "Mauvaise pièce"
+        }
+        return mapping.get(category, "Autre")
+
+    # Helper: Calculer le statut d'une pièce
+    def calculate_room_status(issues_count: int, severity_counts: dict) -> str:
+        if issues_count == 0:
+            return "ok"
+        elif severity_counts.get("high", 0) > 0 or severity_counts.get("medium", 0) > 2:
+            return "probleme"
+        else:
+            return "attention"
+
+    # Helper: Obtenir l'icône d'une pièce
+    def get_room_icon(room_name: str) -> str:
+        icons = {
+            "salon": "🛋️",
+            "cuisine": "🍳",
+            "chambre": "🛏️",
+            "salle_de_bain": "🚿",
+            "salle d'eau": "🚿",
+            "terrasse": "🌿",
+            "balcon": "🌿",
+            "entree": "🚪",
+            "couloir": "🚪"
+        }
+        return icons.get(room_name.lower(), "🏠")
+
+    # Helper: Compter les issues par catégorie et sévérité
+    def count_issues_by_category(issues: List) -> dict:
+        counts = {
+            "missing_item": 0,
+            "added_item": 0,
+            "positioning": 0,
+            "cleanliness": {"high": 0, "medium": 0, "low": 0},
+            "damage": {"high": 0, "medium": 0, "low": 0},
+            "image_quality": 0,
+            "wrong_room": 0
+        }
+
+        for issue in issues:
+            category = issue.category
+            severity = issue.severity
+
+            if category in ["cleanliness", "damage"]:
+                counts[category][severity] += 1
+            elif category in counts:
+                counts[category] += 1
+
+        return counts
+
+    # ═══════════════════════════════════════════════════════════════
+    # 1. REPORT METADATA
+    # ═══════════════════════════════════════════════════════════════
+
+    now = datetime.now()
+    report_metadata = {
+        "id": input_data.rapport_id,
+        "logement": input_data.logement_adresse or "Adresse non renseignée",
+        "dateDebut": input_data.date_debut or "",
+        "dateFin": input_data.date_fin or "",
+        "statut": "Terminé",
+        "parcours": f"État des lieux {input_data.type.lower()}",
+        "typeParcours": input_data.type.lower(),
+        "etatLieuxMoment": input_data.etat_lieux_moment or "sortie",
+        "operateur": input_data.operateur_nom or "Non renseigné",
+        "etat": analysis_response.analysis_enrichment.global_score.score,
+        "dateGeneration": now.strftime("%d/%m/%Y"),
+        "heureGeneration": now.strftime("%H:%M")
+    }
+
+    # ═══════════════════════════════════════════════════════════════
+    # 2. SYNTHESE SECTION
+    # ═══════════════════════════════════════════════════════════════
+
+    # Calculer les scores par catégorie
+    category_scores = calculate_category_scores(analysis_response.pieces_analysis)
+
+    # Agréger les remarques par catégorie
+    objets_manquants = []
+    degradations = []
+    proprete_agencement = []
+    signalements = []
+
+    for piece in analysis_response.pieces_analysis:
+        for issue in piece.issues:
+            description = issue.description
+            if issue.category == "missing_item":
+                objets_manquants.append(description)
+            elif issue.category == "damage":
+                degradations.append(description)
+            elif issue.category in ["cleanliness", "positioning"]:
+                proprete_agencement.append(description)
+
+    # Ajouter les signalements utilisateurs
+    if input_data.signalements_utilisateur:
+        for report in input_data.signalements_utilisateur:
+            signalements.append(f"{report.titre} - {report.description}")
+
+    synthese_section = {
+        "logement": input_data.logement_adresse or "Adresse non renseignée",
+        "voyageur": input_data.voyageur_nom or "Non renseigné",
+        "email": input_data.voyageur_email or "",
+        "telephone": input_data.voyageur_telephone or "",
+        "dateDebut": input_data.date_debut or "",
+        "dateFin": input_data.date_fin or "",
+        "heureCheckin": input_data.heure_checkin_debut or "",
+        "heureCheckout": input_data.heure_checkout_debut or "",
+        "heureCheckinFin": input_data.heure_checkin_fin or "",
+        "heureCheckoutFin": input_data.heure_checkout_fin or "",
+        "noteGenerale": analysis_response.analysis_enrichment.global_score.score,
+        "sousNotes": {
+            # Scores calculés par catégorie basés sur les issues détectées
+            "presenceObjets": category_scores["presenceObjets"],
+            "etatObjets": category_scores["etatObjets"],
+            "proprete": category_scores["proprete"],
+            "agencement": category_scores["agencement"]
+        },
+        "statut": "Terminé",
+        "remarquesGenerales": {
+            "objetsManquants": objets_manquants[:5],  # Limiter à 5
+            "degradations": degradations[:5],
+            "propreteAgencement": proprete_agencement[:5],
+            "signalements": signalements
+        }
+    }
+
+    # ═══════════════════════════════════════════════════════════════
+    # 3. REMARQUES GENERALES SECTION
+    # ═══════════════════════════════════════════════════════════════
+
+    # Compter tous les issues
+    all_issues = []
+    for piece in analysis_response.pieces_analysis:
+        all_issues.extend(piece.issues)
+
+    total_counts = count_issues_by_category(all_issues)
+
+    # Détecter les alertes
+    has_wrong_room = total_counts["wrong_room"] > 0
+    has_image_quality = total_counts["image_quality"] > 0
+    wrong_room_rooms = []
+    image_quality_rooms = []
+
+    for piece in analysis_response.pieces_analysis:
+        piece_issues = count_issues_by_category(piece.issues)
+        if piece_issues["wrong_room"] > 0:
+            wrong_room_rooms.append(piece.room_classification.room_name)
+        if piece_issues["image_quality"] > 0:
+            image_quality_rooms.append(piece.room_classification.room_name)
+
+    # Créer les highlights (faits saillants)
+    highlights = []
+
+    # Ajouter les tâches non validées
+    for piece_input in input_data.pieces:
+        for etape in piece_input.etapes:
+            if etape.tache_approuvee is False:
+                piece_name = piece_input.nom.capitalize()
+                highlights.append(f"Tâche non validée : {etape.task_name} — {piece_name}")
+
+    # Ajouter les issues importantes
+    for piece in analysis_response.pieces_analysis:
+        piece_name = piece.room_classification.room_name
+        for issue in piece.issues[:2]:  # Limiter à 2 par pièce
+            category_title = map_category_to_title(issue.category)
+            highlights.append(f"{category_title} : {issue.description} — {piece_name}")
+
+    # Limiter à 6 highlights
+    highlights = highlights[:6]
+
+    # Créer la liste des pièces avec résumé
+    rooms_summary = []
+    for i, piece in enumerate(analysis_response.pieces_analysis):
+        piece_issues = count_issues_by_category(piece.issues)
+        piece_name = piece.room_classification.room_name
+
+        rooms_summary.append({
+            "name": piece_name,
+            "icon": get_room_icon(piece_name),
+            "status": calculate_room_status(len(piece.issues), piece_issues),
+            "issues_summary": piece_issues,
+            "flags": (
+                ["wrong_room"] if piece_issues["wrong_room"] > 0 else []
+            ) + (
+                ["qualité"] if piece_issues["image_quality"] > 0 else []
+            ),
+            "link": f"/rapport/{input_data.rapport_id}/piece/{piece.piece_id}"
+        })
+
+    # Traiter les signalements utilisateurs
+    user_reports_list = []
+    if input_data.signalements_utilisateur:
+        for report in input_data.signalements_utilisateur:
+            # Trouver le nom de la pièce
+            piece_name = "Non spécifié"
+            for piece_input in input_data.pieces:
+                if piece_input.piece_id == report.piece_id:
+                    piece_name = piece_input.nom.capitalize()
+                    break
+
+            user_reports_list.append({
+                "text": report.titre,
+                "status": "confirmé",  # Par défaut, à améliorer avec logique de vérification
+                "room": piece_name
+            })
+
+    # Compter les photos
+    total_checkin_photos = sum(len(p.checkin_pictures) for p in input_data.pieces)
+    total_checkout_photos = sum(len(p.checkout_pictures) for p in input_data.pieces)
+
+    remarques_generales_section = {
+        "scope": "logement",
+        "meta": {
+            "logementId": input_data.logement_adresse or input_data.logement_id,
+            "rapportId": input_data.rapport_id,
+            "dateGeneration": now.strftime("%d/%m/%Y"),
+            "heureGeneration": now.strftime("%H:%M"),
+            "photosCheckin": total_checkin_photos,
+            "photosCheckout": total_checkout_photos
+        },
+        "counts": total_counts,
+        "alerts": {
+            "wrong_room": has_wrong_room,
+            "image_quality": has_image_quality,
+            "wrong_room_rooms": wrong_room_rooms,
+            "image_quality_rooms": image_quality_rooms
+        },
+        "highlights": highlights,
+        "user_reports": user_reports_list,
+        "rooms": rooms_summary
+    }
+
+    # ═══════════════════════════════════════════════════════════════
+    # 4. DETAIL PAR PIECE SECTION
+    # ═══════════════════════════════════════════════════════════════
+
+    detail_par_piece_section = []
+
+    for piece_analysis in analysis_response.pieces_analysis:
+        # Trouver les données d'entrée correspondantes
+        piece_input = next(
+            (p for p in input_data.pieces if p.piece_id == piece_analysis.piece_id),
+            None
+        )
+
+        if not piece_input:
+            continue
+
+        piece_name = piece_analysis.room_classification.room_name
+        piece_icon = get_room_icon(piece_name)
+
+        # Photos de référence
+        # Si photos_reference est null ou vide, utiliser les checkin_pictures comme fallback
+        photos_reference = piece_input.photos_reference or []
+        if not photos_reference:
+            photos_reference = [pic.url for pic in piece_input.checkin_pictures]
+
+        # Check d'entrée
+        check_entree = {
+            "estConforme": piece_input.check_entree_conforme if piece_input.check_entree_conforme is not None else True,
+            "dateHeureValidation": piece_input.check_entree_date_validation or "",
+            "photosReprises": piece_input.check_entree_photos_reprises or []
+        }
+
+        # Check de sortie
+        photos_sortie = [pic.url for pic in piece_input.checkout_pictures]
+        check_sortie = {
+            "estValide": piece_input.check_sortie_valide if piece_input.check_sortie_valide is not None else True,
+            "dateHeureValidation": piece_input.check_sortie_date_validation or "",
+            "photosSortie": photos_sortie,
+            "photosNonConformes": piece_input.check_sortie_photos_non_conformes or []
+        }
+
+        # Tâches validées
+        taches_validees = []
+        for etape in piece_input.etapes:
+            taches_validees.append({
+                "etapeId": etape.etape_id,
+                "nom": etape.task_name,
+                "estApprouve": etape.tache_approuvee if etape.tache_approuvee is not None else True,
+                "dateHeureValidation": etape.tache_date_validation or "",
+                "commentaire": etape.tache_commentaire
+            })
+
+        # Problèmes détectés par l'IA
+        problemes = []
+        for idx, issue in enumerate(piece_analysis.issues):
+            category_title = map_category_to_title(issue.category)
+            problemes.append({
+                "id": f"p{idx+1}",
+                "titre": f"{category_title} : {issue.description[:50]}...",
+                "description": issue.description,
+                "severite": map_severity(issue.severity),
+                "detectionIA": True,
+                "consignesIA": [],
+                "estFaux": False
+            })
+
+        # Consignes IA (extraites du commentaire global)
+        consignes_ia = []
+        if piece_analysis.analyse_globale and piece_analysis.analyse_globale.commentaire_global:
+            # Extraire des consignes du commentaire
+            commentaire = piece_analysis.analyse_globale.commentaire_global
+            if "surveiller" in commentaire.lower():
+                consignes_ia.append(f"Surveiller {piece_name}")
+            if "vérifier" in commentaire.lower():
+                consignes_ia.append(f"Vérifier l'état de {piece_name}")
+
+        # Résumé de la pièce
+        resume = piece_analysis.analyse_globale.commentaire_global if piece_analysis.analyse_globale else ""
+
+        # Note de la pièce
+        note = piece_analysis.analyse_globale.score if piece_analysis.analyse_globale else 3
+
+        detail_par_piece_section.append({
+            "id": piece_input.piece_id,
+            "nom": piece_name,
+            "pieceIcon": piece_icon,
+            "note": note,
+            "resume": resume,
+            "photosReference": photos_reference,
+            "checkEntree": check_entree,
+            "checkSortie": check_sortie,
+            "tachesValidees": taches_validees,
+            "problemes": problemes,
+            "consignesIA": consignes_ia
+        })
+
+    # ═══════════════════════════════════════════════════════════════
+    # 5. CHECK FINAL SECTION
+    # ═══════════════════════════════════════════════════════════════
+
+    check_final_section = []
+    if input_data.checklist_finale:
+        for item in input_data.checklist_finale:
+            check_final_section.append({
+                "id": item.id,
+                "text": item.text,
+                "completed": item.completed,
+                "icon": item.icon,
+                "photo": item.photo
+            })
+
+    # ═══════════════════════════════════════════════════════════════
+    # 6. SUGGESTIONS IA SECTION
+    # ═══════════════════════════════════════════════════════════════
+
+    suggestions_ia_section = []
+
+    # Utiliser les recommandations de l'enrichissement
+    if analysis_response.analysis_enrichment.recommendations:
+        for idx, recommendation in enumerate(analysis_response.analysis_enrichment.recommendations):
+            # Déterminer la priorité basée sur l'ordre
+            if idx == 0:
+                priorite = "haute"
+            elif idx < 3:
+                priorite = "moyenne"
+            else:
+                priorite = "basse"
+
+            suggestions_ia_section.append({
+                "titre": recommendation[:80],  # Titre court
+                "description": recommendation,
+                "priorite": priorite
+            })
+
+    # ═══════════════════════════════════════════════════════════════
+    # 7. UI LABELS (STATIQUES)
+    # ═══════════════════════════════════════════════════════════════
+
+    ui_labels = {
+        "header": {
+            "title": "Rapport Check Easy",
+            "closeButton": "Fermer"
+        },
+        "syntheseSection": {
+            "title": "Synthèse",
+            "voyageurTitle": "Voyageur",
+            "checkEntreeTitle": "Check d'entrée",
+            "checkSortieTitle": "Check de sortie",
+            "noteGeneraleTitle": "Note Générale",
+            "presenceObjetsLabel": "Présence des objets",
+            "etatObjetsLabel": "État des objets",
+            "propreteLabel": "Propreté",
+            "agencementLabel": "Agencement",
+            "debutLabel": "Début",
+            "finLabel": "Fin"
+        },
+        "remarquesGeneralesSection": {
+            "title": "Remarques Générales",
+            "alerteTitle": "Problèmes d'analyse photos",
+            "photosNonConformesLabel": "Photos non conformes",
+            "qualiteInsuffisanteLabel": "Qualité insuffisante",
+            "faitsSaillantsTitle": "Faits important analysés par l'IA",
+            "signalementsUtilisateursTitle": "Signalements utilisateurs",
+            "aTraiterLabel": "À traiter",
+            "resoluLabel": "Résolu"
+        },
+        "detailParPieceSection": {
+            "title": "Détail par Pièce",
+            "photosReferenceLabel": "Voir les {count} photo(s) de référence",
+            "etatLieuxEntreeLabel": "État des lieux d'entrée",
+            "etatLieuxSortieLabel": "État des lieux de sortie",
+            "conformeLabel": "Conforme aux photos de référence",
+            "nonConformeLabel": "Non conforme aux photos de référence",
+            "valideLabel": "Validé",
+            "nonValideLabel": "Non validé",
+            "tachesRealisees": "Tâches réalisées",
+            "commentaireGlobalLabel": "Commentaire global",
+            "faitsSignalesIATitle": "Faits signalés par l'IA",
+            "consignesIATitle": "Consignes pour l'IA",
+            "aIgnorerLabel": "À ignorer",
+            "aSurveillerLabel": "À surveiller en priorité",
+            "ajouterButton": "Ajouter",
+            "modifierButton": "Modifier",
+            "supprimerButton": "Supprimer",
+            "creerSignalementButton": "Créer un signalement",
+            "ajouterConsigneIAButton": "Ajouter aux consignes IA",
+            "marquerCommeFauxButton": "Marquer comme faux"
+        },
+        "checkFinalSection": {
+            "title": "Check final"
+        },
+        "suggestionsIASection": {
+            "title": "Suggestions de l'IA"
+        },
+        "badges": {
+            "tacheNonRealisee": "{count} tâche(s) non réalisée(s)",
+            "faitSignale": "{count} fait(s) signalé(s) par l'IA",
+            "signalementCree": "Signalement créé",
+            "consigneIAAjoutee": "Consigne IA ajoutée",
+            "marqueCommeFaux": "Marqué comme faux"
+        },
+        "severite": {
+            "faible": "Faible",
+            "moyenne": "Moyenne",
+            "elevee": "Élevée"
+        },
+        "status": {
+            "ok": "OK",
+            "attention": "Attention",
+            "probleme": "Problème",
+            "termine": "Terminé",
+            "expire": "Expiré",
+            "enCours": "En cours"
+        },
+        "typeParcours": {
+            "voyageur": "Voyageur",
+            "menage": "Ménage"
+        },
+        "etatLieuxMoment": {
+            "sortie": "Sortie uniquement",
+            "arriveeSortie": "Arrivée + Sortie"
+        }
+    }
+
+    # ═══════════════════════════════════════════════════════════════
+    # RETOUR DU PAYLOAD COMPLET
+    # ═══════════════════════════════════════════════════════════════
+
+    return {
+        "reportMetadata": report_metadata,
+        "syntheseSection": synthese_section,
+        "remarquesGeneralesSection": remarques_generales_section,
+        "detailParPieceSection": detail_par_piece_section,
+        "checkFinalSection": check_final_section,
+        "suggestionsIASection": suggestions_ia_section,
+        "uiLabels": ui_labels
+    }
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -2886,12 +4725,12 @@ Génère une synthèse en JSON:
         logger.info(f"🔍 ÉTAPE 3 - Appel à l'IA de synthèse (OpenAI)")
         
         try:
-            logger.info(f"   🤖 Modèle: gpt-4.1-2025-04-14")
+            logger.info(f"   🤖 Modèle: gpt-5-mini-2025-08-07")
             logger.info(f"   🌡️ Température: 0.3")
             logger.info(f"   📏 Max tokens: 8000")
             
             response = client.chat.completions.create(
-                model="gpt-4.1-2025-04-14",
+                model="gpt-5-mini-2025-08-07",
                 messages=[
                     {
                         "role": "system", 
@@ -2903,8 +4742,7 @@ Génère une synthèse en JSON:
                     }
                 ],
                 response_format={"type": "json_object"},
-                temperature=0.3,
-                max_tokens=8000
+                max_completion_tokens=8000
             )
             
             logger.info(f"✅ Réponse OpenAI reçue avec succès")
@@ -3083,6 +4921,68 @@ async def analyze_single_piece_async(piece: PieceWithEtapes, parcours_type: str 
         piece_analysis = analyze_with_auto_classification(input_data_piece, parcours_type)
 
         logger.info(f"✅ [ASYNC] Pièce {piece.piece_id} analysée: {len(piece_analysis.issues)} issues générales détectées")
+
+        # ═══════════════════════════════════════════════════════════════
+        # DOUBLE-PASS: Vérification renforcée des objets manquants
+        # 🔴 DÉSACTIVÉ TEMPORAIREMENT (DOUBLE_PASS_ENABLED = False)
+        # ═══════════════════════════════════════════════════════════════
+        if DOUBLE_PASS_ENABLED and len(valid_checkin_pictures) > 0 and len(valid_checkout_pictures) > 0:
+            logger.info(f"📦 [ASYNC] DOUBLE-PASS: Vérification renforcée des objets manquants pour {piece.nom}")
+
+            try:
+                # PHASE 1: Extraction de l'inventaire depuis les photos checkin
+                inventory = extract_inventory_from_images(
+                    piece_id=piece.piece_id,
+                    nom_piece=piece_analysis.nom_piece,
+                    checkin_pictures=valid_checkin_pictures
+                )
+
+                if inventory.total_objects > 0:
+                    logger.info(f"📦 [ASYNC] PHASE 1 OK: {inventory.total_objects} objets inventoriés")
+
+                    # PHASE 2: Vérification sur les photos checkout
+                    verification = verify_inventory_on_checkout(
+                        piece_id=piece.piece_id,
+                        inventory=inventory,
+                        checkout_pictures=valid_checkout_pictures
+                    )
+
+                    logger.info(f"🔎 [ASYNC] PHASE 2 OK: {len(verification.missing_objects)} manquants, {len(verification.moved_objects)} déplacés")
+
+                    # Convertir en issues et fusionner avec les issues existantes
+                    inventory_issues = convert_inventory_to_issues(verification)
+
+                    if inventory_issues:
+                        # Éviter les doublons: vérifier si l'objet n'est pas déjà signalé
+                        existing_descriptions = {issue.description.lower() for issue in piece_analysis.issues}
+
+                        new_issues = []
+                        for inv_issue in inventory_issues:
+                            # Vérifier si un issue similaire existe déjà
+                            is_duplicate = any(
+                                inv_issue.description.lower().split(':')[1].strip().split(' - ')[0] in existing_desc
+                                for existing_desc in existing_descriptions
+                                if ':' in inv_issue.description
+                            )
+
+                            if not is_duplicate:
+                                new_issues.append(inv_issue)
+                                logger.info(f"   ➕ [ASYNC] Nouvel objet manquant détecté: {inv_issue.description}")
+
+                        # Ajouter les nouvelles issues
+                        piece_analysis.issues.extend(new_issues)
+                        logger.info(f"✅ [ASYNC] DOUBLE-PASS: {len(new_issues)} issues ajoutées (total: {len(piece_analysis.issues)})")
+                else:
+                    logger.info(f"📦 [ASYNC] PHASE 1: Aucun objet inventorié (pièce peut-être vide ou photos insuffisantes)")
+
+            except Exception as dp_error:
+                logger.warning(f"⚠️ [ASYNC] DOUBLE-PASS: Erreur non bloquante - {dp_error}")
+                # Le double-pass est optionnel, on continue sans lui en cas d'erreur
+        elif not DOUBLE_PASS_ENABLED:
+            logger.info(f"📦 [ASYNC] DOUBLE-PASS: ⏸️ DÉSACTIVÉ (DOUBLE_PASS_ENABLED = False)")
+        else:
+            logger.info(f"📦 [ASYNC] DOUBLE-PASS: Skippé (photos insuffisantes: {len(valid_checkin_pictures)} checkin, {len(valid_checkout_pictures)} checkout)")
+
         return piece_analysis
 
     except Exception as e:
@@ -3110,7 +5010,7 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
         }
 
         # Construire le prompt système
-        system_prompt = build_prompt_from_config(analyze_etapes_config, variables)
+        system_prompt = build_full_prompt_from_config(analyze_etapes_config, variables)
 
         # Message utilisateur
         user_message_config = prompts_config.get("user_messages", {}).get("analyze_etapes_user", {})
@@ -3120,47 +5020,73 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
         # Préparer les images
         messages_content = [{"type": "text", "text": user_message}]
 
-        if etape_data.get("checking_picture_processed"):
+        has_checking = bool(etape_data.get("checking_picture_processed"))
+        has_checkout = bool(etape_data.get("checkout_picture_processed"))
+
+        # ⚠️ Si aucune photo n'est disponible, on ne peut pas analyser
+        if not has_checking and not has_checkout:
+            logger.warning(f"⚠️ [ASYNC] Étape {etape.etape_id} skippée: aucune photo disponible (checking={has_checking}, checkout={has_checkout})")
+            return []
+
+        if has_checking:
             messages_content.append({
                 "type": "image_url",
                 "image_url": {"url": etape_data["checking_picture_processed"]}
             })
+            logger.info(f"   📸 Photo AVANT ajoutée pour étape {etape.etape_id}")
 
-        if etape_data.get("checkout_picture_processed"):
+        if has_checkout:
             messages_content.append({
                 "type": "image_url",
                 "image_url": {"url": etape_data["checkout_picture_processed"]}
             })
+            logger.info(f"   📸 Photo APRÈS ajoutée pour étape {etape.etape_id}")
 
         # Appel à l'API OpenAI (synchrone, mais dans un contexte async)
         response = client.chat.completions.create(
-            model="gpt-4o-2024-08-06",
+            model="gpt-5-mini-2025-08-07",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": messages_content}
             ],
             response_format={"type": "json_object"},
-            max_tokens=1000
+            max_completion_tokens=1000
         )
 
         # Parser la réponse
         response_text = response.choices[0].message.content
-        response_data = json.loads(response_text)
+
+        # 🔧 NETTOYAGE ROBUSTE DU JSON (même logique que pour la classification)
+        try:
+            # Essayer de trouver le JSON entre accolades
+            start_idx = response_text.find('{')
+            end_idx = response_text.rfind('}')
+
+            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                json_content = response_text[start_idx:end_idx+1]
+                response_data = json.loads(json_content)
+            else:
+                response_data = json.loads(response_text)
+        except json.JSONDecodeError as json_err:
+            logger.error(f"❌ [ASYNC] Erreur parsing JSON pour étape {etape.etape_id}: {json_err}")
+            logger.error(f"📄 Contenu reçu: {response_text[:500]}...")
+            return []  # Retourner liste vide en cas d'erreur
 
         # Extraire les issues
         issues = []
         for issue_data in response_data.get("issues", []):
-            if issue_data.get("confidence", 0) >= 90:
-                issue = EtapeIssue(
-                    etape_id=etape.etape_id,
-                    description=issue_data.get("description", ""),
-                    category=issue_data.get("category", "cleanliness"),
-                    severity=issue_data.get("severity", "medium"),
-                    confidence=issue_data.get("confidence", 90)
-                )
-                issues.append(issue)
+            # ✅ CORRECTION: Retourner TOUTES les issues (comme analyze_etapes séquentielle)
+            # Pas de filtre de confidence pour être cohérent avec la version séquentielle
+            issue = EtapeIssue(
+                etape_id=etape.etape_id,
+                description=issue_data.get("description", ""),
+                category=issue_data.get("category", "cleanliness"),
+                severity=issue_data.get("severity", "medium"),
+                confidence=issue_data.get("confidence", 70)
+            )
+            issues.append(issue)
 
-        logger.info(f"✅ [ASYNC] Étape {etape.etape_id} analysée: {len(issues)} issues détectées")
+        logger.info(f"✅ [ASYNC] Étape {etape.etape_id} analysée: {len(issues)} issues détectées (TOUTES conservées)")
         return issues
 
     except Exception as e:
@@ -3755,27 +5681,59 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
         logger.info(f"🎯 Analyse complète terminée pour le logement {input_data.logement_id}")
         logger.info(f"📊 Total: {result.total_issues_count} issues ({result.general_issues_count} générales + {result.etapes_issues_count} étapes)")
         
-        # 2. Envoyer le webhook de manière asynchrone (ne fait pas échouer la réponse)
+        # 2. Envoyer les DEUX webhooks de manière asynchrone (ne fait pas échouer la réponse)
         try:
             # Détecter l'environnement
             environment = detect_environment()
-            webhook_url = get_webhook_url(environment)
-            
-            # Préparer le payload pour le webhook (copie du résultat complet)
-            webhook_payload = result.model_dump()
-            
-            # Envoyer le webhook en arrière-plan
-            logger.info(f"🔗 Envoi webhook pour logement {input_data.logement_id} vers {environment}")
-            webhook_success = await send_webhook(webhook_payload, webhook_url)
-            
-            if webhook_success:
-                logger.info(f"✅ Webhook envoyé avec succès pour logement {input_data.logement_id}")
+            webhook_url_current = get_webhook_url(environment)
+            webhook_url_individual = get_webhook_url_individual_report(environment)
+
+            # Préparer le payload pour le webhook actuel (format CompleteAnalysisResponse)
+            webhook_payload_current = result.model_dump()
+
+            # Transformer vers le format individual-report-data-model.json
+            logger.info(f"🔄 Transformation vers format individual-report pour logement {input_data.logement_id}")
+            webhook_payload_individual = transform_to_individual_report(result, input_data)
+            logger.info(f"✅ Transformation terminée - Payload individual-report généré")
+
+            # Envoyer les deux webhooks EN PARALLÈLE pour optimiser les performances
+            logger.info(f"🔗 Envoi de 2 webhooks pour logement {input_data.logement_id} vers {environment}")
+            logger.info(f"   📤 Webhook 1 (actuel): {webhook_url_current}")
+            logger.info(f"   📤 Webhook 2 (individual-report): {webhook_url_individual}")
+
+            # Utiliser asyncio.gather pour envoyer les deux webhooks simultanément
+            webhook_results = await asyncio.gather(
+                send_webhook(webhook_payload_current, webhook_url_current),
+                send_webhook(webhook_payload_individual, webhook_url_individual),
+                return_exceptions=True  # Ne pas faire échouer si un webhook échoue
+            )
+
+            # Analyser les résultats
+            webhook_current_success = webhook_results[0] if not isinstance(webhook_results[0], Exception) else False
+            webhook_individual_success = webhook_results[1] if not isinstance(webhook_results[1], Exception) else False
+
+            # Logger les résultats
+            if webhook_current_success:
+                logger.info(f"✅ Webhook actuel envoyé avec succès pour logement {input_data.logement_id}")
             else:
-                logger.warning(f"⚠️ Échec envoi webhook pour logement {input_data.logement_id} (analyse OK)")
-                
+                logger.warning(f"⚠️ Échec webhook actuel pour logement {input_data.logement_id}")
+                if isinstance(webhook_results[0], Exception):
+                    logger.error(f"   Erreur: {webhook_results[0]}")
+
+            if webhook_individual_success:
+                logger.info(f"✅ Webhook individual-report envoyé avec succès pour logement {input_data.logement_id}")
+            else:
+                logger.warning(f"⚠️ Échec webhook individual-report pour logement {input_data.logement_id}")
+                if isinstance(webhook_results[1], Exception):
+                    logger.error(f"   Erreur: {webhook_results[1]}")
+
+            # Résumé
+            success_count = sum([webhook_current_success, webhook_individual_success])
+            logger.info(f"📊 Résumé webhooks: {success_count}/2 envoyés avec succès")
+
         except Exception as webhook_error:
             # Les erreurs de webhook ne doivent jamais faire échouer l'analyse
-            logger.error(f"❌ Erreur webhook pour logement {input_data.logement_id}: {webhook_error}")
+            logger.error(f"❌ Erreur lors de l'envoi des webhooks pour logement {input_data.logement_id}: {webhook_error}")
             logger.info("ℹ️ L'analyse continue normalement malgré l'erreur webhook")
         
         # 3. Retourner le résultat de l'analyse (indépendamment du webhook)
