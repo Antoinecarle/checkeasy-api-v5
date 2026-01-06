@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="fr">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,6 +9,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" rel="stylesheet">
 </head>
+
 <body>
     <div class="app-container">
         <!-- Header -->
@@ -19,9 +21,11 @@
                 </div>
                 <div class="header-actions">
                     <!-- Sélecteur de type de parcours -->
-                    <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; background: rgba(255,255,255,0.1); border-radius: 8px; margin-right: 1rem;">
+                    <div
+                        style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; background: rgba(255,255,255,0.1); border-radius: 8px; margin-right: 1rem;">
                         <span style="font-weight: 600; color: white;">Type:</span>
-                        <select id="parcoursTypeSelector" style="padding: 0.5rem; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; font-size: 1rem; cursor: pointer; background: white;">
+                        <select id="parcoursTypeSelector"
+                            style="padding: 0.5rem; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; font-size: 1rem; cursor: pointer; background: white;">
                             <option value="Voyageur">🧳 Voyageur</option>
                             <option value="Ménage">🧹 Ménage</option>
                         </select>
@@ -64,19 +68,22 @@
                 <button class="nav-item" data-section="preview">
                     <i class="fas fa-eye"></i> Prévisualisation
                 </button>
+                <button class="nav-item" data-section="test-etapes">
+                    <i class="fas fa-flask"></i> Test Étapes
+                </button>
             </div>
         </nav>
 
         <!-- Main Content -->
         <main class="app-main">
-            
+
             <!-- Vue d'ensemble -->
             <section id="overview" class="content-section active">
                 <div class="section-header">
                     <h2><i class="fas fa-dashboard"></i> Vue d'ensemble des Prompts</h2>
                     <p>Gérez tous les prompts utilisés par l'API CheckEasy V5</p>
                 </div>
-                
+
                 <div class="overview-stats">
                     <div class="stat-card">
                         <div class="stat-icon">
@@ -181,7 +188,7 @@
                     <h2><i class="fas fa-eye"></i> Prévisualisation</h2>
                     <p>Prévisualisez vos prompts avec des variables d'exemple</p>
                 </div>
-                
+
                 <div class="preview-controls">
                     <div class="control-group">
                         <label for="previewPromptSelect">Sélectionner un prompt :</label>
@@ -191,7 +198,8 @@
                     </div>
                     <div class="control-group">
                         <label for="previewVariables">Variables d'exemple (JSON) :</label>
-                        <textarea id="previewVariables" class="form-control" rows="6" placeholder='{"piece_nom": "Cuisine", "commentaire_ia": "Attention aux détails"}'></textarea>
+                        <textarea id="previewVariables" class="form-control" rows="6"
+                            placeholder='{"piece_nom": "Cuisine", "commentaire_ia": "Attention aux détails"}'></textarea>
                     </div>
                     <button id="generatePreview" class="btn btn-primary">
                         <i class="fas fa-play"></i> Générer Prévisualisation
@@ -204,6 +212,91 @@
                 </div>
             </section>
 
+            <!-- Test Étapes -->
+            <section id="test-etapes" class="content-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-flask"></i> Test d'Analyse d'Étapes</h2>
+                    <p>Testez l'analyse d'une étape avec des photos réelles</p>
+                </div>
+
+                <div class="test-etapes-container">
+                    <!-- Formulaire de test -->
+                    <div class="test-form">
+                        <div class="form-group">
+                            <label for="testTaskName">Nom de la tâche :</label>
+                            <input type="text" id="testTaskName" class="form-control" placeholder="Ex: Aspirer le sol"
+                                value="Aspirer le sol">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="testConsigne">Consigne :</label>
+                            <input type="text" id="testConsigne" class="form-control"
+                                placeholder="Ex: Sous le lit ; coins de la pièce."
+                                value="Sous le lit ; coins de la pièce.">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="testCheckingPicture">Photo AVANT (checking_picture) - optionnel :</label>
+                            <input type="url" id="testCheckingPicture" class="form-control"
+                                placeholder="https://example.com/avant.jpg">
+                            <small>Laissez vide si pas de photo avant</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="testCheckoutPicture">Photo APRÈS (checkout_picture) :</label>
+                            <input type="url" id="testCheckoutPicture" class="form-control"
+                                placeholder="https://example.com/apres.jpg" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="testApiUrl">URL de l'API :</label>
+                            <input type="url" id="testApiUrl" class="form-control"
+                                value="http://localhost:8080/analyze-etapes">
+                            <small>Changez pour l'URL de production si nécessaire</small>
+                        </div>
+
+                        <button id="testEtapeBtn" class="btn btn-primary btn-large">
+                            <i class="fas fa-play"></i> Lancer le Test
+                        </button>
+                    </div>
+
+                    <!-- Résultats du test -->
+                    <div class="test-results" id="testEtapesResults" style="display: none;">
+                        <h3><i class="fas fa-chart-bar"></i> Résultats de l'Analyse</h3>
+
+                        <div class="result-section">
+                            <h4>📊 Statistiques</h4>
+                            <div class="stats-grid">
+                                <div class="stat-item">
+                                    <span class="stat-label">Issues détectées :</span>
+                                    <span class="stat-value" id="testIssuesCount">0</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Temps de réponse :</span>
+                                    <span class="stat-value" id="testResponseTime">-</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="result-section">
+                            <h4>🔍 Issues Détectées</h4>
+                            <div id="testIssuesList" class="issues-list"></div>
+                        </div>
+
+                        <div class="result-section">
+                            <h4>📄 Réponse JSON Complète</h4>
+                            <pre><code id="testJsonResponse" class="language-json"></code></pre>
+                        </div>
+                    </div>
+
+                    <!-- Loading spinner -->
+                    <div class="test-loading" id="testEtapesLoading" style="display: none;">
+                        <div class="spinner"></div>
+                        <p>Analyse en cours...</p>
+                    </div>
+                </div>
+            </section>
+
         </main>
 
         <!-- Notifications -->
@@ -213,7 +306,9 @@
 
     <!-- Scripts -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script
+        src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
     <script src="/front/app.js"></script>
 </body>
-</html> 
+
+</html>

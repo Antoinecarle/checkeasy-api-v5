@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CheckEasy - Logs Viewer 🔍</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #667eea;
+            font-size: 28px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-badge.connected {
+            background: #10b981;
+            color: white;
+        }
+
+        .status-badge.disconnected {
+            background: #ef4444;
+            color: white;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 20px;
+            height: calc(100vh - 140px);
+        }
+
+        .sidebar {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            overflow-y: auto;
+        }
+
+        .sidebar h2 {
+            color: #667eea;
+            font-size: 18px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .request-card {
+            background: #f9fafb;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .request-card:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        }
+
+        .request-card.active {
+            border-color: #667eea;
+            background: #eef2ff;
+        }
+
+        .request-card.in-progress {
+            border-left: 4px solid #f59e0b;
+        }
+
+        .request-card.success {
+            border-left: 4px solid #10b981;
+        }
+
+        .request-card.error {
+            border-left: 4px solid #ef4444;
+        }
+
+        .request-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .request-id {
+            font-size: 12px;
+            color: #6b7280;
+            font-family: monospace;
+        }
+
+        .request-endpoint {
+            font-weight: 600;
+            color: #1f2937;
+            font-size: 14px;
+        }
+
+        .request-time {
+            font-size: 11px;
+            color: #9ca3af;
+        }
+
+        .canvas-area {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .workflow-canvas {
+            flex: 1;
+            position: relative;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .step-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .step-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+        }
+
+        .step-card.running {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.8;
+            }
+        }
+
+        .step-card.success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+
+        .step-card.error {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        }
+
+        .step-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .step-title {
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .step-status {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .step-meta {
+            display: flex;
+            gap: 15px;
+            font-size: 13px;
+            opacity: 0.9;
+            margin-bottom: 10px;
+        }
+
+        .logs-preview {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+
+        .logs-preview::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .logs-preview::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            max-width: 1200px;
+            width: 90%;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .modal-title {
+            font-size: 24px;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .close-btn {
+            background: #ef4444;
+            color: white;
+            border: none;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .close-btn:hover {
+            background: #dc2626;
+            transform: rotate(90deg);
+        }
+
+        .log-entry {
+            padding: 10px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 13px;
+            border-left: 3px solid #667eea;
+        }
+
+        .log-entry.INFO {
+            background: #eff6ff;
+            border-left-color: #3b82f6;
+        }
+
+        .log-entry.WARNING {
+            background: #fef3c7;
+            border-left-color: #f59e0b;
+        }
+
+        .log-entry.ERROR {
+            background: #fee2e2;
+            border-left-color: #ef4444;
+        }
+
+        .log-entry.PROMPT {
+            background: #f0f4ff;
+            border-left-color: #667eea;
+        }
+
+        .log-entry.RESPONSE {
+            background: #f0fdf4;
+            border-left-color: #10b981;
+        }
+
+        .log-timestamp {
+            color: #6b7280;
+            font-size: 11px;
+            margin-right: 10px;
+        }
+
+        .log-message {
+            color: #1f2937;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #9ca3af;
+        }
+
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+
+        /* Styles pour la section prompt */
+        .prompt-section {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .prompt-section h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .prompt-info {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #4b5563;
+        }
+
+        .prompt-info span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .prompt-content {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            overflow-x: auto;
+            max-height: 500px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .prompt-content::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        .prompt-content::-webkit-scrollbar-track {
+            background: #0f172a;
+            border-radius: 5px;
+        }
+
+        .prompt-content::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 5px;
+        }
+
+        .prompt-content::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                <span>🔍</span>
+                CheckEasy - Logs Viewer
+            </h1>
+            <div class="status-badge disconnected" id="connectionStatus">
+                <span id="statusDot">●</span>
+                <span id="statusText">Déconnecté</span>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <!-- Sidebar avec liste des requêtes -->
+            <div class="sidebar">
+                <h2>📋 Requêtes Actives</h2>
+                <div id="requestsList">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <p>Aucune requête en cours</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Canvas principal avec workflow -->
+            <div class="canvas-area">
+                <div class="workflow-canvas" id="workflowCanvas">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🎯</div>
+                        <h3>Sélectionnez une requête</h3>
+                        <p>Cliquez sur une requête dans la liste pour voir son workflow</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal pour afficher les logs détaillés -->
+    <div class="modal" id="logsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="modalTitle">Logs Détaillés</h2>
+                <button class="close-btn" onclick="closeModal()">×</button>
+            </div>
+            <div id="modalLogs"></div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration Polling HTTP (compatible Railway)
+        const API_URL = `${window.location.protocol}//${window.location.host}/api/logs`;
+        let requests = {};
+        let currentRequestId = null;
+        let pollingInterval = null;
+        const POLLING_DELAY = 1000; // 1 seconde
+        let lastUpdate = {};
+
+        // Icônes pour les différents types d'étapes
+        const STEP_ICONS = {
+            'classification': '🏷️',
+            'analyze': '🔍',
+            'etapes': '✅',
+            'synthesis': '📊',
+            'default': '⚙️'
+        };
+
+        // Polling HTTP pour récupérer les logs (compatible Railway)
+        async function startPolling() {
+            console.log(`🔄 Démarrage du polling HTTP vers ${API_URL}`);
+            updateConnectionStatus(true);
+
+            // Faire un premier appel pour vérifier la connexion
+            try {
+                const debugResponse = await fetch(`${API_URL}-debug`);
+                const debugData = await debugResponse.json();
+                console.log(`📊 État du système:`, debugData);
+            } catch (e) {
+                console.warn('⚠️ Endpoint debug non disponible');
+            }
+
+            pollingInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(API_URL);
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                    const data = await response.json();
+
+                    if (data.status === 'ok') {
+                        console.log(`📨 Polling: ${data.count} requêtes (${data.active_count} actives, ${data.completed_count} complétées)`);
+
+                        // Traiter les requêtes reçues
+                        data.requests.forEach(req => {
+                            if (!requests[req.request_id] || JSON.stringify(requests[req.request_id]) !== JSON.stringify(req)) {
+                                requests[req.request_id] = req;
+                                handleRequestUpdate(req);
+                            }
+                        });
+
+                        renderRequestsList();
+                        if (currentRequestId && requests[currentRequestId]) {
+                            renderWorkflow(currentRequestId);
+                        }
+                    }
+                } catch (error) {
+                    console.error('❌ Erreur polling:', error);
+                    updateConnectionStatus(false);
+                }
+            }, POLLING_DELAY);
+        }
+
+        function stopPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+                console.log('⏹️ Polling arrêté');
+                updateConnectionStatus(false);
+            }
+        }
+
+        // Mise à jour du statut de connexion
+        function updateConnectionStatus(connected) {
+            const statusBadge = document.getElementById('connectionStatus');
+            const statusText = document.getElementById('statusText');
+
+            if (connected) {
+                statusBadge.classList.remove('disconnected');
+                statusBadge.classList.add('connected');
+                statusText.textContent = '🟢 Connecté';
+                console.log(`✅ Statut: Connecté à ${API_URL}`);
+            } else {
+                statusBadge.classList.remove('connected');
+                statusBadge.classList.add('disconnected');
+                statusText.textContent = '🔴 Déconnecté';
+                console.log(`❌ Statut: Déconnecté de ${API_URL}`);
+            }
+        }
+
+        // Gestion des mises à jour de requêtes (polling)
+        function handleRequestUpdate(request) {
+            console.log('📨 Mise à jour requête:', request.request_id);
+
+            // Mettre à jour la liste des requêtes
+            if (currentRequestId === request.request_id) {
+                renderWorkflow(request.request_id);
+            }
+        }
+
+        // Rendu de la liste des requêtes
+        function renderRequestsList() {
+            const container = document.getElementById('requestsList');
+            const requestsArray = Object.values(requests).sort((a, b) =>
+                new Date(b.start_time) - new Date(a.start_time)
+            );
+
+            if (requestsArray.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <p>Aucune requête en cours</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = requestsArray.map(req => `
+                <div class="request-card ${req.status} ${currentRequestId === req.request_id ? 'active' : ''}"
+                     onclick="selectRequest('${req.request_id}')">
+                    <div class="request-header">
+                        <div class="request-endpoint">${req.endpoint}</div>
+                    </div>
+                    <div class="request-id">${req.request_id.substring(0, 8)}...</div>
+                    <div class="request-time">${formatTime(req.start_time)}</div>
+                </div>
+            `).join('');
+        }
+
+        // Sélection d'une requête
+        function selectRequest(requestId) {
+            currentRequestId = requestId;
+            renderRequestsList();
+            renderWorkflow(requestId);
+        }
+
+        // Rendu du workflow
+        function renderWorkflow(requestId) {
+            const request = requests[requestId];
+            if (!request) return;
+
+            const canvas = document.getElementById('workflowCanvas');
+
+            if (!request.steps || request.steps.length === 0) {
+                canvas.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⏳</div>
+                        <h3>Workflow en cours d'initialisation...</h3>
+                        <p>Les étapes apparaîtront ici au fur et à mesure</p>
+                    </div>
+                `;
+                return;
+            }
+
+            canvas.innerHTML = request.steps.map(step => {
+                const icon = STEP_ICONS[step.type] || STEP_ICONS.default;
+                const duration = step.end_time ?
+                    calculateDuration(step.start_time, step.end_time) :
+                    'En cours...';
+
+                const logsPreview = step.logs.slice(-3).map(log =>
+                    `<div>${log.message}</div>`
+                ).join('');
+
+                return `
+                    <div class="step-card ${step.status}" onclick="showStepLogs('${requestId}', '${step.step_id}')">
+                        <div class="step-header">
+                            <div class="step-title">
+                                <span>${icon}</span>
+                                <span>${step.name}</span>
+                            </div>
+                            <div class="step-status">${translateStatus(step.status)}</div>
+                        </div>
+                        <div class="step-meta">
+                            <span>⏱️ ${duration}</span>
+                            <span>📝 ${step.logs.length} logs</span>
+                        </div>
+                        ${logsPreview ? `
+                            <div class="logs-preview">
+                                ${logsPreview}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Afficher les logs d'une étape dans la modal
+        function showStepLogs(requestId, stepId) {
+            const request = requests[requestId];
+            if (!request) return;
+
+            const step = request.steps.find(s => s.step_id === stepId);
+            if (!step) return;
+
+            const modal = document.getElementById('logsModal');
+            const modalTitle = document.getElementById('modalTitle');
+            const modalLogs = document.getElementById('modalLogs');
+
+            const icon = STEP_ICONS[step.type] || STEP_ICONS.default;
+            modalTitle.textContent = `${icon} ${step.name} - Logs Détaillés`;
+
+            // Chercher un log avec un prompt complet
+            const promptLog = step.logs.find(log => log.metadata && log.metadata.prompt_content);
+
+            let content = '';
+
+            // Si un prompt existe, l'afficher en premier
+            if (promptLog) {
+                const metadata = promptLog.metadata;
+                content += `
+                    <div class="prompt-section">
+                        <h3>📋 Prompt Système Complet</h3>
+                        <div class="prompt-info">
+                            <span>📏 Longueur: ${metadata.prompt_length} caractères</span>
+                            <span>📄 Lignes: ${metadata.prompt_lines}</span>
+                            <span>🏠 Pièce: ${metadata.piece_name}</span>
+                        </div>
+                        <pre class="prompt-content">${escapeHtml(metadata.prompt_content)}</pre>
+                    </div>
+                    <hr style="margin: 20px 0; border: 1px solid #e0e0e0;">
+                `;
+            }
+
+            if (step.logs.length === 0) {
+                content += `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📝</div>
+                        <p>Aucun log pour cette étape</p>
+                    </div>
+                `;
+            } else {
+                content += '<h3>📝 Logs</h3>';
+
+                // Séparer les prompts, réponses et autres logs
+                const prompts = step.logs.filter(log => log.level === 'PROMPT');
+                const responses = step.logs.filter(log => log.level === 'RESPONSE');
+                const otherLogs = step.logs.filter(log => log.level !== 'PROMPT' && log.level !== 'RESPONSE');
+
+                // Afficher les prompts
+                if (prompts.length > 0) {
+                    content += '<h4 style="color: #667eea; margin-top: 15px;">📝 Prompts Envoyés</h4>';
+                    prompts.forEach(log => {
+                        const metadata = log.metadata || {};
+                        content += `
+                            <div class="log-entry PROMPT" style="background: #f0f4ff; border-left: 4px solid #667eea;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                    <span class="log-timestamp">${formatTime(log.timestamp)}</span>
+                                    <span style="color: #667eea; font-weight: bold;">${metadata.prompt_type || 'Prompt'}</span>
+                                </div>
+                                <span class="log-message">${escapeHtml(log.message)}</span>
+                                ${metadata.prompt_preview ? `
+                                    <div style="margin-top: 8px; padding: 8px; background: white; border-radius: 4px; font-family: monospace; font-size: 12px; max-height: 200px; overflow-y: auto;">
+                                        <strong>Aperçu:</strong><br>
+                                        ${escapeHtml(metadata.prompt_preview)}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    });
+                }
+
+                // Afficher les réponses
+                if (responses.length > 0) {
+                    content += '<h4 style="color: #10b981; margin-top: 15px;">🤖 Réponses IA</h4>';
+                    responses.forEach(log => {
+                        const metadata = log.metadata || {};
+                        content += `
+                            <div class="log-entry RESPONSE" style="background: #f0fdf4; border-left: 4px solid #10b981;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                    <span class="log-timestamp">${formatTime(log.timestamp)}</span>
+                                    <span style="color: #10b981; font-weight: bold;">${metadata.response_type || 'Response'}</span>
+                                </div>
+                                <span class="log-message">${escapeHtml(log.message)}</span>
+                                ${metadata.tokens_used ? `
+                                    <div style="margin-top: 8px; font-size: 12px; color: #666;">
+                                        🔢 Tokens: ${metadata.tokens_used.prompt_tokens || 0} (prompt) + ${metadata.tokens_used.completion_tokens || 0} (completion) = ${metadata.tokens_used.total_tokens || 0} (total)
+                                    </div>
+                                ` : ''}
+                                ${metadata.response_preview ? `
+                                    <div style="margin-top: 8px; padding: 8px; background: white; border-radius: 4px; font-family: monospace; font-size: 12px; max-height: 200px; overflow-y: auto;">
+                                        <strong>Aperçu:</strong><br>
+                                        ${escapeHtml(metadata.response_preview)}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    });
+                }
+
+                // Afficher les autres logs
+                if (otherLogs.length > 0) {
+                    content += '<h4 style="margin-top: 15px;">📋 Autres Logs</h4>';
+                    content += otherLogs.map(log => `
+                        <div class="log-entry ${log.level}">
+                            <span class="log-timestamp">${formatTime(log.timestamp)}</span>
+                            <span class="log-message">${escapeHtml(log.message)}</span>
+                        </div>
+                    `).join('');
+                }
+            }
+
+            modalLogs.innerHTML = content;
+            modal.classList.add('active');
+        }
+
+        // Fermer la modal
+        function closeModal() {
+            document.getElementById('logsModal').classList.remove('active');
+        }
+
+        // Utilitaires
+        function formatTime(isoString) {
+            const date = new Date(isoString);
+            return date.toLocaleTimeString('fr-FR');
+        }
+
+        function calculateDuration(start, end) {
+            const duration = new Date(end) - new Date(start);
+            if (duration < 1000) return `${duration}ms`;
+            return `${(duration / 1000).toFixed(2)}s`;
+        }
+
+        function translateStatus(status) {
+            const translations = {
+                'running': '⏳ En cours',
+                'success': '✅ Terminé',
+                'error': '❌ Erreur',
+                'in_progress': '⏳ En cours'
+            };
+            return translations[status] || status;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Fermer la modal en cliquant en dehors
+        document.getElementById('logsModal').addEventListener('click', (e) => {
+            if (e.target.id === 'logsModal') {
+                closeModal();
+            }
+        });
+
+        // Initialisation
+        startPolling();
+    </script>
+</body>
+
+</html>

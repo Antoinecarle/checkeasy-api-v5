@@ -327,6 +327,13 @@
                             <option value="Ménage">🧹 Ménage</option>
                         </select>
                     </div>
+                    <button class="btn btn-secondary" onclick="exportJson()">
+                        📥 Exporter JSON
+                    </button>
+                    <button class="btn btn-secondary" onclick="triggerImport()">
+                        📤 Importer JSON
+                    </button>
+                    <input type="file" id="importFile" accept=".json" style="display: none;" onchange="importJson(event)">
                     <button class="btn btn-danger" onclick="resetToDefaults()">
                         🔄 Réinitialiser
                     </button>
@@ -522,6 +529,74 @@
         }
 
 
+
+        function exportJson() {
+            try {
+                const dataStr = JSON.stringify(config, null, 2);
+                const dataBlob = new Blob([dataStr], { type: 'application/json' });
+
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(dataBlob);
+                const typeSuffix = currentParcoursType.toLowerCase() === 'ménage' ? 'menage' : 'voyageur';
+                link.download = `scoring-config-${typeSuffix}-${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                showAlert('success');
+                console.log(`Configuration ${currentParcoursType} exportée avec succès`);
+            } catch (error) {
+                console.error('Erreur lors de l\'export:', error);
+                showAlert('error');
+            }
+        }
+
+        function triggerImport() {
+            document.getElementById('importFile').click();
+        }
+
+        async function importJson(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            try {
+                const text = await file.text();
+                const importedData = JSON.parse(text);
+
+                // Validation basique de la structure
+                if (!importedData.scoring_system) {
+                    alert('❌ Format de fichier invalide : la structure "scoring_system" est manquante.');
+                    return;
+                }
+
+                // Validation des sections requises
+                const requiredSections = ['severity_base_score', 'category_multiplier', 'room_importance_weight', 'grade_thresholds'];
+                for (const section of requiredSections) {
+                    if (!importedData.scoring_system[section]) {
+                        alert(`❌ Format de fichier invalide : la section "${section}" est manquante.`);
+                        return;
+                    }
+                }
+
+                // Confirmer l'import
+                if (confirm(`Voulez-vous importer cette configuration pour le type "${currentParcoursType}" ?\n\nCela remplacera la configuration actuelle.\n\nPensez à sauvegarder après l'import pour persister les changements.`)) {
+                    // Remplacer la configuration
+                    config = importedData;
+
+                    // Recharger l'interface
+                    loadConfig();
+
+                    alert('✅ Configuration importée avec succès !\n\n⚠️ N\'oubliez pas de cliquer sur "Sauvegarder" pour persister les changements.');
+                    console.log('Configuration importée:', importedData);
+                }
+            } catch (error) {
+                console.error('Erreur lors de l\'import:', error);
+                alert('❌ Erreur lors de l\'import: ' + error.message);
+            }
+
+            // Reset le file input
+            event.target.value = '';
+        }
 
         async function resetToDefaults() {
             if (confirm('Êtes-vous sûr de vouloir réinitialiser tous les paramètres aux valeurs par défaut ?')) {

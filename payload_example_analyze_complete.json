@@ -1,0 +1,143 @@
+{
+  "logement_id": "1746548810037x386469807784722400",
+  "rapport_id": "1763022346287x500550419617962900",
+  "type": "Voyageur",
+  "logement_adresse": "15 Rue de la Paix, 75002 Paris",
+  "date_debut": "30/07/25",
+  "date_fin": "06/08/25",
+  "operateur_nom": "Marie Dupont",
+  "etat_lieux_moment": "sortie",
+  "voyageur_nom": "Jean Martin",
+  "voyageur_email": "jean.martin@email.com",
+  "voyageur_telephone": "+33 6 12 34 56 78",
+  "heure_checkin_debut": "09:30",
+  "heure_checkin_fin": "09:45",
+  "heure_checkout_debut": "10:00",
+  "heure_checkout_fin": "10:30",
+  "signalements_utilisateur": [
+    {
+      "id": "signal_001",
+      "piece_id": "piece_salon",
+      "titre": "Robinet qui fuit légèrement",
+      "description": "Le robinet de la cuisine présente une fuite légère au niveau du joint.",
+      "severite": "moyenne",
+      "photo": "https://example.com/photo.jpg",
+      "date_signalement": "2025-11-17T10:15:00"
+    }
+  ],
+  "checklist_finale": [
+    {
+      "id": "check_001",
+      "text": "Toutes les clés ont été restituées",
+      "completed": true,
+      "icon": "🔑",
+      "photo": null
+    },
+    {
+      "id": "check_002",
+      "text": "Les poubelles ont été vidées",
+      "completed": true,
+      "icon": "🗑️",
+      "photo": "https://example.com/poubelles.jpg"
+    }
+  ],
+  "pieces": [
+    {
+      "piece_id": "piece_salon",
+      "nom": "salon",
+      "commentaire_ia": "",
+      "photos_reference": [
+        "https://example.com/salon_ref1.jpg",
+        "https://example.com/salon_ref2.jpg"
+      ],
+      "check_entree_conforme": true,
+      "check_entree_date_validation": "2025-07-30T09:35:00",
+      "check_entree_photos_reprises": [],
+      "check_sortie_valide": true,
+      "check_sortie_photos_non_conformes": [],
+      "checkin_pictures": [
+        {
+          "piece_id": "piece_salon",
+          "url": "https://example.com/salon_checkin.jpg"
+        }
+      ],
+      "checkout_pictures": [
+        {
+          "piece_id": "piece_salon",
+          "url": "https://example.com/salon_checkout.jpg"
+        }
+      ],
+      "etapes": [
+        {
+          "etape_id": "etape_001",
+          "task_name": "Vérifier la propreté générale",
+          "consigne": "Vérifier que le salon est propre",
+          "checking_picture": "https://example.com/salon_checkin.jpg",
+          "checkout_picture": "https://example.com/salon_checkout.jpg",
+          "tache_approuvee": true,
+          "tache_date_validation": "2025-08-06T10:20:00",
+          "tache_commentaire": "Parfait, rien à signaler"
+        },
+        {
+          "etape_id": "etape_002",
+          "task_name": "Vérifier les meubles",
+          "consigne": "Vérifier l'état des meubles",
+          "checking_picture": "https://example.com/meubles_checkin.jpg",
+          "checkout_picture": "https://example.com/meubles_checkout.jpg",
+          "tache_approuvee": false,
+          "tache_date_validation": "2025-08-06T10:22:00",
+          "tache_commentaire": "Petite rayure sur la table basse"
+        }
+      ]
+    },
+    {
+      "piece_id": "piece_cuisine",
+      "nom": "cuisine",
+      "commentaire_ia": "",
+      "photos_reference": [
+        "https://example.com/cuisine_ref.jpg"
+      ],
+      "check_entree_conforme": true,
+      "check_entree_date_validation": "2025-07-30T09:40:00",
+      "check_entree_photos_reprises": [],
+      "check_sortie_valide": false,
+      "check_sortie_photos_non_conformes": [
+        "https://example.com/cuisine_probleme.jpg"
+      ],
+      "checkin_pictures": [
+        {
+          "piece_id": "piece_cuisine",
+          "url": "https://example.com/cuisine_checkin.jpg"
+        }
+      ],
+      "checkout_pictures": [
+        {
+          "piece_id": "piece_cuisine",
+          "url": "https://example.com/cuisine_checkout.jpg"
+        }
+      ],
+      "etapes": [
+        {
+          "etape_id": "etape_003",
+          "task_name": "Vérifier la propreté",
+          "consigne": "Vérifier que la cuisine est propre",
+          "checking_picture": "https://example.com/cuisine_checkin.jpg",
+          "checkout_picture": "https://example.com/cuisine_checkout.jpg",
+          "tache_approuvee": true,
+          "tache_date_validation": "2025-08-06T10:25:00",
+          "tache_commentaire": null
+        },
+        {
+          "etape_id": "etape_004",
+          "task_name": "Vérifier les équipements",
+          "consigne": "Vérifier l'état des équipements",
+          "checking_picture": "https://example.com/equipements_checkin.jpg",
+          "checkout_picture": "https://example.com/equipements_checkout.jpg",
+          "tache_approuvee": false,
+          "tache_date_validation": "2025-08-06T10:27:00",
+          "tache_commentaire": "Robinet qui fuit - signalement créé"
+        }
+      ]
+    }
+  ]
+}

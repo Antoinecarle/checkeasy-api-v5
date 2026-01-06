@@ -138,20 +138,19 @@
           "Couleur des cousins",
           "état d'éclairage (lumière allumée ou éteinte)",
           "état d'éclairage des lampes ou guirlandes (allumées, éteintes, mode clignotant)",
-          "torchon / torchons",
           "Couleur des coussins",
           "position exacte des coussins",
-          "organisation de la table basse",
           "alignement des cadres (sauf si très de traviole)"
         ],
         "defauts_frequents": [
-          "coussin de valeur manquant",
-          "déchirure importante assise",
-          "tache importante table/Tapis",
+          "coussin manquant",
+          "déchirure assise",
+          "tache table/Tapis",
           "Télécommande manquante",
-          "élément de décoration de valeur manquant",
+          "élément de décoration  manquant",
           "Meuble cassé ou très déplacé",
-          "TV ou équipement cassé"
+          "TV ou équipement cassé",
+          "Objets manquant"
         ]
       }
     },

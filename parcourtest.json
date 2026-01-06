@@ -1,0 +1,142 @@
+{
+    "logement_id": "1764837527748x152181246754292680",
+    "logementName": "Malmousque",
+    "adresseLogement": "6 Rue de Malville, 44100 Nantes, France",
+    "operatorFirstName": "Carle",
+    "operatorLastName": "Antoine",
+    "operatorPhone": "+33788312962",
+    "rapport_id": "1764839588541x760892305074201000",
+    "type": "Ménage",
+    "pieces": [
+        {
+            "piece_id": "1764837530709x773465483369084500",
+            "nom": "Cuisine",
+            "commentaire_ia": "",
+            "checkin_pictures": [
+                {
+                    "piece_id": "1764837530709x773465483369084500",
+                    "url": "//eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1764837542273x474604255655191300/File.jpeg"
+                },
+                {
+                    "piece_id": "1764837530709x773465483369084500",
+                    "url": "//eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1764837542263x402586852176644030/File.jpeg"
+                },
+                {
+                    "piece_id": "1764837530709x773465483369084500",
+                    "url": "//eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1764837542659x653710954806956400/File.jpeg"
+                }
+            ],
+            "checkout_pictures": [
+                {
+                    "piece_id": "1764837530709x773465483369084500",
+                    "url": "https://eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1764839667684x140608802888916980/File.jpg"
+                },
+                {
+                    "piece_id": "1764837530709x773465483369084500",
+                    "url": "https://eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1764839668320x480166499419543360/File.jpg"
+                },
+                {
+                    "piece_id": "1764837530709x773465483369084500",
+                    "url": "https://eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1764839670869x817814795689619800/File.jpg"
+                }
+            ],
+            "etapes": [
+                {
+                    "etape_id": "1764837541532x180783986629851080",
+                    "task_name": "Vider les poubelles",
+                    "consigne": "Remplacer sac ; nettoyer couvercle & bac.",
+                    "checking_picture": "",
+                    "checkout_picture": "https://eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1764839614182x385788440763572100/File.jpg"
+                },
+                {
+                    "etape_id": "1764837543250x706922692606176600",
+                    "task_name": "Nettoyer évier",
+                    "consigne": "Dégraisser ; faire briller robinetterie.",
+                    "checking_picture": "",
+                    "checkout_picture": ""
+                },
+                {
+                    "etape_id": "1764837545134x328234198077224500",
+                    "task_name": "Nettoyer extérieur frigo",
+                    "consigne": "Essuyer portes ; nettoyer poignées.",
+                    "checking_picture": "",
+                    "checkout_picture": ""
+                },
+                {
+                    "etape_id": "1764837544248x690299265443528300",
+                    "task_name": "Nettoyer plaques de cuisson",
+                    "consigne": "Dégraisser ; enlever résidus brûlés.",
+                    "checking_picture": "",
+                    "checkout_picture": "https://eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1764840808329x956160251199223800/File.jpeg"
+                }
+            ]
+        },
+        {
+            "piece_id": "1764837532906x839439827298651600",
+            "nom": "Salle de bain (sans toilettes)",
+            "commentaire_ia": "",
+            "checkin_pictures": [
+                {
+                    "piece_id": "1764837532906x839439827298651600",
+                    "url": "https://eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1764837569926x842777200597901000/image.jpg"
+                },
+                {
+                    "piece_id": "1764837532906x839439827298651600",
+                    "url": "https://eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1764837580407x935724866449454500/image.jpg"
+                }
+            ],
+            "checkout_pictures": [
+                {
+                    "piece_id": "1764837532906x839439827298651600",
+                    "url": "https://eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1764839709096x527779156805384000/File.jpg"
+                },
+                {
+                    "piece_id": "1764837532906x839439827298651600",
+                    "url": "https://eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1764839710329x620928831478795800/File.jpg"
+                }
+            ],
+            "etapes": [
+                {
+                    "etape_id": "1764837543451x556599247056173800",
+                    "task_name": "Nettoyer douche/baignoire",
+                    "consigne": "Parois ; robinetterie ; évacuation.",
+                    "checking_picture": "",
+                    "checkout_picture": "https://eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1764839682299x794595589376194400/File.jpg"
+                },
+                {
+                    "etape_id": "1764837545248x910141392888912000",
+                    "task_name": "Laver le sol",
+                    "consigne": "Aspirer puis serpillière.",
+                    "checking_picture": "",
+                    "checkout_picture": ""
+                }
+            ]
+        },
+        {
+            "piece_id": "1764837533361x605619748029526300",
+            "nom": "Chambre",
+            "commentaire_ia": "",
+            "checkin_pictures": [
+                {
+                    "piece_id": "1764837533361x605619748029526300",
+                    "url": "https://eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1764837626822x287589444190708540/image.jpg"
+                }
+            ],
+            "checkout_pictures": [
+                {
+                    "piece_id": "1764837533361x605619748029526300",
+                    "url": "https://eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1764839738658x717050503667807600/File.jpg"
+                }
+            ],
+            "etapes": [
+                {
+                    "etape_id": "1764837544609x206142731270368540",
+                    "task_name": "Aspirer le sol",
+                    "consigne": "Sous le lit ; coins de la pièce.",
+                    "checking_picture": "",
+                    "checkout_picture": "https://eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1764839730861x688918902998918700/File.jpg"
+                }
+            ]
+        }
+    ]
+}

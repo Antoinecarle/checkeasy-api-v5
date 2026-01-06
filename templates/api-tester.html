@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CheckEasy API Tester</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/api-tester.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="fas fa-check-circle"></i>
+                <span>CheckEasy Tester</span>
+            </div>
+            <nav class="nav-menu">
+                <button class="nav-item active" data-tab="complete">
+                    <i class="fas fa-layer-group"></i>
+                    <span>Analyse Complète</span>
+                </button>
+                <button class="nav-item" data-tab="classify">
+                    <i class="fas fa-tags"></i>
+                    <span>Classification</span>
+                </button>
+                <button class="nav-item" data-tab="analyze">
+                    <i class="fas fa-search"></i>
+                    <span>Analyse Pièce</span>
+                </button>
+                <button class="nav-item" data-tab="etapes">
+                    <i class="fas fa-tasks"></i>
+                    <span>Test Étapes</span>
+                </button>
+                <button class="nav-item" data-tab="history">
+                    <i class="fas fa-history"></i>
+                    <span>Historique</span>
+                </button>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="api-status" id="apiStatus">
+                    <span class="status-dot"></span>
+                    <span>Vérification...</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <h1 id="pageTitle">Analyse Complète</h1>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" id="loadParcourTest">
+                        <i class="fas fa-file-import"></i> Charger parcourtest.json
+                    </button>
+                    <button class="btn btn-secondary" id="clearAll">
+                        <i class="fas fa-trash"></i> Effacer
+                    </button>
+                </div>
+            </header>
+
+            <!-- Tab: Analyse Complète -->
+            <section class="tab-content active" id="tab-complete">
+                <div class="panel-container">
+                    <!-- Left Panel: Request -->
+                    <div class="panel request-panel">
+                        <div class="panel-header">
+                            <h3><i class="fas fa-paper-plane"></i> Requête</h3>
+                            <div class="panel-actions">
+                                <select id="pieceSelector" class="select-piece">
+                                    <option value="all">Toutes les pièces</option>
+                                </select>
+                                <button class="btn btn-primary" id="sendComplete">
+                                    <i class="fas fa-play"></i> Envoyer
+                                </button>
+                            </div>
+                        </div>
+                        <div class="editor-container">
+                            <div class="editor-toolbar">
+                                <button class="tool-btn" id="formatJson" title="Formater JSON">
+                                    <i class="fas fa-align-left"></i>
+                                </button>
+                                <button class="tool-btn" id="validateJson" title="Valider JSON">
+                                    <i class="fas fa-check"></i>
+                                </button>
+                                <button class="tool-btn" id="copyRequest" title="Copier">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                            <textarea id="requestEditor" class="json-editor"
+                                placeholder="Collez votre JSON ici..."></textarea>
+                            <div class="json-error" id="jsonError"></div>
+                        </div>
+                    </div>
+
+                    <!-- Right Panel: Response -->
+                    <div class="panel response-panel">
+                        <div class="panel-header">
+                            <h3><i class="fas fa-reply"></i> Réponse</h3>
+                            <div class="response-meta" id="responseMeta">
+                                <span class="status-badge" id="httpStatus">--</span>
+                                <span class="response-time" id="responseTime">-- ms</span>
+                                <button class="btn btn-visual disabled" id="btnShowVisual" disabled>
+                                    <i class="fas fa-chart-bar"></i> Visualiser
+                                </button>
+                            </div>
+                        </div>
+                        <div class="response-container">
+                            <div class="loading-overlay" id="loadingOverlay">
+                                <div class="spinner"></div>
+                                <p>Analyse en cours...</p>
+                                <p class="loading-detail" id="loadingDetail"></p>
+                            </div>
+                            <pre id="responseViewer" class="json-viewer"></pre>
+                        </div>
+                        <div class="panel-footer">
+                            <button class="btn btn-secondary" id="copyResponse">
+                                <i class="fas fa-copy"></i> Copier
+                            </button>
+                            <button class="btn btn-secondary" id="exportResponse">
+                                <i class="fas fa-download"></i> Exporter
+                            </button>
+                            <button class="btn btn-secondary" id="saveToHistory">
+                                <i class="fas fa-save"></i> Sauvegarder
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results Visualization -->
+                <div class="results-visualization" id="resultsVisualization" style="display: none;">
+                    <div class="results-header">
+                        <button class="btn-back-json" id="btnBackToJson">
+                            <i class="fas fa-arrow-left"></i> Retour JSON
+                        </button>
+                        <h3><i class="fas fa-chart-bar"></i> Visualisation des Résultats</h3>
+                        <div class="results-toggle">
+                            <span class="status-badge success" id="vizStatus">Données chargées</span>
+                        </div>
+                    </div>
+
+                    <!-- Global Score Card -->
+                    <div class="score-card" id="globalScoreCard">
+                        <div class="score-circle">
+                            <span class="score-value" id="globalScoreValue">--</span>
+                            <span class="score-label" id="globalScoreLabel">--</span>
+                        </div>
+                        <div class="score-info">
+                            <h4 id="globalScoreDesc">--</h4>
+                            <p id="totalIssues">-- issues détectées</p>
+                        </div>
+                    </div>
+
+                    <!-- Pieces Cards -->
+                    <div class="pieces-grid" id="piecesGrid"></div>
+                </div>
+
+                <!-- Logs Panel -->
+                <div class="logs-panel collapsed" id="logsPanel">
+                    <div class="logs-header" id="logsToggle">
+                        <h4><i class="fas fa-terminal"></i> Logs</h4>
+                        <i class="fas fa-chevron-up toggle-icon"></i>
+                    </div>
+                    <div class="logs-content" id="logsContent"></div>
+                </div>
+            </section>
+
+            <!-- Tab: Classification -->
+            <section class="tab-content" id="tab-classify">
+                <div class="endpoint-tester">
+                    <div class="endpoint-info">
+                        <span class="method post">POST</span>
+                        <span class="endpoint-path">/classify-room</span>
+                    </div>
+                    <div class="piece-quick-select">
+                        <label>Extraire une pièce :</label>
+                        <select id="classifyPieceSelect">
+                            <option value="">-- Sélectionner --</option>
+                        </select>
+                        <button class="btn btn-secondary" id="extractForClassify"><i class="fas fa-magic"></i>
+                            Extraire</button>
+                    </div>
+                    <div class="panel-container">
+                        <div class="panel request-panel">
+                            <div class="panel-header">
+                                <h3><i class="fas fa-paper-plane"></i> Requête</h3>
+                                <button class="btn btn-primary" id="sendClassify"><i class="fas fa-play"></i>
+                                    Classifier</button>
+                            </div>
+                            <textarea id="classifyEditor" class="json-editor"></textarea>
+                        </div>
+                        <div class="panel response-panel">
+                            <div class="panel-header">
+                                <h3><i class="fas fa-reply"></i> Réponse</h3>
+                                <div class="response-meta" id="classifyMeta"></div>
+                            </div>
+                            <pre id="classifyResponse" class="json-viewer"></pre>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab: Analyse Pièce -->
+            <section class="tab-content" id="tab-analyze">
+                <div class="endpoint-tester">
+                    <div class="endpoint-info">
+                        <span class="method post">POST</span>
+                        <span class="endpoint-path">/analyze-with-classification</span>
+                    </div>
+                    <div class="piece-quick-select">
+                        <label>Extraire une pièce :</label>
+                        <select id="analyzePieceSelect">
+                            <option value="">-- Sélectionner --</option>
+                        </select>
+                        <button class="btn btn-secondary" id="extractForAnalyze"><i class="fas fa-magic"></i>
+                            Extraire</button>
+                    </div>
+                    <div class="panel-container">
+                        <div class="panel request-panel">
+                            <div class="panel-header">
+                                <h3><i class="fas fa-paper-plane"></i> Requête</h3>
+                                <button class="btn btn-primary" id="sendAnalyze"><i class="fas fa-play"></i>
+                                    Analyser</button>
+                            </div>
+                            <textarea id="analyzeEditor" class="json-editor"></textarea>
+                        </div>
+                        <div class="panel response-panel">
+                            <div class="panel-header">
+                                <h3><i class="fas fa-reply"></i> Réponse</h3>
+                                <div class="response-meta" id="analyzeMeta"></div>
+                            </div>
+                            <pre id="analyzeResponse" class="json-viewer"></pre>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab: Test Étapes -->
+            <section class="tab-content" id="tab-etapes">
+                <div class="etapes-tester">
+                    <div class="endpoint-info">
+                        <span class="method post">POST</span>
+                        <span class="endpoint-path">/analyze-etapes</span>
+                    </div>
+
+                    <div class="etapes-form-container">
+                        <div class="form-card">
+                            <h3><i class="fas fa-edit"></i> Configuration de l'étape</h3>
+
+                            <div class="form-row">
+                                <div class="form-field">
+                                    <label for="etapeTaskName">Nom de la tâche *</label>
+                                    <input type="text" id="etapeTaskName" placeholder="Ex: Aspirer le sol"
+                                        value="Aspirer le sol">
+                                </div>
+
+                                <div class="form-field">
+                                    <label for="etapeConsigne">Consigne *</label>
+                                    <input type="text" id="etapeConsigne"
+                                        placeholder="Ex: Sous le lit ; coins de la pièce."
+                                        value="Sous le lit ; coins de la pièce.">
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-field">
+                                    <label for="etapeCheckingPicture">Photo AVANT (optionnel)</label>
+                                    <input type="url" id="etapeCheckingPicture"
+                                        placeholder="https://example.com/avant.jpg">
+                                    <small>Laissez vide si pas de photo avant</small>
+                                </div>
+
+                                <div class="form-field">
+                                    <label for="etapeCheckoutPicture">Photo APRÈS *</label>
+                                    <input type="url" id="etapeCheckoutPicture"
+                                        placeholder="https://example.com/apres.jpg">
+                                </div>
+                            </div>
+
+                            <div class="form-actions">
+                                <button class="btn btn-primary btn-large" id="sendEtapeTest">
+                                    <i class="fas fa-play"></i> Lancer le Test
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Résultats -->
+                        <div class="etapes-results" id="etapesResults" style="display: none;">
+                            <h3><i class="fas fa-chart-bar"></i> Résultats de l'Analyse</h3>
+
+                            <div class="results-stats">
+                                <div class="stat-box">
+                                    <div class="stat-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                                    <div class="stat-content">
+                                        <div class="stat-value" id="etapeIssuesCount">0</div>
+                                        <div class="stat-label">Issues détectées</div>
+                                    </div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-icon"><i class="fas fa-clock"></i></div>
+                                    <div class="stat-content">
+                                        <div class="stat-value" id="etapeResponseTime">-</div>
+                                        <div class="stat-label">Temps de réponse</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="issues-section">
+                                <h4><i class="fas fa-list"></i> Issues Détectées</h4>
+                                <div id="etapeIssuesList" class="issues-grid"></div>
+                            </div>
+
+                            <div class="json-section">
+                                <h4><i class="fas fa-code"></i> Réponse JSON Complète</h4>
+                                <pre id="etapeJsonResponse" class="json-viewer"></pre>
+                            </div>
+                        </div>
+
+                        <!-- Loading -->
+                        <div class="loading-overlay" id="etapesLoading" style="display: none;">
+                            <div class="spinner-large"></div>
+                            <p>Analyse en cours...</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab: Historique -->
+            <section class="tab-content" id="tab-history">
+                <div class="history-container">
+                    <div class="history-header">
+                        <h3><i class="fas fa-history"></i> Historique des tests</h3>
+                        <div class="history-actions">
+                            <button class="btn btn-secondary" id="exportHistory"><i class="fas fa-download"></i>
+                                Exporter tout</button>
+                            <button class="btn btn-danger" id="clearHistory"><i class="fas fa-trash"></i> Vider</button>
+                        </div>
+                    </div>
+                    <div class="history-list" id="historyList"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Compare Modal -->
+    <div class="modal" id="compareModal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3>Comparaison des résultats</h3>
+                <button class="modal-close" id="closeCompare">&times;</button>
+            </div>
+            <div class="compare-container" id="compareContainer"></div>
+        </div>
+    </div>
+
+    <script src="/static/api-tester.js"></script>
+</body>
+
+</html>

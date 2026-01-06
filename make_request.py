@@ -9,7 +9,7 @@ from openai import OpenAI
 import asyncio
 import aiohttp
 import nest_asyncio
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 
 # 🔧 FIX WINDOWS: Forcer SelectorEventLoop pour compatibilité aiodns
 if sys.platform == 'win32':
@@ -31,6 +31,10 @@ from image_converter import (
 from datetime import datetime
 import re
 from tqdm import tqdm
+import uuid
+
+# Import du gestionnaire de logs
+from logs_viewer.logs_manager import logs_manager
 
 # 🚀 CONFIGURATION LOGGING OPTIMISÉE RAILWAY
 class RailwayJSONFormatter(logging.Formatter):
@@ -257,6 +261,7 @@ class Probleme(BaseModel):
     category: Literal["missing_item", "damage", "cleanliness", "positioning", "added_item", "image_quality", "wrong_room"]
     severity: Literal["low", "medium", "high"]
     confidence: int = Field(ge=0, le=100)
+    etape_id: Optional[str] = None  # ID de l'étape si l'issue provient d'une étape
 
 class AnalyseResponse(BaseModel):
     piece_id: str
@@ -497,11 +502,20 @@ ROOM_TEMPLATES = load_room_templates("Voyageur")
 def detect_environment() -> str:
     """
     Détecte l'environnement d'exécution (staging vs production)
-    
+
     Returns:
         str: "staging" ou "production"
     """
-    # Méthode 1: Variable d'environnement explicite
+    # 🔥 PRIORITÉ 1: Variable VERSION (Railway custom - source de vérité)
+    version = os.environ.get('VERSION', '').lower()
+    if version == 'live':
+        logger.info("🚀 Environnement détecté: PRODUCTION (via VERSION=live)")
+        return "production"
+    elif version == 'test':
+        logger.info("🔧 Environnement détecté: STAGING (via VERSION=test)")
+        return "staging"
+
+    # Méthode 2: Variable d'environnement explicite ENVIRONMENT
     env = os.environ.get('ENVIRONMENT', '').lower()
     if env in ['staging', 'stage', 'test']:
         logger.info("🔧 Environnement détecté: STAGING (via ENVIRONMENT)")
@@ -509,14 +523,14 @@ def detect_environment() -> str:
     elif env in ['production', 'prod', 'live']:
         logger.info("🚀 Environnement détecté: PRODUCTION (via ENVIRONMENT)")
         return "production"
-    
-    # Méthode 2: Variable Railway
+
+    # Méthode 3: Variable Railway RAILWAY_ENVIRONMENT
     railway_env = os.environ.get('RAILWAY_ENVIRONMENT', '').lower()
     if railway_env == 'production':
         logger.info("🚀 Environnement détecté: PRODUCTION (via RAILWAY_ENVIRONMENT)")
         return "production"
-    
-    # Méthode 3: URL de l'application
+
+    # Méthode 4: URL de l'application RAILWAY_PUBLIC_DOMAIN
     railway_public_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '')
     if 'staging' in railway_public_domain.lower():
         logger.info("🔧 Environnement détecté: STAGING (via RAILWAY_PUBLIC_DOMAIN)")
@@ -524,13 +538,13 @@ def detect_environment() -> str:
     elif railway_public_domain and 'staging' not in railway_public_domain.lower():
         logger.info("🚀 Environnement détecté: PRODUCTION (via RAILWAY_PUBLIC_DOMAIN)")
         return "production"
-    
-    # Méthode 4: Nom du service Railway
+
+    # Méthode 5: Nom du service Railway RAILWAY_SERVICE_NAME
     railway_service = os.environ.get('RAILWAY_SERVICE_NAME', '').lower()
     if 'staging' in railway_service or 'test' in railway_service:
         logger.info("🔧 Environnement détecté: STAGING (via RAILWAY_SERVICE_NAME)")
         return "staging"
-    
+
     # Par défaut: staging pour la sécurité
     logger.warning("⚠️ Environnement indéterminé, utilisation de STAGING par défaut")
     return "staging"
@@ -567,6 +581,21 @@ def get_webhook_url_individual_report(environment: str) -> str:
         return "https://checkeasy-57905.bubbleapps.io/version-live/api/1.1/wf/individual-report-webhook"
     else:  # staging par défaut
         return "https://checkeasy-57905.bubbleapps.io/version-test/api/1.1/wf/individual-report-webhook"
+
+def get_bubble_debug_endpoint(environment: str) -> str:
+    """
+    Retourne l'URL du endpoint de debug Bubble selon l'environnement
+
+    Args:
+        environment: "staging" ou "production"
+
+    Returns:
+        str: URL du endpoint debug Bubble (iatest)
+    """
+    if environment == "production":
+        return "https://checkeasy-57905.bubbleapps.io/version-live/api/1.1/wf/iatest"
+    else:  # staging par défaut
+        return "https://checkeasy-57905.bubbleapps.io/version-test/api/1.1/wf/iatest"
 
 async def send_webhook(payload: dict, webhook_url: str) -> bool:
     """
@@ -811,7 +840,7 @@ def convert_message_urls_to_data_uris(user_message: dict) -> dict:
         logger.error(f"❌ Erreur lors de la conversion des URLs: {e}")
         return user_message
 
-def analyze_images(input_data: InputData, parcours_type: str = "Voyageur") -> AnalyseResponse:
+def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", request_id: str = None) -> AnalyseResponse:
     """
     Analyser les images d'entrée et de sortie et retourner une réponse structurée.
 
@@ -930,6 +959,20 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur") -> An
         logger.info(f"🔬    ├─ Nombre de lignes: {total_lines}")
         logger.info(f"🔬    └─ Pièce analysée: {input_data.nom}")
         logger.info(f"")
+
+        # 📊 Envoyer les infos de prompt au logs_manager avec le contenu complet
+        if request_id:
+            logs_manager.add_log(
+                request_id=request_id,
+                level="INFO",
+                message=f"📋 Prompt système: {len(dynamic_prompt)} caractères, {total_lines} lignes",
+                metadata={
+                    "prompt_content": dynamic_prompt,
+                    "prompt_length": len(dynamic_prompt),
+                    "prompt_lines": total_lines,
+                    "piece_name": input_data.nom
+                }
+            )
         
         # Identifier et afficher les sections importantes du prompt
         logger.info(f"🔬 🎯 VARIABLES INJECTÉES DANS LE PROMPT:")
@@ -939,8 +982,31 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur") -> An
             logger.info(f"🔬    │   {prefix} • {element}")
         if len(input_data.elements_critiques) > 5:
             logger.info(f"🔬    │       ... et {len(input_data.elements_critiques)-5} autres")
+
+        # 📊 Envoyer les éléments critiques au logs_manager
+        if request_id and input_data.elements_critiques:
+            elements_preview = ", ".join(input_data.elements_critiques[:3])
+            if len(input_data.elements_critiques) > 3:
+                elements_preview += f" (+{len(input_data.elements_critiques)-3} autres)"
+            logs_manager.add_log(
+                request_id=request_id,
+                level="INFO",
+                message=f"🔍 Éléments critiques: {elements_preview}"
+            )
         
         logger.info(f"🔬    ├─ 🚫 Points ignorables: {len(input_data.points_ignorables)} items")
+
+        # 📊 Envoyer les points ignorables au logs_manager
+        if request_id and input_data.points_ignorables:
+            ignorables_preview = ", ".join(input_data.points_ignorables[:3])
+            if len(input_data.points_ignorables) > 3:
+                ignorables_preview += f" (+{len(input_data.points_ignorables)-3} autres)"
+            logs_manager.add_log(
+                request_id=request_id,
+                level="INFO",
+                message=f"🚫 Points ignorables: {ignorables_preview}"
+            )
+
         for i, point in enumerate(input_data.points_ignorables[:3]):  # Limiter à 3
             prefix = "├─" if i < min(2, len(input_data.points_ignorables)-1) else "└─"
             logger.info(f"🔬    │   {prefix} • {point}")
@@ -948,14 +1014,33 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur") -> An
             logger.info(f"🔬    │       ... et {len(input_data.points_ignorables)-3} autres")
         
         logger.info(f"🔬    ├─ ⚠️ Défauts fréquents: {len(input_data.defauts_frequents)} items")
+
+        # 📊 Envoyer les défauts fréquents au logs_manager
+        if request_id and input_data.defauts_frequents:
+            defauts_preview = ", ".join(input_data.defauts_frequents[:3])
+            if len(input_data.defauts_frequents) > 3:
+                defauts_preview += f" (+{len(input_data.defauts_frequents)-3} autres)"
+            logs_manager.add_log(
+                request_id=request_id,
+                level="INFO",
+                message=f"⚠️ Défauts fréquents: {defauts_preview}"
+            )
+
         for i, defaut in enumerate(input_data.defauts_frequents[:3]):  # Limiter à 3
             prefix = "├─" if i < min(2, len(input_data.defauts_frequents)-1) else "└─"
             logger.info(f"🔬    │   {prefix} • {defaut}")
         if len(input_data.defauts_frequents) > 3:
             logger.info(f"🔬    │       ... et {len(input_data.defauts_frequents)-3} autres")
-        
+
         if input_data.commentaire_ia and input_data.commentaire_ia.strip():
             logger.info(f"🔬    └─ 🤖 Instructions spéciales: '{input_data.commentaire_ia}'")
+            # 📊 Envoyer les instructions spéciales au logs_manager
+            if request_id:
+                logs_manager.add_log(
+                    request_id=request_id,
+                    level="INFO",
+                    message=f"🤖 Instructions: {input_data.commentaire_ia[:100]}{'...' if len(input_data.commentaire_ia) > 100 else ''}"
+                )
         else:
             logger.info(f"🔬    └─ 🤖 Instructions spéciales: Aucune")
         logger.info(f"")
@@ -1012,8 +1097,10 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur") -> An
         async def send_payload_to_bubble():
             """Envoyer le payload complet vers Bubble en parallèle"""
             try:
-                bubble_endpoint = "https://checkeasy-57905.bubbleapps.io/version-test/api/1.1/wf/iatest"
-                
+                # Détecter l'environnement et utiliser le bon endpoint
+                current_environment = detect_environment()
+                bubble_endpoint = get_bubble_debug_endpoint(current_environment)
+
                 # Préparer le payload exact envoyé à OpenAI
                 openai_payload = {
                     "model": "gpt-4.1-2025-04-14",
@@ -1082,6 +1169,33 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur") -> An
         
         # Lancer l'envoi vers Bubble en arrière-plan (non bloquant)
         asyncio.create_task(send_payload_to_bubble())
+
+        # 📝 LOG DES PROMPTS POUR LE SYSTÈME DE LOGS
+        if request_id:
+            logs_manager.add_prompt_log(
+                request_id=request_id,
+                prompt_type="System",
+                prompt_content=dynamic_prompt,
+                model="gpt-5.1-2025-11-13"
+            )
+
+            # Log du message utilisateur (contient les images)
+            user_message_text = ""
+            if isinstance(user_message.get("content"), list):
+                for content_item in user_message["content"]:
+                    if content_item.get("type") == "text":
+                        user_message_text += content_item.get("text", "")
+                    elif content_item.get("type") == "image_url":
+                        user_message_text += f"[IMAGE: {content_item['image_url'].get('url', 'N/A')[:100]}...]"
+            else:
+                user_message_text = str(user_message.get("content", ""))
+
+            logs_manager.add_prompt_log(
+                request_id=request_id,
+                prompt_type="User",
+                prompt_content=user_message_text,
+                model="gpt-5.1-2025-11-13"
+            )
 
         # Faire l'appel API avec response_format et gestion d'erreurs robuste
         try:
@@ -1256,7 +1370,21 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur") -> An
         try:
             response_content = response.choices[0].message.content.strip()
             logger.info(f"📄 Réponse IA reçue: {len(response_content)} caractères")
-            
+
+            # 📝 LOG DE LA RÉPONSE POUR LE SYSTÈME DE LOGS
+            if request_id:
+                logs_manager.add_response_log(
+                    request_id=request_id,
+                    response_type="Analysis",
+                    response_content=response_content,
+                    model="gpt-5.1-2025-11-13",
+                    tokens_used={
+                        "prompt_tokens": response.usage.prompt_tokens if hasattr(response, 'usage') else 0,
+                        "completion_tokens": response.usage.completion_tokens if hasattr(response, 'usage') else 0,
+                        "total_tokens": response.usage.total_tokens if hasattr(response, 'usage') else 0
+                    }
+                )
+
             # Tenter de parser le JSON
             try:
                 response_json = json.loads(response_content)
@@ -2332,16 +2460,16 @@ async def verify_inventory_endpoint(input_data: VerifyInventoryInput):
 async def analyze_room(input_data: InputData):
     """
     Endpoint pour analyser les photos d'une pièce avec critères personnalisés.
-    
+
     Cette API analyse les différences entre les photos d'entrée et de sortie d'une pièce
     en tenant compte de critères spécifiques définis pour optimiser le processus de nettoyage.
-    
+
     **Paramètres principaux :**
     - `piece_id` : Identifiant unique de la pièce
     - `nom` : Nom/type de la pièce (ex: "Cuisine", "Chambre")
     - `checkin_pictures` : Photos de la pièce avant nettoyage
     - `checkout_pictures` : Photos de la pièce après nettoyage
-    
+
     **Paramètres d'optimisation :**
     - `commentaire_ia` : Instructions spéciales prioritaires (ex: "ne pas remonter les miettes sur la table")
     - `elements_critiques` : Liste des éléments à vérifier en priorité (ex: ["Murs (trous, impacts)", "Prises électriques"])
@@ -2372,12 +2500,97 @@ async def analyze_room(input_data: InputData):
     - Recherche activement les défauts fréquents
     - Respecte absolument les instructions du commentaire_ia
     """
+    # 🔍 TRACKING DES LOGS EN TEMPS RÉEL
+    request_id = str(uuid.uuid4())
+    logs_manager.start_request(
+        request_id=request_id,
+        endpoint="/analyze",
+        data={"piece_id": input_data.piece_id, "nom": input_data.nom}
+    )
+
+    # Ajouter une étape pour l'analyse
+    step_id = logs_manager.add_step(
+        request_id=request_id,
+        step_name=f"Analyse de {input_data.nom}",
+        step_type="analyze",
+        metadata={"piece_id": input_data.piece_id}
+    )
+
+    logs_manager.add_log(
+        request_id=request_id,
+        level="INFO",
+        message=f"🔍 Démarrage de l'analyse pour {input_data.nom}"
+    )
+
     try:
         # Récupérer le type de parcours depuis input_data
         parcours_type = input_data.type if hasattr(input_data, 'type') else "Voyageur"
-        return analyze_images(input_data, parcours_type)
+
+        logs_manager.add_log(
+            request_id=request_id,
+            level="INFO",
+            message=f"📋 Type de parcours: {parcours_type}"
+        )
+
+        logs_manager.add_log(
+            request_id=request_id,
+            level="INFO",
+            message=f"🖼️ Images: {len(input_data.checkin_pictures)} checkin, {len(input_data.checkout_pictures)} checkout"
+        )
+
+        # Capturer les informations de prompt avant l'analyse
+        logs_manager.add_log(
+            request_id=request_id,
+            level="INFO",
+            message=f"📋 Critères: {len(input_data.elements_critiques)} critiques, {len(input_data.points_ignorables)} ignorables, {len(input_data.defauts_frequents)} défauts"
+        )
+
+        result = analyze_images(input_data, parcours_type, request_id=request_id)
+
+        # Marquer l'étape comme terminée avec succès
+        logs_manager.complete_step(
+            request_id=request_id,
+            step_id=step_id,
+            status="success",
+            result={"issues_count": len(result.preliminary_issues)}
+        )
+
+        logs_manager.add_log(
+            request_id=request_id,
+            level="INFO",
+            message=f"✅ Analyse terminée: {len(result.preliminary_issues)} issues détectées"
+        )
+
+        # Marquer la requête comme terminée
+        logs_manager.complete_request(
+            request_id=request_id,
+            status="success"
+        )
+
+        return result
+
     except Exception as e:
         logger.error(f"Erreur lors de la requête: {str(e)}")
+
+        # Marquer l'étape comme échouée
+        logs_manager.complete_step(
+            request_id=request_id,
+            step_id=step_id,
+            status="error"
+        )
+
+        logs_manager.add_log(
+            request_id=request_id,
+            level="ERROR",
+            message=f"❌ Erreur: {str(e)}"
+        )
+
+        # Marquer la requête comme échouée
+        logs_manager.complete_request(
+            request_id=request_id,
+            status="error"
+        )
+
         raise HTTPException(status_code=500, detail=str(e))
 
 def classify_room_type(input_data: RoomClassificationInput, parcours_type: str = "Voyageur") -> RoomClassificationResponse:
@@ -2493,12 +2706,14 @@ RÉPONDS EN JSON:
         logger.info(f"🤖 IMAGES: {len([c for c in user_message['content'] if c['type'] == 'image_url'])} images")
         logger.info(f"🤖 ════════════════════════════════════════")
 
-        # 🔗 ENVOI PARALLÈLE DU PAYLOAD DE CLASSIFICATION VERS BUBBLE 
+        # 🔗 ENVOI PARALLÈLE DU PAYLOAD DE CLASSIFICATION VERS BUBBLE
         async def send_classification_payload_to_bubble():
             """Envoyer le payload de classification vers Bubble en parallèle"""
             try:
-                bubble_endpoint = "https://checkeasy-57905.bubbleapps.io/version-test/api/1.1/wf/iatest"
-                
+                # Détecter l'environnement et utiliser le bon endpoint
+                current_environment = detect_environment()
+                bubble_endpoint = get_bubble_debug_endpoint(current_environment)
+
                 # Extraire le texte du prompt de classification
                 classification_text = ""
                 for content in user_message['content']:
@@ -2565,6 +2780,22 @@ RÉPONDS EN JSON:
         
         # Lancer l'envoi vers Bubble en arrière-plan (non bloquant)
         asyncio.create_task(send_classification_payload_to_bubble())
+
+        # 📝 LOG DES PROMPTS POUR LE SYSTÈME DE LOGS (Classification)
+        if request_id:
+            # Extraire le texte du prompt
+            user_text = ""
+            for content in user_message['content']:
+                if content['type'] == 'text':
+                    user_text = content['text']
+                    break
+
+            logs_manager.add_prompt_log(
+                request_id=request_id,
+                prompt_type="Classification",
+                prompt_content=user_text,
+                model="gpt-5-mini-2025-08-07"
+            )
 
         # Appel à l'API OpenAI avec gestion d'erreurs robuste
         try:
@@ -2710,6 +2941,20 @@ RÉPONDS EN JSON:
         response_content = response_content.strip()
         logger.info(f"📄 Réponse brute de classification (longueur: {len(response_content)} caractères)")
         logger.info(f"📄 Contenu: {response_content[:500]}...")  # Afficher les 500 premiers caractères
+
+        # 📝 LOG DE LA RÉPONSE POUR LE SYSTÈME DE LOGS (Classification)
+        if request_id:
+            logs_manager.add_response_log(
+                request_id=request_id,
+                response_type="Classification",
+                response_content=response_content,
+                model="gpt-5-mini-2025-08-07",
+                tokens_used={
+                    "prompt_tokens": response.usage.prompt_tokens if hasattr(response, 'usage') else 0,
+                    "completion_tokens": response.usage.completion_tokens if hasattr(response, 'usage') else 0,
+                    "total_tokens": response.usage.total_tokens if hasattr(response, 'usage') else 0
+                }
+            )
 
         # 🔧 NETTOYAGE ROBUSTE DU JSON
         # GPT-5 mini peut retourner du texte avant/après le JSON
@@ -2914,13 +3159,14 @@ class CombinedAnalysisResponse(BaseModel):
     analyse_globale: AnalyseGlobale
     issues: List[Probleme]  # Issues générales + issues d'étapes (fusionnées)
 
-def analyze_with_auto_classification(input_data: InputData, parcours_type: str = "Voyageur") -> CombinedAnalysisResponse:
+def analyze_with_auto_classification(input_data: InputData, parcours_type: str = "Voyageur", request_id: str = None) -> CombinedAnalysisResponse:
     """
     Effectuer d'abord la classification, puis l'analyse avec injection des critères automatiques
 
     Args:
         input_data: Données d'entrée de la pièce
         parcours_type: Type de parcours ("Voyageur" ou "Ménage")
+        request_id: ID de la requête pour le tracking des logs
 
     Returns:
         CombinedAnalysisResponse: Résultat combiné de la classification et de l'analyse
@@ -2997,7 +3243,7 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
         # ÉTAPE 3: Analyse avec les critères injectés
         logger.info(f"🔬 ÉTAPE 3 - Analyse détaillée avec critères spécifiques au type '{classification_result.room_type}'")
 
-        analysis_result = analyze_images(enhanced_input_data, parcours_type)
+        analysis_result = analyze_images(enhanced_input_data, parcours_type, request_id=request_id)
 
         logger.info(f"✅ Analyse terminée: Score {analysis_result.analyse_globale.score}/10, {len(analysis_result.preliminary_issues)} problèmes détectés")
 
@@ -3186,7 +3432,7 @@ class Etape(BaseModel):
     task_name: str
     consigne: str
     checking_picture: str
-    checkout_picture: str
+    checkout_picture: Optional[str] = None  # Optional: tasks without photo don't need AI analysis
     # 🆕 Métadonnées de validation de tâche (Phase 3)
     tache_approuvee: Optional[bool] = None
     tache_date_validation: Optional[str] = None  # Format ISO 8601
@@ -3299,8 +3545,15 @@ def analyze_etapes(input_data: EtapesAnalysisInput) -> EtapesAnalysisResponse:
             
             for i, etape_data in enumerate(processed_etapes):
                 etape = piece.etapes[i]  # Garder l'objet original pour les autres propriétés
+
+                # 🚫 RÈGLE: Exclure les tâches sans checkout_picture de l'analyse AI
+                # Si checkout_picture est vide/null dans l'étape originale, ne pas analyser
+                if not etape.checkout_picture or etape.checkout_picture.strip() == "":
+                    logger.info(f"⏭️ Étape {etape.etape_id} skippée: pas de checkout_picture requis (tâche sans photo)")
+                    continue
+
                 logger.info(f"🔍 Analyse de l'étape {etape.etape_id}: {etape.task_name}")
-                
+
                 # Construire le prompt spécifique pour l'étape depuis la config JSON
                 try:
                     prompts_config = load_prompts_config()
@@ -3424,9 +3677,18 @@ Compare les photos avant/après et réponds en JSON:
                     })
                 
                 user_message = {
-                    "role": "user", 
+                    "role": "user",
                     "content": user_content
                 }
+
+                # 📝 LOG DES PROMPTS POUR LE SYSTÈME DE LOGS (Étapes)
+                if request_id:
+                    logs_manager.add_prompt_log(
+                        request_id=request_id,
+                        prompt_type=f"Étape: {etape.task_name}",
+                        prompt_content=etape_prompt,
+                        model="gpt-5-mini-2025-08-07"
+                    )
 
                 # Faire l'appel API avec gestion d'erreurs robuste
                 try:
@@ -3580,6 +3842,20 @@ Compare les photos avant/après et réponds en JSON:
                 
                 # Parser la réponse
                 response_content = response.choices[0].message.content.strip()
+
+                # 📝 LOG DE LA RÉPONSE POUR LE SYSTÈME DE LOGS (Étapes)
+                if request_id:
+                    logs_manager.add_response_log(
+                        request_id=request_id,
+                        response_type=f"Étape: {etape.task_name}",
+                        response_content=response_content,
+                        model="gpt-5-mini-2025-08-07",
+                        tokens_used={
+                            "prompt_tokens": response.usage.prompt_tokens if hasattr(response, 'usage') else 0,
+                            "completion_tokens": response.usage.completion_tokens if hasattr(response, 'usage') else 0,
+                            "total_tokens": response.usage.total_tokens if hasattr(response, 'usage') else 0
+                        }
+                    )
 
                 # 🔧 NETTOYAGE ROBUSTE DU JSON
                 try:
@@ -4157,7 +4433,7 @@ def transform_to_individual_report(
         problemes = []
         for idx, issue in enumerate(piece_analysis.issues):
             category_title = map_category_to_title(issue.category)
-            problemes.append({
+            probleme_dict = {
                 "id": f"p{idx+1}",
                 "titre": f"{category_title} : {issue.description[:50]}...",
                 "description": issue.description,
@@ -4165,7 +4441,13 @@ def transform_to_individual_report(
                 "detectionIA": True,
                 "consignesIA": [],
                 "estFaux": False
-            })
+            }
+
+            # ✅ Ajouter etapeId si l'issue provient d'une étape
+            if hasattr(issue, 'etape_id') and issue.etape_id:
+                probleme_dict["etapeId"] = issue.etape_id
+
+            problemes.append(probleme_dict)
 
         # Consignes IA (extraites du commentaire global)
         consignes_ia = []
@@ -4723,17 +5005,26 @@ Génère une synthèse en JSON:
 
         # 🔍 ÉTAPE 3: Faire l'appel API pour la synthèse
         logger.info(f"🔍 ÉTAPE 3 - Appel à l'IA de synthèse (OpenAI)")
-        
+
         try:
             logger.info(f"   🤖 Modèle: gpt-5-mini-2025-08-07")
             logger.info(f"   🌡️ Température: 0.3")
             logger.info(f"   📏 Max tokens: 8000")
-            
+
+            # 📝 LOG DU PROMPT DE SYNTHÈSE
+            if request_id:
+                logs_manager.add_prompt_log(
+                    request_id=request_id,
+                    prompt_type="Synthesis",
+                    prompt_content=synthesis_prompt,
+                    model="gpt-5-mini-2025-08-07"
+                )
+
             response = client.chat.completions.create(
                 model="gpt-5-mini-2025-08-07",
                 messages=[
                     {
-                        "role": "system", 
+                        "role": "system",
                         "content": synthesis_prompt
                     },
                     {
@@ -4744,7 +5035,7 @@ Génère une synthèse en JSON:
                 response_format={"type": "json_object"},
                 max_completion_tokens=8000
             )
-            
+
             logger.info(f"✅ Réponse OpenAI reçue avec succès")
             
         except Exception as openai_error:
@@ -4760,10 +5051,24 @@ Génère une synthèse en JSON:
         
         # 🔍 ÉTAPE 4: Parser et valider la réponse
         logger.info(f"🔍 ÉTAPE 4 - Parsing et validation de la réponse IA")
-        
+
         response_content = response.choices[0].message.content.strip()
         logger.info(f"   📄 Longueur réponse: {len(response_content)} caractères")
-        
+
+        # 📝 LOG DE LA RÉPONSE DE SYNTHÈSE
+        if request_id:
+            logs_manager.add_response_log(
+                request_id=request_id,
+                response_type="Synthesis",
+                response_content=response_content,
+                model="gpt-5-mini-2025-08-07",
+                tokens_used={
+                    "prompt_tokens": response.usage.prompt_tokens if hasattr(response, 'usage') else 0,
+                    "completion_tokens": response.usage.completion_tokens if hasattr(response, 'usage') else 0,
+                    "total_tokens": response.usage.total_tokens if hasattr(response, 'usage') else 0
+                }
+            )
+
         # Valider que c'est du JSON valide
         try:
             enrichment_data = json.loads(response_content)
@@ -4856,7 +5161,7 @@ Génère une synthèse en JSON:
 # 🚀 FONCTIONS ASYNC POUR PARALLÉLISATION
 # ═══════════════════════════════════════════════════════════════
 
-async def analyze_single_piece_async(piece: PieceWithEtapes, parcours_type: str = "Voyageur") -> CombinedAnalysisResponse:
+async def analyze_single_piece_async(piece: PieceWithEtapes, parcours_type: str = "Voyageur", request_id: str = None) -> CombinedAnalysisResponse:
     """
     Analyse asynchrone d'une seule pièce avec classification automatique
     Version async de la logique dans analyze_complete_logement
@@ -4864,6 +5169,7 @@ async def analyze_single_piece_async(piece: PieceWithEtapes, parcours_type: str 
     Args:
         piece: Données de la pièce à analyser
         parcours_type: Type de parcours ("Voyageur" ou "Ménage")
+        request_id: ID de la requête pour le tracking des logs
 
     Returns:
         CombinedAnalysisResponse: Résultat de l'analyse combinée
@@ -4918,7 +5224,7 @@ async def analyze_single_piece_async(piece: PieceWithEtapes, parcours_type: str 
 
         # Effectuer l'analyse avec classification automatique (fonction synchrone)
         # Note: analyze_with_auto_classification est synchrone, on l'appelle normalement
-        piece_analysis = analyze_with_auto_classification(input_data_piece, parcours_type)
+        piece_analysis = analyze_with_auto_classification(input_data_piece, parcours_type, request_id=request_id)
 
         logger.info(f"✅ [ASYNC] Pièce {piece.piece_id} analysée: {len(piece_analysis.issues)} issues générales détectées")
 
@@ -4990,12 +5296,24 @@ async def analyze_single_piece_async(piece: PieceWithEtapes, parcours_type: str 
         raise
 
 
-async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: str) -> List[EtapeIssue]:
+async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: str, request_id: str = None) -> List[EtapeIssue]:
     """
     Analyse asynchrone d'une seule étape
     Extrait de la logique dans analyze_etapes
+
+    Args:
+        etape: Données de l'étape
+        etape_data: Données traitées de l'étape
+        piece_id: ID de la pièce
+        request_id: ID de la requête pour le tracking des logs
     """
     try:
+        # 🚫 RÈGLE: Exclure les tâches sans checkout_picture de l'analyse AI
+        # Si checkout_picture est vide/null dans l'étape originale, ne pas analyser
+        if not etape.checkout_picture or etape.checkout_picture.strip() == "":
+            logger.info(f"⏭️ [ASYNC] Étape {etape.etape_id} skippée: pas de checkout_picture requis (tâche sans photo)")
+            return []
+
         logger.info(f"🔍 [ASYNC] Analyse de l'étape {etape.etape_id}: {etape.task_name}")
 
         # Construire le prompt spécifique pour l'étape depuis la config JSON
@@ -5042,6 +5360,15 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
             })
             logger.info(f"   📸 Photo APRÈS ajoutée pour étape {etape.etape_id}")
 
+        # 📝 LOG DU PROMPT D'ÉTAPE
+        if request_id:
+            logs_manager.add_prompt_log(
+                request_id=request_id,
+                prompt_type="Etape",
+                prompt_content=system_prompt,
+                model="gpt-5-mini-2025-08-07"
+            )
+
         # Appel à l'API OpenAI (synchrone, mais dans un contexte async)
         response = client.chat.completions.create(
             model="gpt-5-mini-2025-08-07",
@@ -5055,6 +5382,20 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
 
         # Parser la réponse
         response_text = response.choices[0].message.content
+
+        # 📝 LOG DE LA RÉPONSE D'ÉTAPE
+        if request_id:
+            logs_manager.add_response_log(
+                request_id=request_id,
+                response_type="Etape",
+                response_content=response_text,
+                model="gpt-5-mini-2025-08-07",
+                tokens_used={
+                    "prompt_tokens": response.usage.prompt_tokens if hasattr(response, 'usage') else 0,
+                    "completion_tokens": response.usage.completion_tokens if hasattr(response, 'usage') else 0,
+                    "total_tokens": response.usage.total_tokens if hasattr(response, 'usage') else 0
+                }
+            )
 
         # 🔧 NETTOYAGE ROBUSTE DU JSON (même logique que pour la classification)
         try:
@@ -5098,7 +5439,7 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
 # 🔄 VERSION PARALLÉLISÉE DE analyze_complete_logement
 # ═══════════════════════════════════════════════════════════════
 
-async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput) -> CompleteAnalysisResponse:
+async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput, request_id: str = None) -> CompleteAnalysisResponse:
     """
     Version PARALLÉLISÉE de analyze_complete_logement
     Utilise asyncio.gather() pour analyser toutes les pièces et étapes en parallèle
@@ -5111,13 +5452,20 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput) ->
 
         logger.info(f"🚀 [PARALLEL] ANALYSE COMPLÈTE démarrée pour le logement {input_data.logement_id} (parcours: {parcours_type})")
 
+        if request_id:
+            logs_manager.add_log(
+                request_id=request_id,
+                level="INFO",
+                message=f"📊 Analyse parallèle de {len(input_data.pieces)} pièces"
+            )
+
         # ═══════════════════════════════════════════════════════════════
         # ÉTAPE 1: Analyse PARALLÈLE de toutes les pièces
         # ═══════════════════════════════════════════════════════════════
         logger.info(f"📊 [PARALLEL] ÉTAPE 1 - Analyse parallèle de {len(input_data.pieces)} pièces")
 
         # Créer les tâches pour toutes les pièces avec le type de parcours
-        piece_tasks = [analyze_single_piece_async(piece, parcours_type) for piece in input_data.pieces]
+        piece_tasks = [analyze_single_piece_async(piece, parcours_type, request_id=request_id) for piece in input_data.pieces]
 
         # Lancer toutes les analyses EN PARALLÈLE
         pieces_analysis_results = await asyncio.gather(*piece_tasks, return_exceptions=True)
@@ -5155,10 +5503,17 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput) ->
 
             for i, etape_data in enumerate(processed_etapes):
                 etape = piece.etapes[i]
+
+                # 🚫 RÈGLE: Exclure les tâches sans checkout_picture de l'analyse AI
+                # Si checkout_picture est vide/null dans l'étape originale, ne pas analyser
+                if not etape.checkout_picture or etape.checkout_picture.strip() == "":
+                    logger.info(f"⏭️ [PARALLEL] Étape {etape.etape_id} skippée: pas de checkout_picture requis (tâche sans photo)")
+                    continue
+
                 etape_to_piece_mapping[etape.etape_id] = piece.piece_id
 
                 # Créer une tâche async pour cette étape
-                task = analyze_single_etape_async(etape, etape_data, piece.piece_id)
+                task = analyze_single_etape_async(etape, etape_data, piece.piece_id, request_id=request_id)
                 all_etape_tasks.append((etape.etape_id, task))
 
         # Lancer toutes les analyses d'étapes EN PARALLÈLE
@@ -5194,7 +5549,8 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput) ->
                     description=f"[ÉTAPE] {etape_issue.description}",
                     category=etape_issue.category,
                     severity=etape_issue.severity,
-                    confidence=etape_issue.confidence
+                    confidence=etape_issue.confidence,
+                    etape_id=etape_issue.etape_id  # ✅ Ajouter l'etape_id
                 )
                 etapes_issues_by_piece[piece_id].append(probleme)
 
@@ -5270,6 +5626,13 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput) ->
         logger.info(f"🎉 [PARALLEL] ANALYSE COMPLÈTE terminée pour le logement {input_data.logement_id}")
         logger.info(f"📊 RÉSUMÉ FINAL: {total_issues_count} issues totales")
         logger.info(f"🏆 NOTE GLOBALE: {analysis_enrichment.global_score.score}/5 - {analysis_enrichment.global_score.label}")
+
+        if request_id:
+            logs_manager.add_log(
+                request_id=request_id,
+                level="INFO",
+                message=f"✅ Analyse parallèle terminée: {total_issues_count} issues détectées"
+            )
 
         return complete_result
 
@@ -5386,7 +5749,8 @@ def analyze_complete_logement(input_data: EtapesAnalysisInput) -> CompleteAnalys
                     description=f"[ÉTAPE] {etape_issue.description}",
                     category=etape_issue.category,
                     severity=etape_issue.severity,
-                    confidence=etape_issue.confidence
+                    confidence=etape_issue.confidence,
+                    etape_id=etape_issue.etape_id  # ✅ Ajouter l'etape_id
                 )
                 etapes_issues_by_piece[piece_id].append(probleme)
         
@@ -5672,16 +6036,71 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
     - Audit complet d'un logement
     - Workflow automatisé d'inspection avec notification
     """
+    # 🔍 TRACKING DES LOGS EN TEMPS RÉEL
+    request_id = str(uuid.uuid4())
+    logs_manager.start_request(
+        request_id=request_id,
+        endpoint="/analyze-complete",
+        data={
+            "logement_id": input_data.logement_id,
+            "rapport_id": input_data.rapport_id,
+            "pieces_count": len(input_data.pieces)
+        }
+    )
+
+    logs_manager.add_log(
+        request_id=request_id,
+        level="INFO",
+        message=f"🚀 Analyse complète démarrée pour le logement {input_data.logement_id}"
+    )
+
     logger.info(f"🚀 Analyse complète démarrée pour le logement {input_data.logement_id}")
 
     try:
         # 1. Effectuer l'analyse complète PARALLÉLISÉE ⚡
+        step_analyze = logs_manager.add_step(
+            request_id=request_id,
+            step_name="Analyse complète parallélisée",
+            step_type="analyze",
+            metadata={"pieces_count": len(input_data.pieces)}
+        )
+
+        logs_manager.add_log(
+            request_id=request_id,
+            level="INFO",
+            message=f"⚡ Utilisation de la version PARALLÉLISÉE pour gain de performance"
+        )
+
         logger.info(f"⚡ Utilisation de la version PARALLÉLISÉE pour gain de performance")
-        result = await analyze_complete_logement_parallel(input_data)
+        result = await analyze_complete_logement_parallel(input_data, request_id=request_id)
+
+        logs_manager.complete_step(
+            request_id=request_id,
+            step_id=step_analyze,
+            status="success",
+            result={
+                "total_issues": result.total_issues_count,
+                "general_issues": result.general_issues_count,
+                "etapes_issues": result.etapes_issues_count
+            }
+        )
+        logs_manager.add_log(
+            request_id=request_id,
+            level="INFO",
+            message=f"🎯 Analyse complète terminée: {result.total_issues_count} issues totales"
+        )
+
         logger.info(f"🎯 Analyse complète terminée pour le logement {input_data.logement_id}")
         logger.info(f"📊 Total: {result.total_issues_count} issues ({result.general_issues_count} générales + {result.etapes_issues_count} étapes)")
-        
+
         # 2. Envoyer les DEUX webhooks de manière asynchrone (ne fait pas échouer la réponse)
+        step_webhook = logs_manager.add_step(
+            request_id=request_id,
+            step_name="Envoi webhooks",
+            step_type="synthesis",
+            metadata={"webhook_count": 2}
+        )
+
         try:
             # Détecter l'environnement
             environment = detect_environment()
@@ -5731,16 +6150,64 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
             success_count = sum([webhook_current_success, webhook_individual_success])
             logger.info(f"📊 Résumé webhooks: {success_count}/2 envoyés avec succès")
 
+            logs_manager.add_log(
+                request_id=request_id,
+                level="INFO",
+                message=f"📊 Webhooks: {success_count}/2 envoyés avec succès"
+            )
+
+            logs_manager.complete_step(
+                request_id=request_id,
+                step_id=step_webhook,
+                status="success" if success_count > 0 else "error",
+                result={"success_count": success_count, "total": 2}
+            )
+
         except Exception as webhook_error:
             # Les erreurs de webhook ne doivent jamais faire échouer l'analyse
             logger.error(f"❌ Erreur lors de l'envoi des webhooks pour logement {input_data.logement_id}: {webhook_error}")
             logger.info("ℹ️ L'analyse continue normalement malgré l'erreur webhook")
-        
+
+            logs_manager.add_log(
+                request_id=request_id,
+                level="ERROR",
+                message=f"❌ Erreur webhooks: {str(webhook_error)}"
+            )
+
+            logs_manager.complete_step(
+                request_id=request_id,
+                step_id=step_webhook,
+                status="error"
+            )
+
         # 3. Retourner le résultat de l'analyse (indépendamment du webhook)
+        logs_manager.add_log(
+            request_id=request_id,
+            level="INFO",
+            message=f"✅ Analyse complète terminée avec succès"
+        )
+
+        logs_manager.complete_request(
+            request_id=request_id,
+            status="success"
+        )
+
         return result
-        
+
     except Exception as e:
         logger.error(f"❌ Erreur dans l'endpoint analyze-complete: {str(e)}")
+
+        logs_manager.add_log(
+            request_id=request_id,
+            level="ERROR",
+            message=f"❌ Erreur: {str(e)}"
+        )
+
+        logs_manager.complete_request(
+            request_id=request_id,
+            status="error"
+        )
+
         raise HTTPException(status_code=500, detail=str(e))
 
 # Endpoint de healthcheck pour Railway
@@ -5765,6 +6232,95 @@ async def healthcheck():
 async def health():
     """Endpoint de santé pour monitoring"""
     return {"status": "healthy", "version": "5.0"}
+
+# ═══════════════════════════════════════════════════════════════
+# LOGS VIEWER - VISUALISATION EN TEMPS RÉEL
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/logs-viewer")
+async def serve_logs_viewer():
+    """Servir l'interface de visualisation des logs en temps réel"""
+    import os
+    file_path = os.path.join(os.path.dirname(__file__), "templates", "logs_viewer.html")
+    if not os.path.exists(file_path):
+        logger.error(f"❌ Fichier logs_viewer.html non trouvé à: {file_path}")
+        raise HTTPException(status_code=404, detail="logs_viewer.html not found")
+    return FileResponse(file_path)
+
+@app.get("/api/logs/{request_id}")
+async def get_logs(request_id: str):
+    """Récupère les logs d'une requête (polling HTTP au lieu de WebSocket)"""
+    all_requests = logs_manager.get_all_requests()
+
+    if request_id not in all_requests:
+        return {
+            "status": "not_found",
+            "message": f"Request {request_id} not found"
+        }
+
+    request_data = all_requests[request_id]
+    return {
+        "status": "ok",
+        "request_id": request_id,
+        "request": request_data,
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.get("/api/logs-debug")
+async def get_logs_debug():
+    """Endpoint de debug pour vérifier l'état du système de logs"""
+    all_requests = logs_manager.get_all_requests()
+    return {
+        "status": "ok",
+        "active_requests": len(logs_manager.active_requests),
+        "completed_requests": len(logs_manager.completed_requests),
+        "total_requests": len(all_requests),
+        "requests_ids": list(all_requests.keys()),
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.get("/api/logs")
+async def get_all_logs():
+    """Récupère tous les logs (actifs + complétés) pour le polling"""
+    all_requests = logs_manager.get_all_requests()
+    return {
+        "status": "ok",
+        "requests": list(all_requests.values()),
+        "count": len(all_requests),
+        "active_count": len(logs_manager.active_requests),
+        "completed_count": len(logs_manager.completed_requests),
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.websocket("/ws/logs")
+async def websocket_logs(websocket: WebSocket):
+    """WebSocket pour diffuser les logs en temps réel"""
+    try:
+        await websocket.accept()
+        logger.info(f"✅ WebSocket accepté depuis {websocket.client}")
+        await logs_manager.register_client(websocket)
+
+        try:
+            # Garder la connexion ouverte
+            while True:
+                # Attendre des messages du client (ping/pong)
+                try:
+                    data = await asyncio.wait_for(websocket.receive_text(), timeout=60)
+                    # On peut ignorer les messages du client pour l'instant
+                except asyncio.TimeoutError:
+                    # Envoyer un ping pour garder la connexion vivante
+                    try:
+                        await websocket.send_json({"type": "ping"})
+                    except:
+                        break
+        except WebSocketDisconnect:
+            logger.info(f"❌ WebSocket déconnecté")
+            await logs_manager.unregister_client(websocket)
+        except Exception as e:
+            logger.error(f"Erreur WebSocket: {e}")
+            await logs_manager.unregister_client(websocket)
+    except Exception as e:
+        logger.error(f"Erreur lors de l'acceptation WebSocket: {e}")
 
 @app.get("/webhook/test")
 async def test_webhook():

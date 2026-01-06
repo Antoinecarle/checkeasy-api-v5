@@ -473,27 +473,26 @@ class ImageConverter:
                 original_size = img.size
                 max_dimension = 4096  # Plus généreux pour l'IA (était 2048)
                 min_dimension = 512   # Assurer une résolution minimale décente
-                
+
                 # Calculer les nouvelles dimensions en préservant le ratio
                 width, height = img.size
-                if width > max_dimension or height > max_dimension:
+
+                # UPSCALING pour images trop petites (utilise OR au lieu de AND)
+                if width < min_dimension or height < min_dimension:
+                    # Utiliser la fonction d'upscaling dédiée avec amélioration de la netteté
+                    img = upscale_image_for_ai(img, min_size=(min_dimension, min_dimension), logger=logger)
+                    logger.info(f"� Image agrandie pour l'IA: {original_size} → {img.size}")
+
+                # DOWNSCALING pour images trop grandes
+                elif width > max_dimension or height > max_dimension:
                     # Redimensionner en gardant le ratio
                     ratio = min(max_dimension / width, max_dimension / height)
                     new_width = int(width * ratio)
                     new_height = int(height * ratio)
-                    
+
                     # Utiliser un algorithme de redimensionnement de haute qualité
                     img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                    logger.info(f"📏 Image redimensionnée: {original_size} → {img.size} (ratio: {ratio:.2f})")
-                
-                # Vérifier que l'image n'est pas trop petite
-                elif width < min_dimension and height < min_dimension:
-                    # Agrandir légèrement les images trop petites
-                    ratio = min_dimension / max(width, height)
-                    new_width = int(width * ratio)
-                    new_height = int(height * ratio)
-                    img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                    logger.info(f"🔍 Image agrandie pour l'IA: {original_size} → {img.size}")
+                    logger.info(f"� Image redimensionnée: {original_size} → {img.size} (ratio: {ratio:.2f})")
                 
                 # ÉTAPE 4: Optimisation de la compression JPEG pour l'IA
                 if max_quality:
@@ -1127,12 +1126,13 @@ def process_etapes_images(etapes_list: list) -> list:
                         issues_count += 1
                 
                 # Créer un nouvel objet étape avec les URLs converties (ou None pour invalides)
+                # ✅ CORRECTION: Utiliser les clés *_processed pour correspondre à analyze_single_etape_async()
                 processed_etape = {
                     'etape_id': etape_id,
                     'task_name': task_name,
                     'consigne': consigne,
-                    'checking_picture': converted_checking,  # Peut être None
-                    'checkout_picture': converted_checkout   # Peut être None
+                    'checking_picture_processed': converted_checking,  # Peut être None
+                    'checkout_picture_processed': converted_checkout   # Peut être None
                 }
                 processed_etapes.append(processed_etape)
                 
@@ -1144,13 +1144,14 @@ def process_etapes_images(etapes_list: list) -> list:
                 try:
                     task_name = etape.get('task_name', 'Tâche inconnue') if isinstance(etape, dict) else getattr(etape, 'task_name', 'Tâche inconnue')
                     consigne = etape.get('consigne', 'Consigne indisponible') if isinstance(etape, dict) else getattr(etape, 'consigne', 'Consigne indisponible')
-                    
+
+                    # ✅ CORRECTION: Utiliser les clés *_processed
                     processed_etapes.append({
                         'etape_id': etape_id,
                         'task_name': task_name,
                         'consigne': consigne,
-                        'checking_picture': create_placeholder_image_url(),
-                        'checkout_picture': create_placeholder_image_url()
+                        'checking_picture_processed': create_placeholder_image_url(),
+                        'checkout_picture_processed': create_placeholder_image_url()
                     })
                     issues_count += 2  # 2 placeholders créés
                     
@@ -1174,13 +1175,14 @@ def process_etapes_images(etapes_list: list) -> list:
                     etape_id = etape.get('etape_id', 'UNKNOWN') if isinstance(etape, dict) else getattr(etape, 'etape_id', 'UNKNOWN')
                     task_name = etape.get('task_name', 'Tâche inconnue') if isinstance(etape, dict) else getattr(etape, 'task_name', 'Tâche inconnue')
                     consigne = etape.get('consigne', 'Consigne indisponible') if isinstance(etape, dict) else getattr(etape, 'consigne', 'Consigne indisponible')
-                    
+
+                    # ✅ CORRECTION: Utiliser les clés *_processed
                     recovery_list.append({
                         'etape_id': etape_id,
                         'task_name': task_name,
                         'consigne': consigne,
-                        'checking_picture': create_placeholder_image_url(),
-                        'checkout_picture': create_placeholder_image_url()
+                        'checking_picture_processed': create_placeholder_image_url(),
+                        'checkout_picture_processed': create_placeholder_image_url()
                     })
                 except Exception:
                     continue  # Ignorer les étapes corrompues
@@ -1265,29 +1267,82 @@ def detect_image_format_enhanced(image_data) -> Optional[str]:
         logger.error(f"❌ Erreur lors de la détection format améliorée: {e}")
         return None
 
-def convert_heic_with_modern_libraries(image_bytes, max_size=(4096, 4096), quality=98):
+def upscale_image_for_ai(img, min_size=(512, 512), logger=None):
+    """
+    📈 UPSCALING INTELLIGENT POUR L'IA
+
+    Agrandit les images trop petites pour améliorer l'analyse IA.
+    Utilise LANCZOS pour un redimensionnement de haute qualité.
+
+    Args:
+        img: Image PIL
+        min_size: Taille minimum requise (largeur, hauteur)
+        logger: Logger optionnel
+
+    Returns:
+        Image PIL (agrandie si nécessaire)
+    """
+    from PIL import ImageEnhance
+
+    if logger is None:
+        logger = logging.getLogger(__name__)
+
+    width, height = img.size
+    min_width, min_height = min_size
+
+    # Vérifier si l'image est trop petite (au moins une dimension < minimum)
+    if width < min_width or height < min_height:
+        # Calculer le facteur d'agrandissement pour atteindre la taille minimale
+        scale_factor = max(min_width / width, min_height / height)
+
+        # Limiter l'agrandissement à x3 pour éviter trop de flou
+        scale_factor = min(scale_factor, 3.0)
+
+        new_width = int(width * scale_factor)
+        new_height = int(height * scale_factor)
+
+        logger.info(f"📈 UPSCALING IA: {width}x{height} → {new_width}x{new_height} (facteur: {scale_factor:.2f})")
+
+        # Redimensionnement avec LANCZOS (haute qualité)
+        img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+        # Amélioration de la netteté après upscaling pour compenser le flou
+        enhancer = ImageEnhance.Sharpness(img)
+        img = enhancer.enhance(1.3)  # +30% netteté
+
+        # Légère amélioration du contraste pour mieux distinguer les détails
+        enhancer = ImageEnhance.Contrast(img)
+        img = enhancer.enhance(1.05)  # +5% contraste
+
+        logger.info(f"✅ Image agrandie avec amélioration netteté/contraste pour l'IA")
+
+    return img
+
+
+def convert_heic_with_modern_libraries(image_bytes, max_size=(4096, 4096), quality=98, min_size=(512, 512)):
     """
     🔥 CONVERSION HEIC MODERNE 2025 - Alternatives robustes
-    
+
     Ordre de priorité:
     1. Heiya (2025) - Spécialisé photographes
-    2. pyheif (2024) - Simple et fiable  
+    2. pyheif (2024) - Simple et fiable
     3. pillow-heif v1.0.0 (juin 2025) - Version améliorée
     4. Fallback subprocess (en dernier recours)
-    
+
     Args:
         image_bytes: Données binaires de l'image HEIC
         max_size: Taille maximum (largeur, hauteur)
         quality: Qualité JPEG (90-100 recommandé pour IA)
-    
+        min_size: Taille minimum (images plus petites seront agrandies)
+
     Returns:
         tuple: (success: bool, result: BytesIO ou str d'erreur)
     """
     import io
     import logging
     from PIL import Image
-    
-    # Utiliser le logger existant  
+
+    # Utiliser le logger existant
     logger = logging.getLogger(__name__)
     
     # === MÉTHODE 1: HEIYA (2025) - Moderne et optimisé ===
@@ -1317,16 +1372,21 @@ def convert_heic_with_modern_libraries(image_bytes, max_size=(4096, 4096), quali
             if os.path.exists(temp_jpg_path):
                 with open(temp_jpg_path, 'rb') as f:
                     converted_bytes = f.read()
-                
+
                 # Post-traitement avec PIL pour redimensionnement
                 img = Image.open(io.BytesIO(converted_bytes))
+
+                # Upscaling si image trop petite (NOUVEAU)
+                img = upscale_image_for_ai(img, min_size=min_size, logger=logger)
+
+                # Downscaling si image trop grande
                 if img.size[0] > max_size[0] or img.size[1] > max_size[1]:
                     img.thumbnail(max_size, Image.Resampling.LANCZOS)
-                
+
                 output = io.BytesIO()
                 img.save(output, format='JPEG', quality=quality, optimize=True)
                 output.seek(0)
-                
+
                 logger.info("✅ Conversion Heiya réussie")
                 return True, output
             
@@ -1351,23 +1411,26 @@ def convert_heic_with_modern_libraries(image_bytes, max_size=(4096, 4096), quali
         
         # Convertir en image PIL
         img = Image.frombytes(
-            heif_file.mode, 
-            heif_file.size, 
+            heif_file.mode,
+            heif_file.size,
             heif_file.data,
             "raw",
             heif_file.mode,
             heif_file.stride,
         )
-        
-        # Redimensionnement si nécessaire
+
+        # Upscaling si image trop petite (NOUVEAU)
+        img = upscale_image_for_ai(img, min_size=min_size, logger=logger)
+
+        # Redimensionnement si nécessaire (downscaling)
         if img.size[0] > max_size[0] or img.size[1] > max_size[1]:
             img.thumbnail(max_size, Image.Resampling.LANCZOS)
-        
+
         # Conversion en JPEG
         output = io.BytesIO()
         img.save(output, format='JPEG', quality=quality, optimize=True)
         output.seek(0)
-        
+
         logger.info("✅ Conversion pyheif réussie")
         return True, output
         
@@ -1380,22 +1443,25 @@ def convert_heic_with_modern_libraries(image_bytes, max_size=(4096, 4096), quali
     try:
         logger.info("🔄 Tentative avec pillow-heif v1.0.0 (juin 2025)...")
         import pillow_heif
-        
+
         # Méthode moderne pillow-heif
         pillow_heif.register_heif_opener()
-        
+
         # Ouvrir directement avec PIL
         img = Image.open(io.BytesIO(image_bytes))
-        
-        # Redimensionnement si nécessaire
+
+        # Upscaling si image trop petite (NOUVEAU)
+        img = upscale_image_for_ai(img, min_size=min_size, logger=logger)
+
+        # Redimensionnement si nécessaire (downscaling)
         if img.size[0] > max_size[0] or img.size[1] > max_size[1]:
             img.thumbnail(max_size, Image.Resampling.LANCZOS)
-        
+
         # Conversion en JPEG
         output = io.BytesIO()
         img.save(output, format='JPEG', quality=quality, optimize=True)
         output.seek(0)
-        
+
         logger.info("✅ Conversion pillow-heif v1.0.0 réussie")
         return True, output
         
@@ -1431,8 +1497,15 @@ def convert_heic_with_modern_libraries(image_bytes, max_size=(4096, 4096), quali
             if result.returncode == 0 and os.path.exists(temp_jpg_path):
                 with open(temp_jpg_path, 'rb') as f:
                     converted_bytes = f.read()
-                
-                output = io.BytesIO(converted_bytes)
+
+                # Post-traitement avec PIL pour upscaling si nécessaire
+                img = Image.open(io.BytesIO(converted_bytes))
+                img = upscale_image_for_ai(img, min_size=min_size, logger=logger)
+
+                output = io.BytesIO()
+                img.save(output, format='JPEG', quality=quality, optimize=True)
+                output.seek(0)
+
                 logger.info("✅ Conversion subprocess réussie")
                 return True, output
             

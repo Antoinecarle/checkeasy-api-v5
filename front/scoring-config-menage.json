@@ -49,49 +49,49 @@
         {
           "grade": 4.8,
           "label": "EXCELLENT",
-          "max_score": 1.5,
+          "max_score": 5,
           "description": "Quelques détails très mineurs"
         },
         {
           "grade": 4.5,
           "label": "TRÈS BON",
-          "max_score": 3,
+          "max_score": 10,
           "description": "Quelques détails mineurs par pièce"
         },
         {
           "grade": 4,
           "label": "BON",
-          "max_score": 5,
+          "max_score": 15,
           "description": "Quelques problèmes par pièce"
         },
         {
           "grade": 3.5,
           "label": "CORRECT",
-          "max_score": 8,
+          "max_score": 20,
           "description": "Plusieurs problèmes par pièce"
         },
         {
           "grade": 3,
           "label": "MOYEN",
-          "max_score": 12,
+          "max_score": 30,
           "description": "Nombreux problèmes par pièce"
         },
         {
           "grade": 2.5,
           "label": "PASSABLE",
-          "max_score": 18,
+          "max_score": 50,
           "description": "Problèmes importants"
         },
         {
           "grade": 2,
           "label": "INSUFFISANT",
-          "max_score": 25,
+          "max_score": 70,
           "description": "Problèmes graves"
         },
         {
           "grade": 1.5,
           "label": "MAUVAIS",
-          "max_score": 35,
+          "max_score": 100,
           "description": "Problèmes très graves"
         },
         {

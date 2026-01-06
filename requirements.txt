@@ -6,6 +6,7 @@ openai==1.93.1
 python-multipart==0.0.6
 requests==2.31.0
 aiohttp==3.9.1
+nest-asyncio==1.6.0
 
 # Image processing - versions mises à jour 2025
 Pillow==10.3.0

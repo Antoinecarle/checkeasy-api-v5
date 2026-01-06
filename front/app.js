@@ -146,7 +146,7 @@ class PromptManager {
         const totalPrompts = Object.keys(this.prompts.prompts || {}).length;
         const totalUserMessages = Object.keys(this.prompts.user_messages || {}).length;
         let totalSections = 0;
-        
+
         Object.values(this.prompts.prompts || {}).forEach(prompt => {
             totalSections += Object.keys(prompt.sections || {}).length;
         });
@@ -167,7 +167,7 @@ class PromptManager {
         Object.entries(this.prompts.prompts || {}).forEach(([key, prompt]) => {
             const card = document.createElement('div');
             card.className = 'prompt-card';
-            
+
             const hasModifications = Array.from(this.modifiedSections).some(section => section.startsWith(key));
             const status = hasModifications ? 'modified' : 'active';
             const statusText = hasModifications ? 'Modifié' : 'Actif';
@@ -184,9 +184,9 @@ class PromptManager {
                     <span class="prompt-status ${status}">${statusText}</span>
                 </div>
                 <div class="prompt-variables">
-                    ${(prompt.variables || []).map(variable => 
-                        `<span class="variable-tag">{${variable}}</span>`
-                    ).join('')}
+                    ${(prompt.variables || []).map(variable =>
+                `<span class="variable-tag">{${variable}}</span>`
+            ).join('')}
                 </div>
             `;
 
@@ -201,7 +201,7 @@ class PromptManager {
         Object.entries(this.prompts.user_messages || {}).forEach(([key, message]) => {
             const card = document.createElement('div');
             card.className = 'prompt-card';
-            
+
             card.innerHTML = `
                 <div class="prompt-card-header">
                     <div>
@@ -214,9 +214,9 @@ class PromptManager {
                     <span class="prompt-status active">Message</span>
                 </div>
                 <div class="prompt-variables">
-                    ${(message.variables || []).map(variable => 
-                        `<span class="variable-tag">{${variable}}</span>`
-                    ).join('')}
+                    ${(message.variables || []).map(variable =>
+                `<span class="variable-tag">{${variable}}</span>`
+            ).join('')}
                 </div>
             `;
 
@@ -295,7 +295,7 @@ class PromptManager {
         Object.entries(this.prompts.user_messages || {}).forEach(([key, message]) => {
             const section = document.createElement('div');
             section.className = 'section-editor';
-            
+
             section.innerHTML = `
                 <div class="section-editor-header">
                     <h3>
@@ -366,14 +366,14 @@ class PromptManager {
             'regles_recommandations': 'Règles Recommandations',
             'important_final': 'Important Final'
         };
-        
+
         return names[sectionKey] || sectionKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     }
 
     onSectionModified(sectionKey, value) {
         const [promptKey, sectionName] = sectionKey.split('.');
         if (!this.prompts.prompts[promptKey]) return;
-        
+
         this.prompts.prompts[promptKey].sections[sectionName] = value;
         this.modifiedSections.add(sectionKey);
         this.updateUnsavedCount();
@@ -381,7 +381,7 @@ class PromptManager {
 
     onUserMessageModified(messageKey, value) {
         if (!this.prompts.user_messages[messageKey]) return;
-        
+
         this.prompts.user_messages[messageKey].template = value;
         this.modifiedSections.add(`user_message.${messageKey}`);
         this.updateUnsavedCount();
@@ -389,7 +389,7 @@ class PromptManager {
 
     markSectionAsModified(sectionElement, sectionKey) {
         sectionElement.classList.add('modified');
-        
+
         // Mettre à jour l'overview si on y est
         if (this.currentSection === 'overview') {
             this.renderPromptsList();
@@ -403,50 +403,50 @@ class PromptManager {
     resetSection(sectionKey) {
         const [promptKey, sectionName] = sectionKey.split('.');
         const originalValue = this.originalPrompts.prompts[promptKey]?.sections[sectionName] || '';
-        
+
         // Remettre la valeur originale
         this.prompts.prompts[promptKey].sections[sectionName] = originalValue;
-        
+
         // Mettre à jour le textarea
         const textarea = document.querySelector(`textarea[data-section="${sectionKey}"]`);
         if (textarea) {
             textarea.value = originalValue;
         }
-        
+
         // Retirer des modifications
         this.modifiedSections.delete(sectionKey);
-        
+
         // Retirer la classe modified
         const sectionElement = textarea?.closest('.section-editor');
         if (sectionElement) {
             sectionElement.classList.remove('modified');
         }
-        
+
         this.updateUnsavedCount();
         this.showNotification('Section réinitialisée', 'success');
     }
 
     resetUserMessage(messageKey) {
         const originalValue = this.originalPrompts.user_messages[messageKey]?.template || '';
-        
+
         // Remettre la valeur originale
         this.prompts.user_messages[messageKey].template = originalValue;
-        
+
         // Mettre à jour le textarea
         const textarea = document.querySelector(`textarea[data-user-message="${messageKey}"]`);
         if (textarea) {
             textarea.value = originalValue;
         }
-        
+
         // Retirer des modifications
         this.modifiedSections.delete(`user_message.${messageKey}`);
-        
+
         // Retirer la classe modified
         const sectionElement = textarea?.closest('.section-editor');
         if (sectionElement) {
             sectionElement.classList.remove('modified');
         }
-        
+
         this.updateUnsavedCount();
         this.showNotification('Message utilisateur réinitialisé', 'success');
     }
@@ -525,34 +525,34 @@ class PromptManager {
         try {
             const text = await file.text();
             const importedData = JSON.parse(text);
-            
+
             // Validation basique
             if (!importedData.prompts && !importedData.user_messages) {
                 throw new Error('Format de fichier invalide');
             }
-            
+
             // Confirmer l'import
             if (this.modifiedSections.size > 0) {
                 if (!confirm('Vous avez des modifications non sauvegardées. Continuer l\'import ?')) {
                     return;
                 }
             }
-            
+
             // Remplacer les données
             this.prompts = importedData;
             this.originalPrompts = JSON.parse(JSON.stringify(importedData));
             this.modifiedSections.clear();
-            
+
             // Re-render l'interface
             this.renderOverview();
             this.renderAllEditors();
-            
+
             this.showNotification('Configuration importée avec succès', 'success');
         } catch (error) {
             console.error('Erreur lors de l\'import:', error);
             this.showNotification('Erreur lors de l\'import: ' + error.message, 'error');
         }
-        
+
         // Reset le file input
         event.target.value = '';
     }
@@ -560,7 +560,7 @@ class PromptManager {
     updatePreviewPromptSelect() {
         const select = document.getElementById('previewPromptSelect');
         select.innerHTML = '<option value="">-- Choisir un prompt --</option>';
-        
+
         // Ajouter les prompts système
         Object.entries(this.prompts.prompts || {}).forEach(([key, prompt]) => {
             const option = document.createElement('option');
@@ -568,7 +568,7 @@ class PromptManager {
             option.textContent = prompt.name;
             select.appendChild(option);
         });
-        
+
         // Ajouter les messages utilisateur
         Object.entries(this.prompts.user_messages || {}).forEach(([key, message]) => {
             const option = document.createElement('option');
@@ -581,14 +581,14 @@ class PromptManager {
     updatePreviewVariables() {
         const select = document.getElementById('previewPromptSelect');
         const variablesTextarea = document.getElementById('previewVariables');
-        
+
         if (!select.value) {
             variablesTextarea.value = '';
             return;
         }
-        
+
         let variables = [];
-        
+
         if (select.value.startsWith('user_message.')) {
             const messageKey = select.value.replace('user_message.', '');
             const message = this.prompts.user_messages[messageKey];
@@ -597,7 +597,7 @@ class PromptManager {
             const prompt = this.prompts.prompts[select.value];
             variables = prompt?.variables || [];
         }
-        
+
         // Générer un exemple JSON
         const exampleData = {};
         variables.forEach(variable => {
@@ -663,7 +663,7 @@ class PromptManager {
                     exampleData[variable] = `exemple_${variable}`;
             }
         });
-        
+
         variablesTextarea.value = JSON.stringify(exampleData, null, 2);
     }
 
@@ -671,20 +671,20 @@ class PromptManager {
         const select = document.getElementById('previewPromptSelect');
         const variablesInput = document.getElementById('previewVariables');
         const previewContent = document.getElementById('previewContent');
-        
+
         if (!select.value) {
             this.showNotification('Veuillez sélectionner un prompt', 'warning');
             return;
         }
-        
+
         try {
             let variables = {};
             if (variablesInput.value.trim()) {
                 variables = JSON.parse(variablesInput.value);
             }
-            
+
             let generatedPrompt = '';
-            
+
             if (select.value.startsWith('user_message.')) {
                 // Message utilisateur
                 const messageKey = select.value.replace('user_message.', '');
@@ -695,14 +695,14 @@ class PromptManager {
                 const prompt = this.prompts.prompts[select.value];
                 generatedPrompt = this.buildFullPrompt(prompt, variables);
             }
-            
+
             previewContent.textContent = generatedPrompt;
-            
+
             // Highlighter le code si Prism est disponible
             if (window.Prism) {
                 Prism.highlightElement(previewContent);
             }
-            
+
         } catch (error) {
             console.error('Erreur lors de la génération:', error);
             this.showNotification('Erreur dans le JSON des variables: ' + error.message, 'error');
@@ -711,7 +711,7 @@ class PromptManager {
 
     buildFullPrompt(prompt, variables) {
         let fullPrompt = '';
-        
+
         Object.entries(prompt.sections || {}).forEach(([sectionKey, content]) => {
             if (sectionKey.includes('template')) {
                 // Section avec template - remplacer les variables
@@ -721,17 +721,17 @@ class PromptManager {
                 fullPrompt += content + '\n\n';
             }
         });
-        
+
         return fullPrompt.trim();
     }
 
     replaceVariables(template, variables) {
         let result = template;
-        
+
         // Remplacer les variables simples {variable}
         Object.entries(variables).forEach(([key, value]) => {
             const regex = new RegExp(`\\{${key}\\}`, 'g');
-            
+
             if (Array.isArray(value)) {
                 // Pour les listes, joindre avec des retours à la ligne
                 result = result.replace(regex, value.join('\n'));
@@ -739,30 +739,30 @@ class PromptManager {
                 result = result.replace(regex, String(value));
             }
         });
-        
+
         return result;
     }
 
     showNotification(message, type = 'info', duration = 5000) {
         const container = document.getElementById('notifications');
-        
+
         const notification = document.createElement('div');
         notification.className = `notification ${type}`;
-        
+
         const icons = {
             success: 'fas fa-check-circle',
             warning: 'fas fa-exclamation-triangle',
             error: 'fas fa-times-circle',
             info: 'fas fa-info-circle'
         };
-        
+
         const titles = {
             success: 'Succès',
             warning: 'Attention',
             error: 'Erreur',
             info: 'Information'
         };
-        
+
         notification.innerHTML = `
             <i class="${icons[type]} notification-icon"></i>
             <div class="notification-content">
@@ -773,14 +773,14 @@ class PromptManager {
                 <i class="fas fa-times"></i>
             </button>
         `;
-        
+
         const closeBtn = notification.querySelector('.notification-close');
         closeBtn.addEventListener('click', () => {
             notification.remove();
         });
-        
+
         container.appendChild(notification);
-        
+
         // Auto-remove après la durée spécifiée
         if (duration > 0) {
             setTimeout(() => {
@@ -790,6 +790,134 @@ class PromptManager {
             }, duration);
         }
     }
+
+    // ===== TEST ÉTAPES =====
+    setupTestEtapesListeners() {
+        const testBtn = document.getElementById('testEtapeBtn');
+        if (testBtn) {
+            testBtn.addEventListener('click', () => this.runEtapeTest());
+        }
+    }
+
+    async runEtapeTest() {
+        const taskName = document.getElementById('testTaskName').value;
+        const consigne = document.getElementById('testConsigne').value;
+        const checkingPicture = document.getElementById('testCheckingPicture').value;
+        const checkoutPicture = document.getElementById('testCheckoutPicture').value;
+        const apiUrl = document.getElementById('testApiUrl').value;
+
+        // Validation
+        if (!taskName || !consigne || !checkoutPicture) {
+            this.showNotification('Veuillez remplir au moins le nom de la tâche, la consigne et la photo APRÈS', 'warning');
+            return;
+        }
+
+        // Préparer le payload selon le format attendu par /analyze-etapes
+        const payload = {
+            logement_id: "test_logement_" + Date.now(),
+            pieces: [
+                {
+                    piece_id: "test_piece_" + Date.now(),
+                    nom: "Test",
+                    commentaire_ia: "",
+                    checkin_pictures: [],
+                    checkout_pictures: [],
+                    etapes: [
+                        {
+                            etape_id: "test_etape_" + Date.now(),
+                            task_name: taskName,
+                            consigne: consigne,
+                            checking_picture: checkingPicture || "",
+                            checkout_picture: checkoutPicture
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // Afficher le loading
+        document.getElementById('testEtapesLoading').style.display = 'block';
+        document.getElementById('testEtapesResults').style.display = 'none';
+
+        const startTime = Date.now();
+
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const endTime = Date.now();
+            const responseTime = ((endTime - startTime) / 1000).toFixed(2);
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+
+            // Masquer le loading
+            document.getElementById('testEtapesLoading').style.display = 'none';
+
+            // Afficher les résultats
+            this.displayEtapeTestResults(result, responseTime);
+
+            this.showNotification('Test terminé avec succès', 'success');
+
+        } catch (error) {
+            console.error('Erreur lors du test:', error);
+            document.getElementById('testEtapesLoading').style.display = 'none';
+            this.showNotification(`Erreur lors du test: ${error.message}`, 'error');
+        }
+    }
+
+    displayEtapeTestResults(result, responseTime) {
+        const resultsDiv = document.getElementById('testEtapesResults');
+        resultsDiv.style.display = 'block';
+
+        // Extraire les issues (peut être dans result.issues ou result.preliminary_issues)
+        const issues = result.issues || result.preliminary_issues || [];
+
+        // Mettre à jour les statistiques
+        document.getElementById('testIssuesCount').textContent = issues.length;
+        document.getElementById('testResponseTime').textContent = `${responseTime}s`;
+
+        // Afficher les issues
+        const issuesList = document.getElementById('testIssuesList');
+        if (issues.length === 0) {
+            issuesList.innerHTML = `
+                <div class="no-issues">
+                    <i class="fas fa-check-circle"></i>
+                    <div>Aucun problème détecté ! ✅</div>
+                    <div style="font-size: 0.875rem; margin-top: 0.5rem; color: var(--text-secondary);">
+                        L'étape a été validée avec succès.
+                    </div>
+                </div>
+            `;
+        } else {
+            issuesList.innerHTML = issues.map(issue => `
+                <div class="issue-card severity-${issue.severity}">
+                    <div class="issue-header">
+                        <span class="issue-category">${issue.category}</span>
+                        <span class="issue-confidence">Confiance: ${issue.confidence}%</span>
+                    </div>
+                    <div class="issue-description">${issue.description}</div>
+                </div>
+            `).join('');
+        }
+
+        // Afficher le JSON complet
+        const jsonResponse = document.getElementById('testJsonResponse');
+        jsonResponse.textContent = JSON.stringify(result, null, 2);
+
+        // Appliquer la coloration syntaxique si Prism est disponible
+        if (window.Prism) {
+            Prism.highlightElement(jsonResponse);
+        }
+    }
 }
 
 // Initialisation de l'application
@@ -797,7 +925,12 @@ let promptManager;
 
 document.addEventListener('DOMContentLoaded', () => {
     promptManager = new PromptManager();
+
+    // Initialiser les listeners pour le test d'étapes
+    if (promptManager) {
+        promptManager.setupTestEtapesListeners();
+    }
 });
 
 // Exposer globalement pour les onclick dans le HTML
-window.promptManager = promptManager; 
+window.promptManager = promptManager;

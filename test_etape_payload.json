@@ -1,0 +1,41 @@
+{
+  "logement_id": "test_logement_123",
+  "rapport_id": "test_rapport_456",
+  "type": "Voyageur",
+  "pieces": [
+    {
+      "piece_id": "1751209798687x161590588251001580",
+      "nom": "🚿 Salle de Bain & Toilettes",
+      "commentaire_ia": "",
+      "checkin_pictures": [
+        {
+          "piece_id": "1751209798687x161590588251001580",
+          "url": "https://eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1762516392094x844903644893908500/Capture%20d%E2%80%99e%CC%81cran%202025-11-07%20a%CC%80%2012.53.07.png"
+        }
+      ],
+      "checkout_pictures": [
+        {
+          "piece_id": "1751209798687x161590588251001580",
+          "url": "https://eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1767085624273x713680782483215600/File.jpg"
+        }
+      ],
+      "etapes": [
+        {
+          "etape_id": "1751209800985x545326207791962050",
+          "task_name": "🚿  Déposer les serviettes utilisées dans le lavabo",
+          "consigne": "🔔 Merci de déposer vos grandes et petites serviettes et le tapis de bain  mouillés dans le lavabo s'il vous plaît \n\n🌿 Merci beaucoup pour votre contribution !",
+          "checking_picture": "//eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1763141926978x526259704982441340/Logo%20check%20easy%20.png",
+          "checkout_picture": ""
+        },
+        {
+          "etape_id": "1763141955411x306650293192359940",
+          "task_name": "🧺 Pensez à vérifier la machine à laver et le sèche-linge avant votre départ afin de ne rien oublier parmi vos affaires.",
+          "consigne": "",
+          "checking_picture": "//eb0bcaf95c312d7fe9372017cb5f1835.cdn.bubble.io/f1763141951876x332091160078421570/Signal%C3%A9tique%20-%20Appartements%20%20%281%29.png",
+          "checkout_picture": ""
+        }
+      ]
+    }
+  ]
+}
+
