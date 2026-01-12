@@ -5,7 +5,8 @@ import logging.config
 import sys
 import json
 import os
-from openai import OpenAI
+import threading
+from openai import OpenAI, AsyncOpenAI
 import asyncio
 import aiohttp
 import nest_asyncio
@@ -26,6 +27,7 @@ from image_converter import (
     process_etapes_images,
     is_valid_image_url,
     normalize_url,
+    create_placeholder_image_url,
     ImageConverter
 )
 from datetime import datetime
@@ -398,7 +400,301 @@ except Exception as e:
         log_success("Client OpenAI initialisé avec fallback")
     except Exception as e2:
         log_error(f"Erreur aussi avec fallback: {e2}")
+
+# Initialiser le client Async pour la parallélisation
+try:
+    async_client = AsyncOpenAI()
+    log_success("Client AsyncOpenAI initialisé avec succès")
+except Exception as e:
+    log_warning(f"Impossible d'initialiser AsyncOpenAI: {e}")
+    async_client = None
     client = None
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🚀 CONFIGURATION MODÈLE OPENAI (depuis variable d'environnement Railway)
+# ═══════════════════════════════════════════════════════════════════════════════
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.2-2025-12-11")
+logger.info("")
+logger.info("=" * 100)
+logger.info("🤖🤖🤖  CONFIGURATION MODÈLE OPENAI  🤖🤖🤖")
+logger.info("=" * 100)
+logger.info(f"📌 MODÈLE UTILISÉ: {OPENAI_MODEL}")
+logger.info(f"📌 SOURCE: {'Variable OPENAI_MODEL' if os.environ.get('OPENAI_MODEL') else 'Valeur par défaut'}")
+logger.info("=" * 100)
+logger.info("")
+
+def call_openai_responses(
+    system_prompt: str,
+    user_input: str = None,
+    user_images: list = None,
+    json_response: bool = True,
+    max_tokens: int = 16000
+) -> dict:
+    """
+    🚀 Fonction centralisée pour appeler l'API OpenAI Responses
+    
+    Utilise la nouvelle API Responses (/v1/responses) au lieu de Chat Completions.
+    Le modèle est lu depuis la variable d'environnement OPENAI_MODEL.
+    
+    Args:
+        system_prompt: Le prompt système (instructions)
+        user_input: Le texte de l'utilisateur (optionnel)
+        user_images: Liste d'URLs d'images à analyser (optionnel)
+        json_response: Si True, demande une réponse JSON structurée
+        max_tokens: Nombre maximum de tokens de réponse
+    
+    Returns:
+        dict: La réponse parsée (JSON si json_response=True, sinon texte brut)
+    """
+    global OPENAI_MODEL
+    
+    try:
+        # 🟢🟢🟢 LOG APPEL API - TRÈS VISIBLE 🟢🟢🟢
+        logger.info("")
+        logger.info("=" * 100)
+        logger.info("🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵")
+        logger.info("🤖🤖🤖  APPEL API OPENAI RESPONSES  🤖🤖🤖")
+        logger.info("🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵")
+        logger.info("=" * 100)
+        logger.info(f"📌 MODÈLE: {OPENAI_MODEL}")
+        logger.info(f"📌 JSON RESPONSE: {json_response}")
+        logger.info(f"📌 MAX TOKENS: {max_tokens}")
+        logger.info(f"📌 IMAGES: {len(user_images) if user_images else 0}")
+        logger.info(f"📌 LONGUEUR SYSTEM PROMPT: {len(system_prompt)} caractères")
+        logger.info(f"📌 LONGUEUR USER INPUT: {len(user_input) if user_input else 0} caractères")
+        logger.info("=" * 100)
+        
+        # Construire l'input pour l'API Responses
+        input_content = []
+        
+        # Ajouter le prompt système comme contexte
+        input_content.append({
+            "role": "system",
+            "content": system_prompt
+        })
+        
+        # Construire le message utilisateur
+        user_message_content = []
+        
+        # Ajouter le texte utilisateur si présent
+        if user_input:
+            user_message_content.append({
+                "type": "input_text",
+                "text": user_input
+            })
+        
+        # Ajouter les images si présentes
+        if user_images:
+            for img_url in user_images:
+                if img_url and isinstance(img_url, str):
+                    user_message_content.append({
+                        "type": "input_image",
+                        "image_url": img_url
+                    })
+        
+        # Ajouter le message utilisateur
+        if user_message_content:
+            input_content.append({
+                "role": "user",
+                "content": user_message_content
+            })
+        
+        # Configuration de la réponse
+        response_config = {
+            "model": OPENAI_MODEL,
+            "input": input_content
+        }
+        
+        # Ajouter le format JSON si demandé
+        if json_response:
+            response_config["text"] = {
+                "format": {
+                    "type": "json_object"
+                }
+            }
+        
+        # Ajouter max_tokens si spécifié
+        if max_tokens:
+            response_config["max_output_tokens"] = max_tokens
+        
+        logger.info(f"📤 Envoi de la requête à OpenAI Responses API...")
+        
+        # Appel à l'API Responses
+        response = client.responses.create(**response_config)
+        
+        # Extraire le contenu de la réponse
+        response_text = response.output_text if hasattr(response, 'output_text') else str(response.output[0].content[0].text)
+        
+        logger.info(f"✅ Réponse reçue: {len(response_text)} caractères")
+        
+        # Parser en JSON si demandé
+        if json_response:
+            try:
+                result = json.loads(response_text)
+                logger.info("✅ JSON parsé avec succès")
+                return result
+            except json.JSONDecodeError as e:
+                logger.error(f"❌ Erreur parsing JSON: {e}")
+                logger.error(f"   Contenu: {response_text[:500]}...")
+                raise ValueError(f"Réponse non-JSON valide: {e}")
+        else:
+            return {"text": response_text}
+            
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de l'appel OpenAI Responses API: {e}")
+        raise
+
+async def call_openai_responses_async(
+    system_prompt: str,
+    user_input: str = None,
+    user_images: list = None,
+    json_response: bool = True,
+    max_tokens: int = 16000
+) -> dict:
+    """
+    🚀 Version asynchrone de call_openai_responses
+    """
+    global OPENAI_MODEL, async_client
+
+    if async_client is None:
+        # Fallback sur la version synchrone
+        return call_openai_responses(system_prompt, user_input, user_images, json_response, max_tokens)
+
+    try:
+        logger.info(f"📤 Appel async à OpenAI Responses API (modèle: {OPENAI_MODEL})...")
+
+        # Construire l'input
+        input_content = []
+        input_content.append({"role": "system", "content": system_prompt})
+
+        user_message_content = []
+        if user_input:
+            user_message_content.append({"type": "input_text", "text": user_input})
+        if user_images:
+            for img_url in user_images:
+                if img_url:
+                    user_message_content.append({"type": "input_image", "image_url": img_url})
+
+        if user_message_content:
+            input_content.append({"role": "user", "content": user_message_content})
+
+        response_config = {
+            "model": OPENAI_MODEL,
+            "input": input_content
+        }
+
+        if json_response:
+            response_config["text"] = {"format": {"type": "json_object"}}
+        if max_tokens:
+            response_config["max_output_tokens"] = max_tokens
+
+        response = await async_client.responses.create(**response_config)
+
+        response_text = response.output_text if hasattr(response, 'output_text') else str(response.output[0].content[0].text)
+
+        if json_response:
+            return json.loads(response_text)
+        return {"text": response_text}
+
+    except Exception as e:
+        logger.error(f"❌ Erreur async OpenAI Responses API: {e}")
+        raise
+
+
+def convert_chat_messages_to_responses_input(messages: list) -> list:
+    """
+    🔄 Convertit les messages du format Chat Completions vers le format Responses
+
+    Chat Completions format:
+    [
+        {"role": "system", "content": "..."},
+        {"role": "user", "content": [...]}
+    ]
+
+    Responses format:
+    [
+        {"role": "system", "content": "..."},
+        {"role": "user", "content": [{"type": "input_text", "text": "..."}, {"type": "input_image", "image_url": "..."}]}
+    ]
+
+    Args:
+        messages: Liste de messages au format Chat Completions
+
+    Returns:
+        list: Messages convertis au format Responses
+    """
+    converted = []
+
+    for msg in messages:
+        role = msg.get("role")
+        content = msg.get("content")
+
+        if role == "system":
+            # Le système reste identique
+            converted.append({"role": "system", "content": content})
+
+        elif role == "user":
+            # Convertir le contenu utilisateur
+            if isinstance(content, str):
+                # Texte simple
+                converted.append({
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": content}]
+                })
+            elif isinstance(content, list):
+                # Contenu multimodal (texte + images)
+                user_content = []
+                for item in content:
+                    if item.get("type") == "text":
+                        user_content.append({"type": "input_text", "text": item.get("text", "")})
+                    elif item.get("type") == "image_url":
+                        image_url = item.get("image_url", {}).get("url", "")
+                        if image_url:
+                            user_content.append({"type": "input_image", "image_url": image_url})
+
+                if user_content:
+                    converted.append({"role": "user", "content": user_content})
+
+    return converted
+
+
+def extract_usage_tokens(response) -> dict:
+    """
+    🔄 Extrait les tokens d'usage de manière compatible avec Responses API
+
+    Responses API utilise:
+    - input_tokens au lieu de prompt_tokens
+    - output_tokens au lieu de completion_tokens
+
+    Args:
+        response: Réponse de l'API OpenAI
+
+    Returns:
+        dict: {"prompt_tokens": int, "completion_tokens": int, "total_tokens": int}
+    """
+    if not hasattr(response, 'usage'):
+        return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    usage = response.usage
+
+    # Responses API format
+    if hasattr(usage, 'input_tokens'):
+        return {
+            "prompt_tokens": usage.input_tokens,
+            "completion_tokens": usage.output_tokens,
+            "total_tokens": usage.total_tokens
+        }
+
+    # Chat Completions API format (fallback)
+    if hasattr(usage, 'prompt_tokens'):
+        return {
+            "prompt_tokens": usage.prompt_tokens,
+            "completion_tokens": usage.completion_tokens,
+            "total_tokens": usage.total_tokens
+        }
+
+    return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
 
 # Charger les templates de vérification des pièces
 def load_room_templates(parcours_type: str = "Voyageur"):
@@ -716,6 +1012,34 @@ def build_dynamic_prompt(input_data: InputData, parcours_type: str = "Voyageur")
         # Vérifier que le prompt n'est pas vide
         if full_prompt and len(full_prompt) > 100:
             logger.info(f"✅ Prompt construit: {len(full_prompt)} caractères")
+            
+            # 🟢🟢🟢 DEBUG PROMPT FINAL CONSTRUIT - TRÈS VISIBLE 🟢🟢🟢
+            logger.info("")
+            logger.info("=" * 100)
+            logger.info("🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢")
+            logger.info("🔵🔵🔵  PROMPT FINAL ENVOYÉ À OPENAI (après injection variables)  🔵🔵🔵")
+            logger.info("🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢")
+            logger.info("=" * 100)
+            logger.info(f"📊 LONGUEUR TOTALE: {len(full_prompt)} caractères")
+            logger.info(f"📊 NOMBRE DE LIGNES: {len(full_prompt.split(chr(10)))}")
+            logger.info(f"🧳 TYPE PARCOURS: {parcours_type}")
+            logger.info(f"🏠 PIÈCE: {input_data.nom}")
+            logger.info("-" * 100)
+            logger.info("📜 CONTENU COMPLET DU PROMPT FINAL:")
+            logger.info("-" * 100)
+            
+            # Afficher le prompt ligne par ligne
+            prompt_lines = full_prompt.split('\n')
+            for i, line in enumerate(prompt_lines):
+                logger.info(f"   {i+1:4d} | {line}")
+            
+            logger.info("-" * 100)
+            logger.info("=" * 100)
+            logger.info("🟢🟢🟢  FIN PROMPT FINAL  🟢🟢🟢")
+            logger.info("=" * 100)
+            logger.info("")
+            # 🟢🟢🟢 FIN DEBUG PROMPT FINAL 🟢🟢🟢
+            
             return full_prompt
         else:
             logger.warning("⚠️ Prompt vide, utilisation du fallback")
@@ -797,9 +1121,29 @@ def convert_url_to_data_uri(url: str) -> Optional[str]:
         logger.error(f"❌ Erreur conversion URL → Data URI pour {url}: {e}")
         return None
 
+# 🚀 CACHE GLOBAL pour les conversions Data URI (évite de reconvertir les mêmes URLs)
+_data_uri_cache = {}
+_data_uri_cache_lock = threading.Lock()
+
+def clear_data_uri_cache():
+    """Nettoie le cache des conversions Data URI"""
+    global _data_uri_cache
+    with _data_uri_cache_lock:
+        cache_size = len(_data_uri_cache)
+        _data_uri_cache.clear()
+        logger.info(f"🧹 Cache Data URI nettoyé ({cache_size} entrées supprimées)")
+
+def get_data_uri_cache_stats():
+    """Retourne les statistiques du cache Data URI"""
+    with _data_uri_cache_lock:
+        return {
+            "size": len(_data_uri_cache),
+            "urls": list(_data_uri_cache.keys())[:10]  # Premières 10 URLs pour debug
+        }
+
 def convert_message_urls_to_data_uris(user_message: dict) -> dict:
     """
-    Convertit toutes les URLs d'images dans un message en data URIs
+    Convertit toutes les URLs d'images dans un message en data URIs (VERSION SÉQUENTIELLE)
     Utilisé comme fallback quand OpenAI ne peut pas télécharger les URLs
 
     Args:
@@ -813,6 +1157,7 @@ def convert_message_urls_to_data_uris(user_message: dict) -> dict:
 
         converted_count = 0
         failed_count = 0
+        cached_count = 0
 
         # Parcourir le contenu du message
         for content_item in user_message.get("content", []):
@@ -821,23 +1166,109 @@ def convert_message_urls_to_data_uris(user_message: dict) -> dict:
 
                 # Ne convertir que si ce n'est pas déjà une data URI
                 if not original_url.startswith("data:"):
-                    logger.info(f"🔄 Conversion de: {original_url[:100]}...")
+                    # Vérifier le cache d'abord
+                    with _data_uri_cache_lock:
+                        if original_url in _data_uri_cache:
+                            content_item["image_url"]["url"] = _data_uri_cache[original_url]
+                            cached_count += 1
+                            logger.info(f"📦 [CACHE HIT] URL déjà convertie: {original_url[:80]}...")
+                            continue
 
+                    logger.info(f"🔄 Conversion de: {original_url[:100]}...")
                     data_uri = convert_url_to_data_uri(original_url)
 
                     if data_uri:
                         content_item["image_url"]["url"] = data_uri
+                        # Mettre en cache
+                        with _data_uri_cache_lock:
+                            _data_uri_cache[original_url] = data_uri
                         converted_count += 1
                         logger.info(f"✅ URL convertie en Data URI")
                     else:
                         failed_count += 1
                         logger.warning(f"⚠️ Échec conversion, URL conservée")
 
-        logger.info(f"📊 Conversion terminée: {converted_count} réussies, {failed_count} échecs")
+        logger.info(f"📊 Conversion terminée: {converted_count} nouvelles, {cached_count} depuis cache, {failed_count} échecs")
         return user_message
 
     except Exception as e:
         logger.error(f"❌ Erreur lors de la conversion des URLs: {e}")
+        return user_message
+
+async def convert_message_urls_to_data_uris_parallel(user_message: dict) -> dict:
+    """
+    🚀 VERSION PARALLÉLISÉE - Convertit toutes les URLs d'images en data URIs en parallèle
+    Beaucoup plus rapide que la version séquentielle pour plusieurs images
+
+    Args:
+        user_message: Message utilisateur avec des image_url
+
+    Returns:
+        Message modifié avec data URIs
+    """
+    try:
+        logger.info("🚀 Conversion PARALLÈLE de toutes les URLs en Data URIs...")
+
+        # Collecter toutes les URLs à convertir
+        urls_to_convert = []
+        content_items = []
+
+        for content_item in user_message.get("content", []):
+            if content_item.get("type") == "image_url":
+                original_url = content_item["image_url"]["url"]
+
+                # Ne convertir que si ce n'est pas déjà une data URI
+                if not original_url.startswith("data:"):
+                    # Vérifier le cache d'abord
+                    with _data_uri_cache_lock:
+                        if original_url in _data_uri_cache:
+                            content_item["image_url"]["url"] = _data_uri_cache[original_url]
+                            logger.info(f"📦 [CACHE HIT] URL déjà convertie: {original_url[:80]}...")
+                            continue
+
+                    urls_to_convert.append(original_url)
+                    content_items.append(content_item)
+
+        if not urls_to_convert:
+            logger.info("✅ Toutes les URLs sont déjà converties ou en cache")
+            return user_message
+
+        logger.info(f"🔄 Conversion parallèle de {len(urls_to_convert)} URLs...")
+
+        # Convertir toutes les URLs en parallèle
+        loop = asyncio.get_event_loop()
+        conversion_tasks = [
+            loop.run_in_executor(None, convert_url_to_data_uri, url)
+            for url in urls_to_convert
+        ]
+
+        # Attendre toutes les conversions
+        data_uris = await asyncio.gather(*conversion_tasks, return_exceptions=True)
+
+        # Appliquer les résultats
+        converted_count = 0
+        failed_count = 0
+
+        for i, (url, content_item, data_uri) in enumerate(zip(urls_to_convert, content_items, data_uris)):
+            if isinstance(data_uri, Exception):
+                logger.error(f"❌ Erreur conversion {url[:80]}...: {data_uri}")
+                failed_count += 1
+            elif data_uri:
+                content_item["image_url"]["url"] = data_uri
+                # Mettre en cache
+                with _data_uri_cache_lock:
+                    _data_uri_cache[url] = data_uri
+                converted_count += 1
+                logger.info(f"✅ [{i+1}/{len(urls_to_convert)}] URL convertie")
+            else:
+                failed_count += 1
+                logger.warning(f"⚠️ Échec conversion, URL conservée: {url[:80]}...")
+
+        logger.info(f"📊 Conversion parallèle terminée: {converted_count} réussies, {failed_count} échecs")
+        return user_message
+
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la conversion parallèle des URLs: {e}")
         return user_message
 
 def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", request_id: str = None) -> AnalyseResponse:
@@ -944,7 +1375,7 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
         logger.info(f"")
         
         logger.info(f"🔬 🤖 PARAMÈTRES DE L'APPEL:")
-        logger.info(f"🔬    ├─ Modèle: gpt-4.1-2025-04-14")
+        logger.info(f"🔬    ├─ Modèle: {OPENAI_MODEL}")
         logger.info(f"🔬    ├─ Temperature: 0.2")
         logger.info(f"🔬    ├─ Max tokens: 16000")
         logger.info(f"🔬    └─ Response format: json_object")
@@ -1103,7 +1534,7 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
 
                 # Préparer le payload exact envoyé à OpenAI
                 openai_payload = {
-                    "model": "gpt-4.1-2025-04-14",
+                    "model": OPENAI_MODEL,
                     "messages": [
                         {
                             "role": "system",
@@ -1176,7 +1607,7 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                 request_id=request_id,
                 prompt_type="System",
                 prompt_content=dynamic_prompt,
-                model="gpt-5.1-2025-11-13"
+                model=OPENAI_MODEL
             )
 
             # Log du message utilisateur (contient les images)
@@ -1194,24 +1625,26 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                 request_id=request_id,
                 prompt_type="User",
                 prompt_content=user_message_text,
-                model="gpt-5.1-2025-11-13"
+                model=OPENAI_MODEL
             )
 
         # Faire l'appel API avec response_format et gestion d'erreurs robuste
         try:
-            response = client.chat.completions.create(
-                model="gpt-5.1-2025-11-13",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": dynamic_prompt
-                    },
-                    user_message
-                ],
-                response_format={"type": "json_object"},
-                max_completion_tokens=16000
-                #temperature=1,
-                #max_completion_tokens=16000
+            # 🚀 MIGRATION vers Responses API avec gpt-5.2-2025-12-11
+            messages = [
+                {
+                    "role": "system",
+                    "content": dynamic_prompt
+                },
+                user_message
+            ]
+            input_content = convert_chat_messages_to_responses_input(messages)
+
+            response = client.responses.create(
+                model=OPENAI_MODEL,
+                input=input_content,
+                text={"format": {"type": "json_object"}},
+                max_output_tokens=16000
             )
         except Exception as openai_error:
             error_str = str(openai_error)
@@ -1230,11 +1663,13 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                 "invalid_image_url",
                 "failed to download"
             ]):
-                logger.warning("⚠️ Erreur de téléchargement d'image détectée, tentative avec Data URIs")
+                logger.warning("⚠️ Erreur de téléchargement d'image détectée, tentative avec Data URIs PARALLÈLES")
 
                 try:
-                    # Convertir toutes les URLs en data URIs
-                    user_message_with_data_uris = convert_message_urls_to_data_uris(user_message.copy())
+                    # 🚀 Convertir toutes les URLs en data URIs EN PARALLÈLE (beaucoup plus rapide)
+                    user_message_with_data_uris = asyncio.run(
+                        convert_message_urls_to_data_uris_parallel(user_message.copy())
+                    )
 
                     # Compter les images converties
                     data_uri_count = sum(
@@ -1245,17 +1680,21 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                     logger.info(f"🔄 Retry avec {data_uri_count} images en Data URI")
 
                     # Réessayer avec les data URIs
-                    response = client.chat.completions.create(
-                        model="gpt-5.1-2025-11-13",
-                        messages=[
-                            {
-                                "role": "system",
-                                "content": dynamic_prompt
-                            },
-                            user_message_with_data_uris
-                        ],
-                        response_format={"type": "json_object"},
-                        max_completion_tokens=16000
+                    # 🚀 MIGRATION vers Responses API
+                    messages = [
+                        {
+                            "role": "system",
+                            "content": dynamic_prompt
+                        },
+                        user_message_with_data_uris
+                    ]
+                    input_content = convert_chat_messages_to_responses_input(messages)
+
+                    response = client.responses.create(
+                        model=OPENAI_MODEL,
+                        input=input_content,
+                        text={"format": {"type": "json_object"}},
+                        max_output_tokens=16000
                     )
                     logger.info("✅ Analyse réussie avec Data URIs (fallback téléchargement)")
 
@@ -1276,17 +1715,21 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                     }
 
                     try:
-                        response = client.chat.completions.create(
-                            model="gpt-5.1-2025-11-13",
-                            messages=[
-                                {
-                                    "role": "system",
-                                    "content": dynamic_prompt
-                                },
-                                fallback_message
-                            ],
-                            response_format={"type": "json_object"},
-                            max_completion_tokens=16000
+                        # 🚀 MIGRATION vers Responses API
+                        messages = [
+                            {
+                                "role": "system",
+                                "content": dynamic_prompt
+                            },
+                            fallback_message
+                        ]
+                        input_content = convert_chat_messages_to_responses_input(messages)
+
+                        response = client.responses.create(
+                            model=OPENAI_MODEL,
+                            input=input_content,
+                            text={"format": {"type": "json_object"}},
+                            max_output_tokens=16000
                         )
                         logger.info("✅ Analyse réussie en mode fallback (sans images)")
                     except Exception as final_error:
@@ -1327,17 +1770,21 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
 
                 try:
                     # Tentative sans images
-                    response = client.chat.completions.create(
-                        model="gpt-5.1-2025-11-13",
-                        messages=[
-                            {
-                                "role": "system",
-                                "content": dynamic_prompt
-                            },
-                            fallback_message
-                        ],
-                        response_format={"type": "json_object"},
-                        max_completion_tokens=16000
+                    # 🚀 MIGRATION vers Responses API
+                    messages = [
+                        {
+                            "role": "system",
+                            "content": dynamic_prompt
+                        },
+                        fallback_message
+                    ]
+                    input_content = convert_chat_messages_to_responses_input(messages)
+
+                    response = client.responses.create(
+                        model=OPENAI_MODEL,
+                        input=input_content,
+                        text={"format": {"type": "json_object"}},
+                        max_output_tokens=16000
                     )
                     logger.info("✅ Analyse réussie en mode fallback (sans images)")
                 except Exception as fallback_error:
@@ -1368,7 +1815,8 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
 
         # 🛡️ VALIDATION ET CORRECTION DU FORMAT DE RÉPONSE
         try:
-            response_content = response.choices[0].message.content.strip()
+            # 🚀 MIGRATION: Extraction depuis Responses API
+            response_content = response.output_text.strip() if hasattr(response, 'output_text') else str(response.output[0].content[0].text).strip()
             logger.info(f"📄 Réponse IA reçue: {len(response_content)} caractères")
 
             # 📝 LOG DE LA RÉPONSE POUR LE SYSTÈME DE LOGS
@@ -1377,12 +1825,8 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                     request_id=request_id,
                     response_type="Analysis",
                     response_content=response_content,
-                    model="gpt-5.1-2025-11-13",
-                    tokens_used={
-                        "prompt_tokens": response.usage.prompt_tokens if hasattr(response, 'usage') else 0,
-                        "completion_tokens": response.usage.completion_tokens if hasattr(response, 'usage') else 0,
-                        "total_tokens": response.usage.total_tokens if hasattr(response, 'usage') else 0
-                    }
+                    model=OPENAI_MODEL,
+                    tokens_used=extract_usage_tokens(response)
                 )
 
             # Tenter de parser le JSON
@@ -2148,17 +2592,21 @@ def _extract_inventory_fallback_openai(piece_id: str, nom_piece: str, user_conte
         return InventoryExtractionResponse(piece_id=piece_id, total_objects=0, objects=[])
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-5-mini-2025-08-07",
-            messages=[
-                {"role": "system", "content": INVENTORY_EXTRACTION_PROMPT},
-                {"role": "user", "content": user_content}
-            ],
-            response_format={"type": "json_object"},
-            max_completion_tokens=8000
+        # 🚀 MIGRATION vers Responses API
+        messages = [
+            {"role": "system", "content": INVENTORY_EXTRACTION_PROMPT},
+            {"role": "user", "content": user_content}
+        ]
+        input_content = convert_chat_messages_to_responses_input(messages)
+
+        response = client.responses.create(
+            model=OPENAI_MODEL,
+            input=input_content,
+            text={"format": {"type": "json_object"}},
+            max_output_tokens=8000
         )
 
-        response_text = response.choices[0].message.content
+        response_text = response.output_text if hasattr(response, 'output_text') else str(response.output[0].content[0].text)
         response_json = json.loads(response_text)
 
         # Parser les objets
@@ -2311,17 +2759,21 @@ def _verify_inventory_fallback_openai(
         )
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-5-mini-2025-08-07",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content}
-            ],
-            response_format={"type": "json_object"},
-            max_completion_tokens=8000
+        # 🚀 MIGRATION vers Responses API
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content}
+        ]
+        input_content = convert_chat_messages_to_responses_input(messages)
+
+        response = client.responses.create(
+            model=OPENAI_MODEL,
+            input=input_content,
+            text={"format": {"type": "json_object"}},
+            max_output_tokens=8000
         )
 
-        response_text = response.choices[0].message.content
+        response_text = response.output_text if hasattr(response, 'output_text') else str(response.output[0].content[0].text)
         response_json = json.loads(response_text)
 
         # Parser les résultats
@@ -2593,13 +3045,14 @@ async def analyze_room(input_data: InputData):
 
         raise HTTPException(status_code=500, detail=str(e))
 
-def classify_room_type(input_data: RoomClassificationInput, parcours_type: str = "Voyageur") -> RoomClassificationResponse:
+def classify_room_type(input_data: RoomClassificationInput, parcours_type: str = "Voyageur", request_id: str = None) -> RoomClassificationResponse:
     """
     Classifier le type de pièce à partir des images et retourner les critères de vérification
 
     Args:
         input_data: Données d'entrée pour la classification
         parcours_type: Type de parcours ("Voyageur" ou "Ménage")
+        request_id: ID de la requête pour le tracking des logs
 
     Returns:
         RoomClassificationResponse: Résultat de la classification avec critères
@@ -2723,7 +3176,7 @@ RÉPONDS EN JSON:
                 
                 # Préparer le payload exact envoyé à OpenAI pour la classification
                 openai_payload = {
-                    "model": "gpt-4o",
+                    "model": OPENAI_MODEL,
                     "messages": [user_message],
                     "max_tokens": 200,
                     "temperature": 0.1,
@@ -2794,16 +3247,19 @@ RÉPONDS EN JSON:
                 request_id=request_id,
                 prompt_type="Classification",
                 prompt_content=user_text,
-                model="gpt-5-mini-2025-08-07"
+                model=OPENAI_MODEL
             )
 
         # Appel à l'API OpenAI avec gestion d'erreurs robuste
         try:
-            response = client.chat.completions.create(
-                model="gpt-5-mini-2025-08-07",
-                messages=[user_message],
-                max_completion_tokens=1000,  # Augmenté pour GPT-5 mini
-                response_format={"type": "json_object"}
+            # 🚀 MIGRATION vers Responses API
+            input_content = convert_chat_messages_to_responses_input([user_message])
+
+            response = client.responses.create(
+                model=OPENAI_MODEL,
+                input=input_content,
+                text={"format": {"type": "json_object"}},
+                max_output_tokens=1000
             )
         except Exception as openai_error:
             error_str = str(openai_error)
@@ -2822,11 +3278,13 @@ RÉPONDS EN JSON:
                 "invalid_image_url",
                 "failed to download"
             ]):
-                logger.warning("⚠️ Erreur de téléchargement d'image détectée, tentative avec Data URIs")
+                logger.warning("⚠️ Erreur de téléchargement d'image détectée, tentative avec Data URIs PARALLÈLES")
 
                 try:
-                    # Convertir toutes les URLs en data URIs
-                    user_message_with_data_uris = convert_message_urls_to_data_uris(user_message.copy())
+                    # 🚀 Convertir toutes les URLs en data URIs EN PARALLÈLE (beaucoup plus rapide)
+                    user_message_with_data_uris = asyncio.run(
+                        convert_message_urls_to_data_uris_parallel(user_message.copy())
+                    )
 
                     # Compter les images converties
                     data_uri_count = sum(
@@ -2837,11 +3295,14 @@ RÉPONDS EN JSON:
                     logger.info(f"🔄 Retry classification avec {data_uri_count} images en Data URI")
 
                     # Réessayer avec les data URIs
-                    response = client.chat.completions.create(
-                        model="gpt-5-mini-2025-08-07",
-                        messages=[user_message_with_data_uris],
-                        max_completion_tokens=1000,  # Augmenté pour GPT-5 mini
-                        response_format={"type": "json_object"}
+                    # 🚀 MIGRATION vers Responses API
+                    input_content = convert_chat_messages_to_responses_input([user_message_with_data_uris])
+
+                    response = client.responses.create(
+                        model=OPENAI_MODEL,
+                        input=input_content,
+                        text={"format": {"type": "json_object"}},
+                        max_output_tokens=1000
                     )
                     logger.info("✅ Classification réussie avec Data URIs (fallback téléchargement)")
 
@@ -2862,11 +3323,14 @@ RÉPONDS EN JSON:
                     }
 
                     try:
-                        response = client.chat.completions.create(
-                            model="gpt-5-mini-2025-08-07",
-                            messages=[fallback_message],
-                            max_completion_tokens=1000,  # Augmenté pour GPT-5 mini
-                            response_format={"type": "json_object"}
+                        # 🚀 MIGRATION vers Responses API
+                        input_content = convert_chat_messages_to_responses_input([fallback_message])
+
+                        response = client.responses.create(
+                            model=OPENAI_MODEL,
+                            input=input_content,
+                            text={"format": {"type": "json_object"}},
+                            max_output_tokens=1000
                         )
                         logger.info("✅ Classification réussie en mode fallback (sans images)")
                     except Exception as final_error:
@@ -2903,11 +3367,14 @@ RÉPONDS EN JSON:
 
                 try:
                     # Tentative sans images
-                    response = client.chat.completions.create(
-                        model="gpt-5-mini-2025-08-07",
-                        messages=[fallback_message],
-                        max_completion_tokens=1000,  # Augmenté pour GPT-5 mini
-                        response_format={"type": "json_object"}
+                    # 🚀 MIGRATION vers Responses API
+                    input_content = convert_chat_messages_to_responses_input([fallback_message])
+
+                    response = client.responses.create(
+                        model=OPENAI_MODEL,
+                        input=input_content,
+                        text={"format": {"type": "json_object"}},
+                        max_output_tokens=1000
                     )
                     logger.info("✅ Classification réussie en mode fallback (sans images)")
                 except Exception as fallback_error:
@@ -2933,7 +3400,8 @@ RÉPONDS EN JSON:
                 raise HTTPException(status_code=500, detail=f"Erreur de l'API OpenAI: {error_str}")
         
         # Parser la réponse
-        response_content = response.choices[0].message.content
+        # 🚀 MIGRATION: Extraction depuis Responses API
+        response_content = response.output_text if hasattr(response, 'output_text') else str(response.output[0].content[0].text)
         if response_content is None:
             logger.error("❌ Réponse OpenAI vide")
             raise ValueError("Réponse OpenAI vide")
@@ -2948,12 +3416,8 @@ RÉPONDS EN JSON:
                 request_id=request_id,
                 response_type="Classification",
                 response_content=response_content,
-                model="gpt-5-mini-2025-08-07",
-                tokens_used={
-                    "prompt_tokens": response.usage.prompt_tokens if hasattr(response, 'usage') else 0,
-                    "completion_tokens": response.usage.completion_tokens if hasattr(response, 'usage') else 0,
-                    "total_tokens": response.usage.total_tokens if hasattr(response, 'usage') else 0
-                }
+                model=OPENAI_MODEL,
+                tokens_used=extract_usage_tokens(response)
             )
 
         # 🔧 NETTOYAGE ROBUSTE DU JSON
@@ -3137,16 +3601,36 @@ async def classify_room(input_data: RoomClassificationInput):
     L'IA analyse les éléments visuels caractéristiques pour déterminer le type de pièce
     et retourne automatiquement les critères de vérification appropriés.
     """
+    # 🔍 TRACKING DES LOGS EN TEMPS RÉEL
+    request_id = str(uuid.uuid4())
+    logs_manager.start_request(
+        request_id=request_id,
+        endpoint="/classify-room",
+        data={"piece_id": input_data.piece_id}
+    )
+
     logger.info(f"Classification démarrée pour la pièce {input_data.piece_id}")
 
     try:
         # Récupérer le type de parcours depuis input_data
         parcours_type = input_data.type if hasattr(input_data, 'type') else "Voyageur"
-        result = classify_room_type(input_data, parcours_type)
+        result = classify_room_type(input_data, parcours_type, request_id=request_id)
         logger.info(f"Classification terminée pour la pièce {input_data.piece_id}: {result.room_type} (confiance: {result.confidence}%)")
+
+        logs_manager.complete_request(
+            request_id=request_id,
+            status="success"
+        )
+
         return result
     except Exception as e:
         logger.error(f"Erreur dans l'endpoint classify-room: {str(e)}")
+
+        logs_manager.complete_request(
+            request_id=request_id,
+            status="error"
+        )
+
         raise HTTPException(status_code=500, detail=str(e))
 
 # Nouveau modèle pour la réponse combinée
@@ -3185,7 +3669,7 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
         )
 
         # Effectuer la classification avec le type de parcours
-        classification_result = classify_room_type(classification_input, parcours_type)
+        classification_result = classify_room_type(classification_input, parcours_type, request_id=request_id)
         
         logger.info(f"✅ Classification terminée: {classification_result.room_type} ({classification_result.confidence}%)")
         logger.info(f"📝 Nom détecté: {classification_result.room_name} {classification_result.room_icon}")
@@ -3467,10 +3951,14 @@ class EtapesAnalysisInput(BaseModel):
     pieces: List[PieceWithEtapes]
 
     # 🆕 PHASE 1: Métadonnées critiques (priorité haute)
-    logement_adresse: Optional[str] = None
+    logement_adresse: Optional[str] = Field(None, alias='adresseLogement')
+    logement_name: Optional[str] = Field(None, alias='logementName')
     date_debut: Optional[str] = None  # Format: "DD/MM/YY"
     date_fin: Optional[str] = None  # Format: "DD/MM/YY"
     operateur_nom: Optional[str] = None
+    operateur_prenom: Optional[str] = Field(None, alias='operatorFirstName')
+    operateur_nom_famille: Optional[str] = Field(None, alias='operatorLastName')
+    operateur_telephone: Optional[str] = Field(None, alias='operatorPhone')
     etat_lieux_moment: Optional[Literal["sortie", "arrivee-sortie"]] = None
 
     # 🆕 PHASE 1: Informations voyageur (priorité haute)
@@ -3489,6 +3977,8 @@ class EtapesAnalysisInput(BaseModel):
 
     # 🆕 PHASE 3: Checklist finale (priorité basse)
     checklist_finale: Optional[List[ChecklistItem]] = None
+
+    model_config = {"populate_by_name": True}  # Permet d'utiliser les alias
 
     @field_validator('etat_lieux_moment', mode='before')
     @classmethod
@@ -3687,22 +4177,26 @@ Compare les photos avant/après et réponds en JSON:
                         request_id=request_id,
                         prompt_type=f"Étape: {etape.task_name}",
                         prompt_content=etape_prompt,
-                        model="gpt-5-mini-2025-08-07"
+                        model=OPENAI_MODEL
                     )
 
                 # Faire l'appel API avec gestion d'erreurs robuste
                 try:
-                    response = client.chat.completions.create(
-                        model="gpt-5-mini-2025-08-07",
-                        messages=[
-                            {
-                                "role": "system",
-                                "content": etape_prompt
-                            },
-                            user_message
-                        ],
-                        response_format={"type": "json_object"},
-                        max_completion_tokens=16000
+                    # 🚀 MIGRATION vers Responses API
+                    messages = [
+                        {
+                            "role": "system",
+                            "content": etape_prompt
+                        },
+                        user_message
+                    ]
+                    input_content = convert_chat_messages_to_responses_input(messages)
+
+                    response = client.responses.create(
+                        model=OPENAI_MODEL,
+                        input=input_content,
+                        text={"format": {"type": "json_object"}},
+                        max_output_tokens=16000
                     )
                 except Exception as openai_error:
                     error_str = str(openai_error)
@@ -3715,11 +4209,13 @@ Compare les photos avant/après et réponds en JSON:
                         "invalid_image_url",
                         "failed to download"
                     ]):
-                        logger.warning(f"⚠️ Erreur de téléchargement d'image détectée pour l'étape {etape.etape_id}, tentative avec Data URIs")
+                        logger.warning(f"⚠️ Erreur de téléchargement d'image détectée pour l'étape {etape.etape_id}, tentative avec Data URIs PARALLÈLES")
 
                         try:
-                            # Convertir toutes les URLs en data URIs
-                            user_message_with_data_uris = convert_message_urls_to_data_uris(user_message.copy())
+                            # 🚀 Convertir toutes les URLs en data URIs EN PARALLÈLE (beaucoup plus rapide)
+                            user_message_with_data_uris = asyncio.run(
+                                convert_message_urls_to_data_uris_parallel(user_message.copy())
+                            )
 
                             # Compter les images converties
                             data_uri_count = sum(
@@ -3730,17 +4226,21 @@ Compare les photos avant/après et réponds en JSON:
                             logger.info(f"🔄 Retry étape {etape.etape_id} avec {data_uri_count} images en Data URI")
 
                             # Réessayer avec les data URIs
-                            response = client.chat.completions.create(
-                                model="gpt-5-mini-2025-08-07",
-                                messages=[
-                                    {
-                                        "role": "system",
-                                        "content": etape_prompt
-                                    },
-                                    user_message_with_data_uris
-                                ],
-                                response_format={"type": "json_object"},
-                                max_completion_tokens=16000
+                            # 🚀 MIGRATION vers Responses API
+                            messages = [
+                                {
+                                    "role": "system",
+                                    "content": etape_prompt
+                                },
+                                user_message_with_data_uris
+                            ]
+                            input_content = convert_chat_messages_to_responses_input(messages)
+
+                            response = client.responses.create(
+                                model=OPENAI_MODEL,
+                                input=input_content,
+                                text={"format": {"type": "json_object"}},
+                                max_output_tokens=16000
                             )
                             logger.info(f"✅ Analyse de l'étape {etape.etape_id} réussie avec Data URIs (fallback téléchargement)")
 
@@ -3761,17 +4261,21 @@ Compare les photos avant/après et réponds en JSON:
                             }
 
                             try:
-                                response = client.chat.completions.create(
-                                    model="gpt-5-mini-2025-08-07",
-                                    messages=[
-                                        {
-                                            "role": "system",
-                                            "content": etape_prompt
-                                        },
-                                        fallback_message
-                                    ],
-                                    response_format={"type": "json_object"},
-                                    max_completion_tokens=16000
+                                # 🚀 MIGRATION vers Responses API
+                                messages = [
+                                    {
+                                        "role": "system",
+                                        "content": etape_prompt
+                                    },
+                                    fallback_message
+                                ]
+                                input_content = convert_chat_messages_to_responses_input(messages)
+
+                                response = client.responses.create(
+                                    model=OPENAI_MODEL,
+                                    input=input_content,
+                                    text={"format": {"type": "json_object"}},
+                                    max_output_tokens=16000
                                 )
                                 logger.info(f"✅ Analyse de l'étape {etape.etape_id} réussie en mode fallback (sans images)")
                             except Exception as final_error:
@@ -3803,17 +4307,21 @@ Compare les photos avant/après et réponds en JSON:
 
                         try:
                             # Tentative sans images
-                            response = client.chat.completions.create(
-                                model="gpt-5-mini-2025-08-07",
-                                messages=[
-                                    {
-                                        "role": "system",
-                                        "content": etape_prompt
-                                    },
-                                    fallback_message
-                                ],
-                                response_format={"type": "json_object"},
-                                max_completion_tokens=16000
+                            # 🚀 MIGRATION vers Responses API
+                            messages = [
+                                {
+                                    "role": "system",
+                                    "content": etape_prompt
+                                },
+                                fallback_message
+                            ]
+                            input_content = convert_chat_messages_to_responses_input(messages)
+
+                            response = client.responses.create(
+                                model=OPENAI_MODEL,
+                                input=input_content,
+                                text={"format": {"type": "json_object"}},
+                                max_output_tokens=16000
                             )
                             logger.info(f"✅ Analyse de l'étape {etape.etape_id} réussie en mode fallback (sans images)")
                         except Exception as fallback_error:
@@ -3841,7 +4349,8 @@ Compare les photos avant/après et réponds en JSON:
                         continue  # Passer à l'étape suivante
                 
                 # Parser la réponse
-                response_content = response.choices[0].message.content.strip()
+                # 🚀 MIGRATION: Extraction depuis Responses API
+                response_content = (response.output_text if hasattr(response, 'output_text') else str(response.output[0].content[0].text)).strip()
 
                 # 📝 LOG DE LA RÉPONSE POUR LE SYSTÈME DE LOGS (Étapes)
                 if request_id:
@@ -3849,12 +4358,8 @@ Compare les photos avant/après et réponds en JSON:
                         request_id=request_id,
                         response_type=f"Étape: {etape.task_name}",
                         response_content=response_content,
-                        model="gpt-5-mini-2025-08-07",
-                        tokens_used={
-                            "prompt_tokens": response.usage.prompt_tokens if hasattr(response, 'usage') else 0,
-                            "completion_tokens": response.usage.completion_tokens if hasattr(response, 'usage') else 0,
-                            "total_tokens": response.usage.total_tokens if hasattr(response, 'usage') else 0
-                        }
+                        model=OPENAI_MODEL,
+                        tokens_used=extract_usage_tokens(response)
                     )
 
                 # 🔧 NETTOYAGE ROBUSTE DU JSON
@@ -4842,7 +5347,7 @@ def convert_weighted_average_to_grade(weighted_average_score: float, config: dic
     return (1.0, "CRITIQUE")
 
 
-def generate_logement_enrichment(logement_id: str, pieces_analysis: List[CombinedAnalysisResponse], total_issues: int, general_issues: int, etapes_issues: int, parcours_type: str = "Voyageur") -> LogementAnalysisEnrichment:
+def generate_logement_enrichment(logement_id: str, pieces_analysis: List[CombinedAnalysisResponse], total_issues: int, general_issues: int, etapes_issues: int, parcours_type: str = "Voyageur", request_id: str = None) -> LogementAnalysisEnrichment:
     """
     Générer une synthèse globale et des recommandations pour le logement
 
@@ -4948,7 +5453,7 @@ def generate_logement_enrichment(logement_id: str, pieces_analysis: List[Combine
         logger.info(f"🔍 ÉTAPE 2 - Construction du prompt de synthèse")
         
         try:
-            prompts_config = load_prompts_config()
+            prompts_config = load_prompts_config(parcours_type)
             synthesis_global_config = prompts_config.get("prompts", {}).get("synthesis_global", {})
             
             # Préparer les variables pour le template
@@ -4972,7 +5477,13 @@ def generate_logement_enrichment(logement_id: str, pieces_analysis: List[Combine
                 raise ValueError("Prompt de synthèse vide")
             
             logger.info(f"✅ Prompt construit: {len(synthesis_prompt)} caractères")
-                
+
+            # 🔍 LOG DÉTAILLÉ DU PROMPT POUR DEBUG
+            logger.info(f"📋 PROMPT DE SYNTHÈSE (premiers 500 caractères):")
+            logger.info(synthesis_prompt[:500])
+            logger.info(f"📋 PROMPT DE SYNTHÈSE (derniers 500 caractères):")
+            logger.info(synthesis_prompt[-500:])
+
         except Exception as config_error:
             logger.warning(f"⚠️ Erreur config synthèse: {config_error}, utilisation fallback")
             # Fallback minimal
@@ -5007,9 +5518,9 @@ Génère une synthèse en JSON:
         logger.info(f"🔍 ÉTAPE 3 - Appel à l'IA de synthèse (OpenAI)")
 
         try:
-            logger.info(f"   🤖 Modèle: gpt-5-mini-2025-08-07")
-            logger.info(f"   🌡️ Température: 0.3")
-            logger.info(f"   📏 Max tokens: 8000")
+            logger.info(f"   🤖 Modèle: {OPENAI_MODEL}")
+            logger.info(f"   🌡️ Température: 0.1")
+            logger.info(f"   📏 Max tokens: 16000")
 
             # 📝 LOG DU PROMPT DE SYNTHÈSE
             if request_id:
@@ -5017,23 +5528,27 @@ Génère une synthèse en JSON:
                     request_id=request_id,
                     prompt_type="Synthesis",
                     prompt_content=synthesis_prompt,
-                    model="gpt-5-mini-2025-08-07"
+                    model=OPENAI_MODEL
                 )
 
-            response = client.chat.completions.create(
-                model="gpt-5-mini-2025-08-07",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": synthesis_prompt
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Génère la synthèse globale pour le logement {logement_id} basée sur les données d'inspection fournies."
-                    }
-                ],
-                response_format={"type": "json_object"},
-                max_completion_tokens=8000
+            # 🚀 MIGRATION vers Responses API
+            messages = [
+                {
+                    "role": "system",
+                    "content": synthesis_prompt
+                },
+                {
+                    "role": "user",
+                    "content": f"Génère la synthèse globale pour le logement {logement_id} basée sur les données d'inspection fournies."
+                }
+            ]
+            input_content = convert_chat_messages_to_responses_input(messages)
+
+            response = client.responses.create(
+                model=OPENAI_MODEL,
+                input=input_content,
+                text={"format": {"type": "json_object"}},
+                max_output_tokens=8000
             )
 
             logger.info(f"✅ Réponse OpenAI reçue avec succès")
@@ -5052,7 +5567,8 @@ Génère une synthèse en JSON:
         # 🔍 ÉTAPE 4: Parser et valider la réponse
         logger.info(f"🔍 ÉTAPE 4 - Parsing et validation de la réponse IA")
 
-        response_content = response.choices[0].message.content.strip()
+        # 🚀 MIGRATION: Extraction depuis Responses API
+        response_content = (response.output_text if hasattr(response, 'output_text') else str(response.output[0].content[0].text)).strip()
         logger.info(f"   📄 Longueur réponse: {len(response_content)} caractères")
 
         # 📝 LOG DE LA RÉPONSE DE SYNTHÈSE
@@ -5061,12 +5577,8 @@ Génère une synthèse en JSON:
                 request_id=request_id,
                 response_type="Synthesis",
                 response_content=response_content,
-                model="gpt-5-mini-2025-08-07",
-                tokens_used={
-                    "prompt_tokens": response.usage.prompt_tokens if hasattr(response, 'usage') else 0,
-                    "completion_tokens": response.usage.completion_tokens if hasattr(response, 'usage') else 0,
-                    "total_tokens": response.usage.total_tokens if hasattr(response, 'usage') else 0
-                }
+                model=OPENAI_MODEL,
+                tokens_used=extract_usage_tokens(response)
             )
 
         # Valider que c'est du JSON valide
@@ -5160,6 +5672,15 @@ Génère une synthèse en JSON:
 # ═══════════════════════════════════════════════════════════════
 # 🚀 FONCTIONS ASYNC POUR PARALLÉLISATION
 # ═══════════════════════════════════════════════════════════════
+
+# Import du système de parallélisation optimisé
+try:
+    from analysis_parallel_integration import get_parallel_executor
+    PARALLEL_EXECUTOR_AVAILABLE = True
+    logger.info("✅ Système de parallélisation optimisé chargé")
+except ImportError as e:
+    PARALLEL_EXECUTOR_AVAILABLE = False
+    logger.warning(f"⚠️ Système de parallélisation optimisé non disponible: {e}")
 
 async def analyze_single_piece_async(piece: PieceWithEtapes, parcours_type: str = "Voyageur", request_id: str = None) -> CombinedAnalysisResponse:
     """
@@ -5296,7 +5817,7 @@ async def analyze_single_piece_async(piece: PieceWithEtapes, parcours_type: str 
         raise
 
 
-async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: str, request_id: str = None) -> List[EtapeIssue]:
+async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: str, parcours_type: str = "Voyageur", request_id: str = None) -> List[EtapeIssue]:
     """
     Analyse asynchrone d'une seule étape
     Extrait de la logique dans analyze_etapes
@@ -5305,6 +5826,7 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
         etape: Données de l'étape
         etape_data: Données traitées de l'étape
         piece_id: ID de la pièce
+        parcours_type: Type de parcours ("Voyageur" ou "Ménage")
         request_id: ID de la requête pour le tracking des logs
     """
     try:
@@ -5317,7 +5839,7 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
         logger.info(f"🔍 [ASYNC] Analyse de l'étape {etape.etape_id}: {etape.task_name}")
 
         # Construire le prompt spécifique pour l'étape depuis la config JSON
-        prompts_config = load_prompts_config()
+        prompts_config = load_prompts_config(parcours_type)
         analyze_etapes_config = prompts_config.get("prompts", {}).get("analyze_etapes", {})
 
         # Préparer les variables pour le template
@@ -5329,6 +5851,12 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
 
         # Construire le prompt système
         system_prompt = build_full_prompt_from_config(analyze_etapes_config, variables)
+
+        # 🔍 LOG DÉTAILLÉ DU PROMPT POUR DEBUG
+        logger.info(f"📋 PROMPT ANALYZE_ETAPES (premiers 500 caractères):")
+        logger.info(system_prompt[:500])
+        logger.info(f"📋 PROMPT ANALYZE_ETAPES (derniers 500 caractères):")
+        logger.info(system_prompt[-500:])
 
         # Message utilisateur
         user_message_config = prompts_config.get("user_messages", {}).get("analyze_etapes_user", {})
@@ -5366,22 +5894,37 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
                 request_id=request_id,
                 prompt_type="Etape",
                 prompt_content=system_prompt,
-                model="gpt-5-mini-2025-08-07"
+                model=OPENAI_MODEL
             )
 
-        # Appel à l'API OpenAI (synchrone, mais dans un contexte async)
-        response = client.chat.completions.create(
-            model="gpt-5-mini-2025-08-07",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": messages_content}
-            ],
-            response_format={"type": "json_object"},
-            max_completion_tokens=1000
-        )
+        # Appel à l'API OpenAI (ASYNCHRONE pour vraie parallélisation)
+        # Utiliser async_client s'il est disponible, sinon fallback sur client synchrone (bloquant)
+        # 🚀 MIGRATION vers Responses API
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": messages_content}
+        ]
+        input_content = convert_chat_messages_to_responses_input(messages)
+
+        if 'async_client' in globals() and async_client:
+            response = await async_client.responses.create(
+                model=OPENAI_MODEL,
+                input=input_content,
+                text={"format": {"type": "json_object"}},
+                max_output_tokens=1000
+            )
+        else:
+            logger.warning("⚠️ async_client non disponible, utilisation du client synchrone (lent)")
+            response = client.responses.create(
+                model=OPENAI_MODEL,
+                input=input_content,
+                text={"format": {"type": "json_object"}},
+                max_output_tokens=1000
+            )
 
         # Parser la réponse
-        response_text = response.choices[0].message.content
+        # 🚀 MIGRATION: Extraction depuis Responses API
+        response_text = response.output_text if hasattr(response, 'output_text') else str(response.output[0].content[0].text)
 
         # 📝 LOG DE LA RÉPONSE D'ÉTAPE
         if request_id:
@@ -5389,12 +5932,8 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
                 request_id=request_id,
                 response_type="Etape",
                 response_content=response_text,
-                model="gpt-5-mini-2025-08-07",
-                tokens_used={
-                    "prompt_tokens": response.usage.prompt_tokens if hasattr(response, 'usage') else 0,
-                    "completion_tokens": response.usage.completion_tokens if hasattr(response, 'usage') else 0,
-                    "total_tokens": response.usage.total_tokens if hasattr(response, 'usage') else 0
-                }
+                model=OPENAI_MODEL,
+                tokens_used=extract_usage_tokens(response)
             )
 
         # 🔧 NETTOYAGE ROBUSTE DU JSON (même logique que pour la classification)
@@ -5432,12 +5971,103 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
 
     except Exception as e:
         logger.error(f"❌ [ASYNC] Erreur lors de l'analyse de l'étape {etape.etape_id}: {str(e)}")
+        import traceback
+        logger.error(f"📄 Traceback complet:\n{traceback.format_exc()}")
         return []
 
 
 # ═══════════════════════════════════════════════════════════════
 # 🔄 VERSION PARALLÉLISÉE DE analyze_complete_logement
 # ═══════════════════════════════════════════════════════════════
+
+async def process_single_etape_image_task(etape: dict, index: int, total: int) -> dict:
+    """
+    Tâche unitaire pour traiter les images d'une étape en parallèle (via ThreadPool).
+    Remplace le traitement séquentiel de process_etapes_images.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        
+        etape_id = etape.get('etape_id')
+        task_name = etape.get('task_name')
+        consigne = etape.get('consigne')
+        checking_picture = etape.get('checking_picture')
+        checkout_picture = etape.get('checkout_picture')
+        
+        # logger.info(f"🔄 [ASYNC-IMG] Traitement images étape {index+1}/{total} - ID: {etape_id}")
+
+        converted_checking = None
+        converted_checkout = None
+
+        # 1. Traiter image CHECK-IN
+        if checking_picture and checking_picture.strip():
+            normalized_checking = normalize_url(checking_picture)
+            if is_valid_image_url(normalized_checking):
+                # Exécution dans un thread séparé pour ne pas bloquer la boucle
+                converted_checking = await loop.run_in_executor(
+                    None, 
+                    ImageConverter.process_image_url, 
+                    normalized_checking, 
+                    False # use_placeholder_for_invalid=False
+                )
+            else:
+                logger.warning(f"⚠️ checking_picture invalide pour étape {etape_id}")
+        
+        # 2. Traiter image CHECK-OUT
+        if checkout_picture and checkout_picture.strip():
+            normalized_checkout = normalize_url(checkout_picture)
+            if is_valid_image_url(normalized_checkout):
+                # Exécution dans un thread séparé
+                converted_checkout = await loop.run_in_executor(
+                    None, 
+                    ImageConverter.process_image_url, 
+                    normalized_checkout, 
+                    False # use_placeholder_for_invalid=False
+                )
+            else:
+                logger.warning(f"⚠️ checkout_picture invalide pour étape {etape_id}")
+        
+        return {
+            'etape_id': etape_id,
+            'task_name': task_name,
+            'consigne': consigne,
+            'checking_picture_processed': converted_checking,
+            'checkout_picture_processed': converted_checkout
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Erreur async processing images etape {etape.get('etape_id')}: {e}")
+        # Fallback placeholders
+        return {
+             'etape_id': etape.get('etape_id'),
+             'task_name': etape.get('task_name'),
+             'consigne': etape.get('consigne'),
+             'checking_picture_processed': create_placeholder_image_url(),
+             'checkout_picture_processed': create_placeholder_image_url()
+        }
+
+async def process_etapes_images_parallel(etapes_list: list) -> list:
+    """
+    Version parallélisée de process_etapes_images.
+    Lance le traitement de toutes les images de toutes les étapes en parallèle.
+    """
+    if not etapes_list:
+        return []
+        
+    start_time = datetime.now()
+    logger.info(f"🚀 [ASYNC-IMG] Démarrage traitement parallèle de {len(etapes_list)} étapes")
+    
+    tasks = []
+    for i, etape in enumerate(etapes_list):
+        tasks.append(process_single_etape_image_task(etape, i, len(etapes_list)))
+    
+    # Attendre que tout soit fini
+    results = await asyncio.gather(*tasks)
+    
+    duration = (datetime.now() - start_time).total_seconds()
+    logger.info(f"✅ [ASYNC-IMG] Traitement terminé en {duration:.2f}s")
+    
+    return list(results)
 
 async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput, request_id: str = None) -> CompleteAnalysisResponse:
     """
@@ -5498,8 +6128,8 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput, re
         all_etape_tasks = []
 
         for piece in input_data.pieces:
-            # Traiter les images des étapes
-            processed_etapes = process_etapes_images([etape.dict() for etape in piece.etapes])
+            # Traiter les images des étapes (ASYNC PARALLEL)
+            processed_etapes = await process_etapes_images_parallel([etape.dict() for etape in piece.etapes])
 
             for i, etape_data in enumerate(processed_etapes):
                 etape = piece.etapes[i]
@@ -5513,7 +6143,7 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput, re
                 etape_to_piece_mapping[etape.etape_id] = piece.piece_id
 
                 # Créer une tâche async pour cette étape
-                task = analyze_single_etape_async(etape, etape_data, piece.piece_id, request_id=request_id)
+                task = analyze_single_etape_async(etape, etape_data, piece.piece_id, parcours_type=parcours_type, request_id=request_id)
                 all_etape_tasks.append((etape.etape_id, task))
 
         # Lancer toutes les analyses d'étapes EN PARALLÈLE
@@ -5610,7 +6240,8 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput, re
             total_issues=total_issues_count,
             general_issues=general_issues_count,
             etapes_issues=etapes_issues_count,
-            parcours_type=parcours_type
+            parcours_type=parcours_type,
+            request_id=request_id
         )
 
         complete_result = CompleteAnalysisResponse(
@@ -5638,6 +6269,214 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput, re
 
     except Exception as e:
         logger.error(f"❌ [PARALLEL] Erreur lors de l'analyse complète: {str(e)}")
+        raise
+
+
+async def analyze_complete_logement_ultra_parallel(input_data: EtapesAnalysisInput, request_id: str = None) -> CompleteAnalysisResponse:
+    """
+    🚀 VERSION ULTRA-PARALLÉLISÉE avec système de cache avancé
+
+    Utilise le ParallelProcessor pour une parallélisation maximale avec:
+    - Cache thread-safe pour les résultats intermédiaires
+    - Contrôle de concurrence optimisé (15+ workers simultanés)
+    - Gestion d'erreurs robuste sans blocage
+    - Compilation finale des résultats en cache
+
+    Gain attendu: 80-90% de réduction du temps vs version séquentielle
+    """
+    if not PARALLEL_EXECUTOR_AVAILABLE:
+        logger.warning("⚠️ Système ultra-parallèle non disponible, fallback sur version parallèle standard")
+        return await analyze_complete_logement_parallel(input_data, request_id)
+
+    try:
+        parcours_type = input_data.type if hasattr(input_data, 'type') else "Voyageur"
+
+        logger.info(f"🚀🚀 [ULTRA-PARALLEL] ANALYSE COMPLÈTE pour logement {input_data.logement_id}")
+        logger.info(f"   📊 {len(input_data.pieces)} pièces à analyser")
+        logger.info(f"   ⚡ Mode: Ultra-parallélisation avec cache avancé")
+
+        if request_id:
+            logs_manager.add_log(
+                request_id=request_id,
+                level="INFO",
+                message=f"🚀 Analyse ultra-parallèle de {len(input_data.pieces)} pièces"
+            )
+
+        # Obtenir l'exécuteur parallèle global (max 15 workers pour haute quota)
+        executor = get_parallel_executor(max_workers=15)
+
+        # ═══════════════════════════════════════════════════════════════
+        # STAGE 1: Analyse ultra-parallèle de toutes les pièces
+        # ═══════════════════════════════════════════════════════════════
+        logger.info(f"📊 [STAGE 1] Analyse ultra-parallèle de {len(input_data.pieces)} pièces")
+
+        pieces_analysis_results = await executor.analyze_pieces_parallel(
+            pieces=input_data.pieces,
+            analyze_func=analyze_single_piece_async,
+            parcours_type=parcours_type,
+            request_id=request_id
+        )
+
+        logger.info(f"✅ [STAGE 1] {len(pieces_analysis_results)} pièces analysées")
+
+        # ═══════════════════════════════════════════════════════════════
+        # STAGE 2: Traitement et analyse ultra-parallèle des étapes
+        # ═══════════════════════════════════════════════════════════════
+        logger.info(f"🎯 [STAGE 2] Traitement et analyse ultra-parallèle des étapes")
+
+        # Préparer toutes les données d'étapes
+        etape_to_piece_mapping = {}
+        all_etapes_data = []
+
+        for piece in input_data.pieces:
+            # Traiter les images des étapes (parallèle)
+            processed_etapes = await process_etapes_images_parallel([etape.dict() for etape in piece.etapes])
+
+            for i, etape_data in enumerate(processed_etapes):
+                etape = piece.etapes[i]
+
+                # Skip étapes sans checkout_picture
+                if not etape.checkout_picture or etape.checkout_picture.strip() == "":
+                    logger.info(f"⏭️ Étape {etape.etape_id} skippée: pas de checkout_picture")
+                    continue
+
+                etape_to_piece_mapping[etape.etape_id] = piece.piece_id
+
+                all_etapes_data.append({
+                    'etape': etape,
+                    'etape_data': etape_data,
+                    'piece_id': piece.piece_id
+                })
+
+        # Analyser toutes les étapes en ultra-parallèle
+        if all_etapes_data:
+            all_etape_issues = await executor.analyze_etapes_parallel(
+                etapes_data=all_etapes_data,
+                analyze_func=analyze_single_etape_async,
+                parcours_type=parcours_type,
+                request_id=request_id
+            )
+        else:
+            all_etape_issues = []
+
+        logger.info(f"✅ [STAGE 2] {len(all_etape_issues)} issues d'étapes détectées")
+
+        # ═══════════════════════════════════════════════════════════════
+        # STAGE 3: Compilation des résultats (identique à version standard)
+        # ═══════════════════════════════════════════════════════════════
+        logger.info(f"🔄 [STAGE 3] Compilation des résultats")
+
+        # Grouper les issues d'étapes par piece_id
+        etapes_issues_by_piece = {}
+        for etape_issue in all_etape_issues:
+            piece_id = etape_to_piece_mapping.get(etape_issue.etape_id)
+            if piece_id:
+                if piece_id not in etapes_issues_by_piece:
+                    etapes_issues_by_piece[piece_id] = []
+
+                probleme = Probleme(
+                    description=f"[ÉTAPE] {etape_issue.description}",
+                    category=etape_issue.category,
+                    severity=etape_issue.severity,
+                    confidence=etape_issue.confidence,
+                    etape_id=etape_issue.etape_id
+                )
+                etapes_issues_by_piece[piece_id].append(probleme)
+
+        # Calcul des compteurs
+        total_issues_count = 0
+        general_issues_count = 0
+        etapes_issues_count = len(all_etape_issues)
+
+        # Reconstruire les objets avec issues fusionnées
+        updated_pieces_analysis = []
+
+        for piece_analysis in pieces_analysis_results:
+            piece_id = piece_analysis.piece_id
+
+            # Compter les issues générales
+            general_issues_for_piece = len(piece_analysis.issues) if piece_analysis.issues else 0
+            general_issues_count += general_issues_for_piece
+
+            # Récupérer les issues d'étapes
+            etapes_issues_for_piece = etapes_issues_by_piece.get(piece_id, [])
+
+            # Fusionner toutes les issues
+            all_issues_for_piece = list(piece_analysis.issues) + etapes_issues_for_piece
+
+            # Créer objet mis à jour
+            updated_piece_analysis = CombinedAnalysisResponse(
+                piece_id=piece_analysis.piece_id,
+                nom_piece=piece_analysis.nom_piece,
+                room_classification=piece_analysis.room_classification,
+                analyse_globale=piece_analysis.analyse_globale,
+                issues=all_issues_for_piece
+            )
+
+            updated_pieces_analysis.append(updated_piece_analysis)
+            total_issues_count += len(all_issues_for_piece)
+
+        pieces_analysis_results = updated_pieces_analysis
+
+        logger.info(f"📊 [PARALLEL] Compteurs: {total_issues_count} total ({general_issues_count} générales + {etapes_issues_count} étapes)")
+
+        # 🔍 DEBUG: Logger les issues après reconstruction
+        logger.info(f"🔍 DEBUG - Après reconstruction des objets (issues fusionnées):")
+        for piece_result in pieces_analysis_results:
+            logger.info(f"   Pièce {piece_result.piece_id}: {len(piece_result.issues)} issues TOTALES (générales + étapes fusionnées)")
+
+        # ═══════════════════════════════════════════════════════════════
+        # ÉTAPE 4: Génération de la synthèse globale
+        # ═══════════════════════════════════════════════════════════════
+        logger.info(f"🧠 [PARALLEL] ÉTAPE 4 - Génération de la synthèse globale")
+
+        analysis_enrichment = generate_logement_enrichment(
+            logement_id=input_data.logement_id,
+            pieces_analysis=pieces_analysis_results,
+            total_issues=total_issues_count,
+            general_issues=general_issues_count,
+            etapes_issues=etapes_issues_count,
+            parcours_type=parcours_type,
+            request_id=request_id
+        )
+
+        complete_result = CompleteAnalysisResponse(
+            logement_id=input_data.logement_id,
+            rapport_id=input_data.rapport_id,
+            pieces_analysis=pieces_analysis_results,
+            total_issues_count=total_issues_count,
+            etapes_issues_count=etapes_issues_count,
+            general_issues_count=general_issues_count,
+            analysis_enrichment=analysis_enrichment
+        )
+
+        # Afficher les statistiques de performance
+        perf_stats = executor.get_performance_stats()
+        logger.info(f"📊 [ULTRA-PARALLEL] Statistiques de performance:")
+        logger.info(f"   Cache: {perf_stats['cache_stats']}")
+        logger.info(f"   Workers: {perf_stats['config']['max_workers']}")
+
+        logger.info(f"🎉 [ULTRA-PARALLEL] ANALYSE COMPLÈTE terminée pour logement {input_data.logement_id}")
+        logger.info(f"📊 RÉSUMÉ: {total_issues_count} issues totales")
+        logger.info(f"🏆 NOTE: {analysis_enrichment.global_score.score}/5 - {analysis_enrichment.global_score.label}")
+
+        if request_id:
+            logs_manager.add_log(
+                request_id=request_id,
+                level="INFO",
+                message=f"✅ Analyse ultra-parallèle terminée: {total_issues_count} issues, cache={perf_stats['cache_stats']}"
+            )
+
+        return complete_result
+
+    except Exception as e:
+        logger.error(f"❌ [ULTRA-PARALLEL] Erreur: {str(e)}")
+        if request_id:
+            logs_manager.add_log(
+                request_id=request_id,
+                level="ERROR",
+                message=f"❌ Erreur ultra-parallèle: {str(e)}"
+            )
         raise
 
 
@@ -5874,7 +6713,8 @@ def analyze_complete_logement(input_data: EtapesAnalysisInput) -> CompleteAnalys
                 total_issues=total_issues_count,
                 general_issues=general_issues_count,
                 etapes_issues=etapes_issues_count,
-                parcours_type=parcours_type
+                parcours_type=parcours_type,
+                request_id=request_id
             )
             
             # 🛡️ VÉRIFICATION DE LA RÉPONSE
@@ -5918,7 +6758,7 @@ def analyze_complete_logement(input_data: EtapesAnalysisInput) -> CompleteAnalys
         logger.error(f"❌ Erreur lors de l'analyse complète: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Erreur lors de l'analyse complète: {str(e)}")
 
-@app.post("/analyze-complete", response_model=CompleteAnalysisResponse)
+@app.post("/analyze-complete")
 async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
     """
     Endpoint d'analyse complète qui combine TOUTES les fonctionnalités.
@@ -6065,14 +6905,23 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
             metadata={"pieces_count": len(input_data.pieces)}
         )
 
-        logs_manager.add_log(
-            request_id=request_id,
-            level="INFO",
-            message=f"⚡ Utilisation de la version PARALLÉLISÉE pour gain de performance"
-        )
-
-        logger.info(f"⚡ Utilisation de la version PARALLÉLISÉE pour gain de performance")
-        result = await analyze_complete_logement_parallel(input_data, request_id=request_id)
+        # Choisir la version de parallélisation selon disponibilité
+        if PARALLEL_EXECUTOR_AVAILABLE:
+            logs_manager.add_log(
+                request_id=request_id,
+                level="INFO",
+                message=f"🚀 Utilisation de la version ULTRA-PARALLÉLISÉE avec cache avancé"
+            )
+            logger.info(f"🚀 Utilisation de la version ULTRA-PARALLÉLISÉE avec cache avancé")
+            result = await analyze_complete_logement_ultra_parallel(input_data, request_id=request_id)
+        else:
+            logs_manager.add_log(
+                request_id=request_id,
+                level="INFO",
+                message=f"⚡ Utilisation de la version PARALLÉLISÉE standard"
+            )
+            logger.info(f"⚡ Utilisation de la version PARALLÉLISÉE standard")
+            result = await analyze_complete_logement_parallel(input_data, request_id=request_id)
 
         logs_manager.complete_step(
             request_id=request_id,
@@ -6093,6 +6942,11 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
         logger.info(f"🎯 Analyse complète terminée pour le logement {input_data.logement_id}")
         logger.info(f"📊 Total: {result.total_issues_count} issues ({result.general_issues_count} générales + {result.etapes_issues_count} étapes)")
 
+        # 1.5. Transformer vers le format individual-report-data-model.json (AVANT les webhooks)
+        logger.info(f"🔄 Transformation vers format individual-report pour logement {input_data.logement_id}")
+        webhook_payload_individual = transform_to_individual_report(result, input_data)
+        logger.info(f"✅ Transformation terminée - Payload individual-report généré")
+
         # 2. Envoyer les DEUX webhooks de manière asynchrone (ne fait pas échouer la réponse)
         step_webhook = logs_manager.add_step(
             request_id=request_id,
@@ -6109,11 +6963,6 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
 
             # Préparer le payload pour le webhook actuel (format CompleteAnalysisResponse)
             webhook_payload_current = result.model_dump()
-
-            # Transformer vers le format individual-report-data-model.json
-            logger.info(f"🔄 Transformation vers format individual-report pour logement {input_data.logement_id}")
-            webhook_payload_individual = transform_to_individual_report(result, input_data)
-            logger.info(f"✅ Transformation terminée - Payload individual-report généré")
 
             # Envoyer les deux webhooks EN PARALLÈLE pour optimiser les performances
             logger.info(f"🔗 Envoi de 2 webhooks pour logement {input_data.logement_id} vers {environment}")
@@ -6180,11 +7029,11 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
                 status="error"
             )
 
-        # 3. Retourner le résultat de l'analyse (indépendamment du webhook)
+        # 3. Retourner le rapport transformé au format individual-report (PAS le CompleteAnalysisResponse)
         logs_manager.add_log(
             request_id=request_id,
             level="INFO",
-            message=f"✅ Analyse complète terminée avec succès"
+            message=f"✅ Analyse complète terminée avec succès - Retour du rapport transformé"
         )
 
         logs_manager.complete_request(
@@ -6192,7 +7041,8 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
             status="success"
         )
 
-        return result
+        # 🔥 IMPORTANT: Retourner le rapport transformé, pas le CompleteAnalysisResponse
+        return webhook_payload_individual
 
     except Exception as e:
         logger.error(f"❌ Erreur dans l'endpoint analyze-complete: {str(e)}")
@@ -6820,6 +7670,51 @@ def load_prompts_config(parcours_type: str = "Voyageur"):
                 logger.info(f"📡 Chargement de la config prompts depuis la variable d'environnement {env_var_name}")
                 config = json.loads(prompts_config_env)
                 logger.info(f"✅ Config prompts {parcours_type} chargée depuis variable d'environnement")
+                
+                # 🔴🔴🔴 DEBUG PROMPTS LOADING FROM ENV - TRÈS VISIBLE 🔴🔴🔴
+                logger.info("")
+                logger.info("=" * 100)
+                logger.info("🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣")
+                logger.info("🟡🟡🟡  DEBUG CHARGEMENT PROMPTS DEPUIS RAILWAY ENV  🟡🟡🟡")
+                logger.info("🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣")
+                logger.info("=" * 100)
+                logger.info(f"📂 SOURCE: VARIABLE D'ENVIRONNEMENT RAILWAY")
+                logger.info(f"🔑 VARIABLE: {env_var_name}")
+                logger.info(f"🧳 TYPE PARCOURS: {parcours_type}")
+                logger.info(f"📅 VERSION: {config.get('version', 'N/A')}")
+                logger.info(f"📅 DERNIÈRE MAJ: {config.get('last_updated', 'N/A')}")
+                logger.info(f"📝 DESCRIPTION: {config.get('description', 'N/A')}")
+                logger.info("-" * 100)
+                
+                # Afficher le contenu du prompt analyze_main
+                analyze_main = config.get('prompts', {}).get('analyze_main', {})
+                if analyze_main:
+                    logger.info("🎯 PROMPT PRINCIPAL (analyze_main):")
+                    logger.info(f"   📌 Nom: {analyze_main.get('name', 'N/A')}")
+                    logger.info(f"   📌 Endpoint: {analyze_main.get('endpoint', 'N/A')}")
+                    logger.info(f"   📌 Variables: {analyze_main.get('variables', [])}")
+                    logger.info("-" * 100)
+                    logger.info("📜 CONTENU DES SECTIONS:")
+                    
+                    sections = analyze_main.get('sections', {})
+                    for section_name, section_content in sections.items():
+                        if section_content and len(str(section_content)) > 10:
+                            logger.info(f"")
+                            logger.info(f"   🔶 SECTION [{section_name}]:")
+                            logger.info(f"   {'─' * 80}")
+                            content_lines = str(section_content).split('\n')
+                            for i, line in enumerate(content_lines[:100]):
+                                logger.info(f"   {i+1:3d} | {line}")
+                            if len(content_lines) > 100:
+                                logger.info(f"   ... [{len(content_lines) - 100} lignes supplémentaires tronquées]")
+                            logger.info(f"   {'─' * 80}")
+                
+                logger.info("=" * 100)
+                logger.info("🟣🟣🟣  FIN DEBUG CHARGEMENT PROMPTS RAILWAY ENV  🟣🟣🟣")
+                logger.info("=" * 100)
+                logger.info("")
+                # 🔴🔴🔴 FIN DEBUG 🔴🔴🔴
+                
                 return config
             except json.JSONDecodeError as e:
                 logger.error(f"❌ Erreur lors du parsing JSON de {env_var_name}: {e}")
@@ -6837,6 +7732,52 @@ def load_prompts_config(parcours_type: str = "Voyageur"):
                 with open(path, 'r', encoding='utf-8') as f:
                     config = json.load(f)
                 logger.info(f"✅ Config prompts {parcours_type} chargée depuis fichier: {config.get('description', 'N/A')}")
+                
+                # 🔴🔴🔴 DEBUG PROMPTS LOADING - TRÈS VISIBLE 🔴🔴🔴
+                logger.info("")
+                logger.info("=" * 100)
+                logger.info("🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
+                logger.info("🟡🟡🟡  DEBUG CHARGEMENT PROMPTS - CONTENU COMPLET  🟡🟡🟡")
+                logger.info("🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
+                logger.info("=" * 100)
+                logger.info(f"📂 SOURCE: FICHIER LOCAL")
+                logger.info(f"📁 CHEMIN: {path}")
+                logger.info(f"🧳 TYPE PARCOURS: {parcours_type}")
+                logger.info(f"📅 VERSION: {config.get('version', 'N/A')}")
+                logger.info(f"📅 DERNIÈRE MAJ: {config.get('last_updated', 'N/A')}")
+                logger.info(f"📝 DESCRIPTION: {config.get('description', 'N/A')}")
+                logger.info("-" * 100)
+                
+                # Afficher le contenu du prompt analyze_main (le plus important)
+                analyze_main = config.get('prompts', {}).get('analyze_main', {})
+                if analyze_main:
+                    logger.info("🎯 PROMPT PRINCIPAL (analyze_main):")
+                    logger.info(f"   📌 Nom: {analyze_main.get('name', 'N/A')}")
+                    logger.info(f"   📌 Endpoint: {analyze_main.get('endpoint', 'N/A')}")
+                    logger.info(f"   📌 Variables: {analyze_main.get('variables', [])}")
+                    logger.info("-" * 100)
+                    logger.info("📜 CONTENU DES SECTIONS:")
+                    
+                    sections = analyze_main.get('sections', {})
+                    for section_name, section_content in sections.items():
+                        if section_content and len(str(section_content)) > 10:  # Ignorer les sections vides
+                            logger.info(f"")
+                            logger.info(f"   🔶 SECTION [{section_name}]:")
+                            logger.info(f"   {'─' * 80}")
+                            # Afficher le contenu ligne par ligne pour la lisibilité
+                            content_lines = str(section_content).split('\n')
+                            for i, line in enumerate(content_lines[:100]):  # Limiter à 100 lignes par section
+                                logger.info(f"   {i+1:3d} | {line}")
+                            if len(content_lines) > 100:
+                                logger.info(f"   ... [{len(content_lines) - 100} lignes supplémentaires tronquées]")
+                            logger.info(f"   {'─' * 80}")
+                
+                logger.info("=" * 100)
+                logger.info("🔴🔴🔴  FIN DEBUG CHARGEMENT PROMPTS  🔴🔴🔴")
+                logger.info("=" * 100)
+                logger.info("")
+                # 🔴🔴🔴 FIN DEBUG 🔴🔴🔴
+                
                 return config
 
         # 🔥 PRIORITÉ 3: Configuration par défaut
@@ -7205,13 +8146,21 @@ def replace_variables_in_template(template: str, variables: dict) -> str:
 def build_full_prompt_from_config(prompt_config: dict, variables: dict) -> str:
     """Construire un prompt complet à partir de la configuration"""
     full_prompt = ""
-    
+
     sections = prompt_config.get("sections", {})
-    
+
+    logger.info(f"🏗️ Sections disponibles: {list(sections.keys())}")
+
     for section_key, content in sections.items():
         # 🔥 CORRECTION CRITIQUE: Remplacer les variables dans TOUTES les sections
         # Pas seulement celles qui finissent par '_template'
         section_content = replace_variables_in_template(content, variables)
+
+        # Log pour vérifier si instructions_finales est bien incluse
+        if section_key == "instructions_finales" and content:
+            logger.info(f"✅ Section instructions_finales trouvée: {len(content)} caractères")
+            logger.info(f"📝 Contenu: {content[:200]}...")
+
         full_prompt += section_content + "\n\n"
     
     # Si aucune section trouvée, essayer de traiter la config comme un template simple
