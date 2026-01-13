@@ -40,7 +40,7 @@ def ensure_heif_support():
 SUPPORTED_FORMATS = {'png', 'jpeg', 'jpg', 'gif', 'webp'}
 
 # Formats qui nécessitent une conversion
-CONVERSION_FORMATS = {'heic', 'heif', 'bmp', 'tiff', 'tif'}
+CONVERSION_FORMATS = {'heic', 'heif', 'bmp', 'tiff', 'tif', 'avif'}
 
 def normalize_url(url: str) -> str:
     """
@@ -278,11 +278,15 @@ class ImageConverter:
                 # Vérification des signatures de fichier (magic bytes)
                 if len(image_data) >= 12:
                     # HEIC/HEIF signature - vérification plus robuste
-                    if (b'ftyp' in image_data[:20] and 
-                        (b'heic' in image_data[:32] or b'mif1' in image_data[:32] or 
+                    if (b'ftyp' in image_data[:20] and
+                        (b'heic' in image_data[:32] or b'mif1' in image_data[:32] or
                          b'heif' in image_data[:32] or b'heix' in image_data[:32])):
                         logger.info("🔍 Format HEIC/HEIF détecté par signature")
                         return 'heic'
+                    # AVIF signature
+                    elif b'ftyp' in image_data[:20] and b'avif' in image_data[:32]:
+                        logger.info("🔍 Format AVIF détecté par signature")
+                        return 'avif'
                     # JPEG signature
                     elif image_data[:2] == b'\xff\xd8':
                         logger.info("🔍 Format JPEG détecté par signature")
@@ -372,17 +376,17 @@ class ImageConverter:
             # DÉTECTION DU FORMAT AVANT TRAITEMENT
             image_format = detect_image_format_enhanced(io.BytesIO(image_data))
             logger.info(f"🔍 Format détecté: {image_format}")
-            
+
             # === TRAITEMENT SPÉCIAL HEIC AVEC LIBRAIRIES MODERNES ===
             if image_format and image_format.lower() in ['heic', 'heif']:
                 logger.info("🚀 Utilisation des librairies modernes 2025 pour HEIC")
-                
+
                 success, converted_result = convert_heic_with_modern_libraries(
-                    image_data, 
+                    image_data,
                     max_size=(4096, 4096),
                     quality=98 if max_quality else 90
                 )
-                
+
                 if success:
                     logger.info("✅ Conversion HEIC moderne réussie")
                     return converted_result.getvalue()
@@ -390,6 +394,10 @@ class ImageConverter:
                     logger.error(f"❌ Échec conversion HEIC moderne: {converted_result}")
                     # Fallback vers le traitement normal
                     logger.info("🔄 Tentative de fallback avec PIL classique")
+
+            # === TRAITEMENT SPÉCIAL AVIF ===
+            if image_format and image_format.lower() == 'avif':
+                logger.info("🎨 Conversion AVIF → JPEG pour compatibilité OpenAI")
             
             # === TRAITEMENT NORMAL POUR AUTRES FORMATS ===
             # S'assurer que le support HEIF est activé avant la conversion
@@ -654,6 +662,8 @@ class ImageConverter:
                 logger.info(f"🎯 Conversion HEIC confirmée (URL + contenu) → JPEG (IA-optimisée)")
             elif detected_format == 'heic':
                 logger.info(f"🔄 Conversion HEIC détectée → JPEG (IA-optimisée)")
+            elif detected_format == 'avif':
+                logger.info(f"🎨 Conversion AVIF détectée → JPEG (IA-optimisée)")
             else:
                 logger.info(f"🔄 Conversion nécessaire: {detected_format} → JPEG (IA-optimisée)")
             
@@ -1224,28 +1234,34 @@ def detect_image_format_enhanced(image_data) -> Optional[str]:
         image_data.seek(0)
         
         # === DÉTECTION PAR SIGNATURES ÉTENDUES ===
-        
+
         # HEIC/HEIF - Signatures multiples
         if len(header_bytes) >= 12:
-            if (b'ftyp' in header_bytes[:20] and 
-                (b'heic' in header_bytes[:32] or b'mif1' in header_bytes[:32] or 
+            if (b'ftyp' in header_bytes[:20] and
+                (b'heic' in header_bytes[:32] or b'mif1' in header_bytes[:32] or
                  b'heif' in header_bytes[:32] or b'heix' in header_bytes[:32] or
                  b'msf1' in header_bytes[:32] or b'hevc' in header_bytes[:32])):
                 logger.info("🎯 Format HEIC/HEIF détecté par signature étendue")
                 return 'heic'
-        
+
+        # AVIF - Signature
+        if len(header_bytes) >= 12:
+            if b'ftyp' in header_bytes[:20] and b'avif' in header_bytes[:32]:
+                logger.info("🎯 Format AVIF détecté par signature")
+                return 'avif'
+
         # JPEG - Standard
         if header_bytes[:2] == b'\xff\xd8':
             return 'jpeg'
-        
-        # PNG - Standard  
+
+        # PNG - Standard
         if header_bytes[:8] == b'\x89PNG\r\n\x1a\n':
             return 'png'
-        
+
         # GIF - Standard
         if header_bytes[:6] in [b'GIF87a', b'GIF89a']:
             return 'gif'
-        
+
         # WebP - Standard
         if header_bytes[:4] == b'RIFF' and len(header_bytes) >= 12 and header_bytes[8:12] == b'WEBP':
             return 'webp'
