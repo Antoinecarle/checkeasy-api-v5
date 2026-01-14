@@ -75,7 +75,12 @@ class RailwayJSONFormatter(logging.Formatter):
 
 def setup_railway_logging():
     """Configure le logging pour Railway avec format JSON structuré"""
-    
+
+    # 🔧 Support LOG_LEVEL via variable d'environnement (défaut: INFO)
+    log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+    if log_level not in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']:
+        log_level = 'INFO'
+
     # Détecter si on est en environnement Railway ou local
     is_railway = any([
         os.environ.get('RAILWAY_ENVIRONMENT'),
@@ -83,7 +88,7 @@ def setup_railway_logging():
         os.environ.get('RAILWAY_SERVICE_NAME'),
         not sys.stderr.isatty()  # Pas de terminal interactif
     ])
-    
+
     if is_railway:
         # Configuration Railway: JSON vers stdout
         logging_config = {
@@ -103,10 +108,10 @@ def setup_railway_logging():
                     "class": "logging.StreamHandler",
                     "stream": sys.stdout,
                     "formatter": "railway_json",
-                    "level": "INFO"
+                    "level": log_level
                 },
                 "stderr": {
-                    "class": "logging.StreamHandler", 
+                    "class": "logging.StreamHandler",
                     "stream": sys.stderr,
                     "formatter": "simple",
                     "level": "ERROR"
@@ -114,7 +119,7 @@ def setup_railway_logging():
             },
             "loggers": {
                 "": {  # Root logger
-                    "level": "INFO",
+                    "level": log_level,
                     "handlers": ["stdout"],
                     "propagate": False
                 },
@@ -254,7 +259,7 @@ class InputData(BaseModel):
 
 class AnalyseGlobale(BaseModel):
     status: Literal["ok", "attention", "probleme"]
-    score: float = Field(ge=0, le=10)
+    score: float = Field(ge=1, le=5, description="Note algorithmique de 1 à 5 (calculée automatiquement)")
     temps_nettoyage_estime: str
     commentaire_global: str = Field(description="Résumé humain de l'état général de la pièce, incluant propreté et agencement")
 
@@ -1099,13 +1104,10 @@ def convert_url_to_data_uri(url: str) -> Optional[str]:
         Data URI base64 ou None si échec
     """
     try:
-        logger.info(f"🔄 Conversion URL → Data URI: {url}")
-
         # Télécharger l'image
         image_data, detected_format = ImageConverter.download_image(url)
 
         if not image_data:
-            logger.error(f"❌ Échec téléchargement pour conversion data URI: {url}")
             return None
 
         # Convertir en JPEG pour optimiser la taille
@@ -1114,11 +1116,10 @@ def convert_url_to_data_uri(url: str) -> Optional[str]:
         # Créer la data URI
         data_uri = ImageConverter.upload_to_temp_service(jpeg_data, 'jpeg')
 
-        logger.info(f"✅ Conversion réussie: {len(data_uri)} caractères")
         return data_uri
 
     except Exception as e:
-        logger.error(f"❌ Erreur conversion URL → Data URI pour {url}: {e}")
+        logger.debug(f"Échec conversion URL → Data URI: {url[:50]}...")
         return None
 
 # 🚀 CACHE GLOBAL pour les conversions Data URI (évite de reconvertir les mêmes URLs)
@@ -1129,9 +1130,7 @@ def clear_data_uri_cache():
     """Nettoie le cache des conversions Data URI"""
     global _data_uri_cache
     with _data_uri_cache_lock:
-        cache_size = len(_data_uri_cache)
         _data_uri_cache.clear()
-        logger.info(f"🧹 Cache Data URI nettoyé ({cache_size} entrées supprimées)")
 
 def get_data_uri_cache_stats():
     """Retourne les statistiques du cache Data URI"""
@@ -1153,46 +1152,33 @@ def convert_message_urls_to_data_uris(user_message: dict) -> dict:
         Message modifié avec data URIs
     """
     try:
-        logger.info("🔄 Conversion de toutes les URLs en Data URIs...")
-
         converted_count = 0
         failed_count = 0
         cached_count = 0
 
-        # Parcourir le contenu du message
         for content_item in user_message.get("content", []):
             if content_item.get("type") == "image_url":
                 original_url = content_item["image_url"]["url"]
-
-                # Ne convertir que si ce n'est pas déjà une data URI
                 if not original_url.startswith("data:"):
-                    # Vérifier le cache d'abord
                     with _data_uri_cache_lock:
                         if original_url in _data_uri_cache:
                             content_item["image_url"]["url"] = _data_uri_cache[original_url]
                             cached_count += 1
-                            logger.info(f"📦 [CACHE HIT] URL déjà convertie: {original_url[:80]}...")
                             continue
 
-                    logger.info(f"🔄 Conversion de: {original_url[:100]}...")
                     data_uri = convert_url_to_data_uri(original_url)
-
                     if data_uri:
                         content_item["image_url"]["url"] = data_uri
-                        # Mettre en cache
                         with _data_uri_cache_lock:
                             _data_uri_cache[original_url] = data_uri
                         converted_count += 1
-                        logger.info(f"✅ URL convertie en Data URI")
                     else:
                         failed_count += 1
-                        logger.warning(f"⚠️ Échec conversion, URL conservée")
 
-        logger.info(f"📊 Conversion terminée: {converted_count} nouvelles, {cached_count} depuis cache, {failed_count} échecs")
         return user_message
 
     except Exception as e:
-        logger.error(f"❌ Erreur lors de la conversion des URLs: {e}")
+        logger.error(f"❌ Erreur conversion URLs: {e}")
         return user_message
 
 async def convert_message_urls_to_data_uris_parallel(user_message: dict) -> dict:
@@ -1207,68 +1193,49 @@ async def convert_message_urls_to_data_uris_parallel(user_message: dict) -> dict
         Message modifié avec data URIs
     """
     try:
-        logger.info("🚀 Conversion PARALLÈLE de toutes les URLs en Data URIs...")
-
-        # Collecter toutes les URLs à convertir
         urls_to_convert = []
         content_items = []
+        cached_count = 0
 
         for content_item in user_message.get("content", []):
             if content_item.get("type") == "image_url":
                 original_url = content_item["image_url"]["url"]
-
-                # Ne convertir que si ce n'est pas déjà une data URI
                 if not original_url.startswith("data:"):
-                    # Vérifier le cache d'abord
                     with _data_uri_cache_lock:
                         if original_url in _data_uri_cache:
                             content_item["image_url"]["url"] = _data_uri_cache[original_url]
-                            logger.info(f"📦 [CACHE HIT] URL déjà convertie: {original_url[:80]}...")
+                            cached_count += 1
                             continue
-
                     urls_to_convert.append(original_url)
                     content_items.append(content_item)
 
         if not urls_to_convert:
-            logger.info("✅ Toutes les URLs sont déjà converties ou en cache")
             return user_message
 
-        logger.info(f"🔄 Conversion parallèle de {len(urls_to_convert)} URLs...")
-
-        # Convertir toutes les URLs en parallèle
         loop = asyncio.get_event_loop()
         conversion_tasks = [
             loop.run_in_executor(None, convert_url_to_data_uri, url)
             for url in urls_to_convert
         ]
-
-        # Attendre toutes les conversions
         data_uris = await asyncio.gather(*conversion_tasks, return_exceptions=True)
 
-        # Appliquer les résultats
         converted_count = 0
         failed_count = 0
-
-        for i, (url, content_item, data_uri) in enumerate(zip(urls_to_convert, content_items, data_uris)):
+        for url, content_item, data_uri in zip(urls_to_convert, content_items, data_uris):
             if isinstance(data_uri, Exception):
-                logger.error(f"❌ Erreur conversion {url[:80]}...: {data_uri}")
                 failed_count += 1
             elif data_uri:
                 content_item["image_url"]["url"] = data_uri
-                # Mettre en cache
                 with _data_uri_cache_lock:
                     _data_uri_cache[url] = data_uri
                 converted_count += 1
-                logger.info(f"✅ [{i+1}/{len(urls_to_convert)}] URL convertie")
             else:
                 failed_count += 1
-                logger.warning(f"⚠️ Échec conversion, URL conservée: {url[:80]}...")
 
-        logger.info(f"📊 Conversion parallèle terminée: {converted_count} réussies, {failed_count} échecs")
         return user_message
 
     except Exception as e:
-        logger.error(f"❌ Erreur lors de la conversion parallèle des URLs: {e}")
+        logger.error(f"❌ Erreur conversion parallèle: {e}")
         return user_message
 
 def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", request_id: str = None) -> AnalyseResponse:
@@ -1287,16 +1254,10 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
         if client is None:
             logger.error("❌ Client OpenAI non disponible dans analyze_images")
             raise HTTPException(status_code=503, detail="Service OpenAI non disponible - Client non initialisé")
-        # 🔄 TRAITEMENT DES IMAGES - Conversion automatique des formats non supportés
-        logger.info(f"🖼️ Traitement des images pour la pièce {input_data.piece_id}")
-        
-        # Traiter les images de checkin
+
+        # 🔄 TRAITEMENT DES IMAGES
         processed_checkin = process_pictures_list([pic.dict() for pic in input_data.checkin_pictures])
-        
-        # Traiter les images de checkout  
         processed_checkout = process_pictures_list([pic.dict() for pic in input_data.checkout_pictures])
-        
-        logger.info(f"✅ Traitement terminé: {len(processed_checkin)} checkin + {len(processed_checkout)} checkout")
 
         # Préparer le message avec les images valides uniquement
         user_message = {
@@ -1309,53 +1270,30 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                         "effort": "high"
                     }
                 },
-                
             ]
         }
-        
+
         # Filtrer et ajouter seulement les photos d'entrée valides
         valid_checkin = []
         for photo in processed_checkin:
-            # 🔧 NORMALISER L'URL JUSTE AVANT ENVOI À OPENAI
             normalized_photo_url = normalize_url(photo['url'])
-            logger.info(f"🔍 ANALYSE CHECKIN - URL avant normalisation: '{photo['url']}'")
-            logger.info(f"🔍 ANALYSE CHECKIN - URL après normalisation: '{normalized_photo_url}'")
-
             if is_valid_image_url(normalized_photo_url) and not normalized_photo_url.startswith('data:image/gif;base64,R0lGOD'):
                 valid_checkin.append(photo)
                 user_message["content"].append({
                     "type": "image_url",
-                    "image_url": {
-                        "url": normalized_photo_url,  # ✅ Utiliser l'URL normalisée
-                        "detail": "high"
-                    }
+                    "image_url": {"url": normalized_photo_url, "detail": "high"}
                 })
-                logger.info(f"✅ ANALYSE CHECKIN - Image ajoutée au payload OpenAI: {normalized_photo_url}")
-            else:
-                logger.warning(f"⚠️ ANALYSE CHECKIN - Image invalide ignorée: {normalized_photo_url}")
 
         # Filtrer et ajouter seulement les photos de sortie valides
         valid_checkout = []
         for photo in processed_checkout:
-            # 🔧 NORMALISER L'URL JUSTE AVANT ENVOI À OPENAI
             normalized_photo_url = normalize_url(photo['url'])
-            logger.info(f"🔍 ANALYSE CHECKOUT - URL avant normalisation: '{photo['url']}'")
-            logger.info(f"🔍 ANALYSE CHECKOUT - URL après normalisation: '{normalized_photo_url}'")
-
             if is_valid_image_url(normalized_photo_url) and not normalized_photo_url.startswith('data:image/gif;base64,R0lGOD'):
                 valid_checkout.append(photo)
                 user_message["content"].append({
                     "type": "image_url",
-                    "image_url": {
-                        "url": normalized_photo_url,  # ✅ Utiliser l'URL normalisée
-                        "detail": "high"
-                    }
+                    "image_url": {"url": normalized_photo_url, "detail": "high"}
                 })
-                logger.info(f"✅ ANALYSE CHECKOUT - Image ajoutée au payload OpenAI: {normalized_photo_url}")
-            else:
-                logger.warning(f"⚠️ ANALYSE CHECKOUT - Image invalide ignorée: {normalized_photo_url}")
-        
-        logger.info(f"📷 Images valides envoyées à OpenAI: {len(valid_checkin)} checkin + {len(valid_checkout)} checkout (sur {len(processed_checkin)}+{len(processed_checkout)} traitées)")
         
         # Si aucune image valide, ajouter une note
         if len(valid_checkin) == 0 and len(valid_checkout) == 0:
@@ -1367,162 +1305,8 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
         # Construire le prompt dynamique avec le type de parcours
         dynamic_prompt = build_dynamic_prompt(input_data, parcours_type)
 
-        # 🔍 PAYLOAD OPENAI - ANALYSE PRINCIPALE STRUCTURÉ
-        logger.info(f"")
-        logger.info(f"🔬 ╔══════════════════════════════════════════════════════════════════════════════╗")
-        logger.info(f"🔬 ║                     PAYLOAD ENVOYÉ À OPENAI - ANALYSE                       ║")
-        logger.info(f"🔬 ╚══════════════════════════════════════════════════════════════════════════════╝")
-        logger.info(f"")
-        
-        logger.info(f"🔬 🤖 PARAMÈTRES DE L'APPEL:")
-        logger.info(f"🔬    ├─ Modèle: {OPENAI_MODEL}")
-        logger.info(f"🔬    ├─ Temperature: 0.2")
-        logger.info(f"🔬    ├─ Max tokens: 16000")
-        logger.info(f"🔬    └─ Response format: json_object")
-        logger.info(f"")
-        
-        # Analyser le prompt pour identifier les sections injectées
-        prompt_lines = dynamic_prompt.split('\n')
-        total_lines = len(prompt_lines)
-        
-        logger.info(f"🔬 📋 PROMPT SYSTÈME (role: system):")
-        logger.info(f"🔬    ├─ Longueur totale: {len(dynamic_prompt)} caractères")
-        logger.info(f"🔬    ├─ Nombre de lignes: {total_lines}")
-        logger.info(f"🔬    └─ Pièce analysée: {input_data.nom}")
-        logger.info(f"")
-
-        # 📊 Envoyer les infos de prompt au logs_manager avec le contenu complet
-        if request_id:
-            logs_manager.add_log(
-                request_id=request_id,
-                level="INFO",
-                message=f"📋 Prompt système: {len(dynamic_prompt)} caractères, {total_lines} lignes",
-                metadata={
-                    "prompt_content": dynamic_prompt,
-                    "prompt_length": len(dynamic_prompt),
-                    "prompt_lines": total_lines,
-                    "piece_name": input_data.nom
-                }
-            )
-        
-        # Identifier et afficher les sections importantes du prompt
-        logger.info(f"🔬 🎯 VARIABLES INJECTÉES DANS LE PROMPT:")
-        logger.info(f"🔬    ├─ 🔍 Éléments critiques: {len(input_data.elements_critiques)} items")
-        for i, element in enumerate(input_data.elements_critiques[:5]):  # Limiter à 5 pour la lisibilité
-            prefix = "├─" if i < min(4, len(input_data.elements_critiques)-1) else "└─"
-            logger.info(f"🔬    │   {prefix} • {element}")
-        if len(input_data.elements_critiques) > 5:
-            logger.info(f"🔬    │       ... et {len(input_data.elements_critiques)-5} autres")
-
-        # 📊 Envoyer les éléments critiques au logs_manager
-        if request_id and input_data.elements_critiques:
-            elements_preview = ", ".join(input_data.elements_critiques[:3])
-            if len(input_data.elements_critiques) > 3:
-                elements_preview += f" (+{len(input_data.elements_critiques)-3} autres)"
-            logs_manager.add_log(
-                request_id=request_id,
-                level="INFO",
-                message=f"🔍 Éléments critiques: {elements_preview}"
-            )
-        
-        logger.info(f"🔬    ├─ 🚫 Points ignorables: {len(input_data.points_ignorables)} items")
-
-        # 📊 Envoyer les points ignorables au logs_manager
-        if request_id and input_data.points_ignorables:
-            ignorables_preview = ", ".join(input_data.points_ignorables[:3])
-            if len(input_data.points_ignorables) > 3:
-                ignorables_preview += f" (+{len(input_data.points_ignorables)-3} autres)"
-            logs_manager.add_log(
-                request_id=request_id,
-                level="INFO",
-                message=f"🚫 Points ignorables: {ignorables_preview}"
-            )
-
-        for i, point in enumerate(input_data.points_ignorables[:3]):  # Limiter à 3
-            prefix = "├─" if i < min(2, len(input_data.points_ignorables)-1) else "└─"
-            logger.info(f"🔬    │   {prefix} • {point}")
-        if len(input_data.points_ignorables) > 3:
-            logger.info(f"🔬    │       ... et {len(input_data.points_ignorables)-3} autres")
-        
-        logger.info(f"🔬    ├─ ⚠️ Défauts fréquents: {len(input_data.defauts_frequents)} items")
-
-        # 📊 Envoyer les défauts fréquents au logs_manager
-        if request_id and input_data.defauts_frequents:
-            defauts_preview = ", ".join(input_data.defauts_frequents[:3])
-            if len(input_data.defauts_frequents) > 3:
-                defauts_preview += f" (+{len(input_data.defauts_frequents)-3} autres)"
-            logs_manager.add_log(
-                request_id=request_id,
-                level="INFO",
-                message=f"⚠️ Défauts fréquents: {defauts_preview}"
-            )
-
-        for i, defaut in enumerate(input_data.defauts_frequents[:3]):  # Limiter à 3
-            prefix = "├─" if i < min(2, len(input_data.defauts_frequents)-1) else "└─"
-            logger.info(f"🔬    │   {prefix} • {defaut}")
-        if len(input_data.defauts_frequents) > 3:
-            logger.info(f"🔬    │       ... et {len(input_data.defauts_frequents)-3} autres")
-
-        if input_data.commentaire_ia and input_data.commentaire_ia.strip():
-            logger.info(f"🔬    └─ 🤖 Instructions spéciales: '{input_data.commentaire_ia}'")
-            # 📊 Envoyer les instructions spéciales au logs_manager
-            if request_id:
-                logs_manager.add_log(
-                    request_id=request_id,
-                    level="INFO",
-                    message=f"🤖 Instructions: {input_data.commentaire_ia[:100]}{'...' if len(input_data.commentaire_ia) > 100 else ''}"
-                )
-        else:
-            logger.info(f"🔬    └─ 🤖 Instructions spéciales: Aucune")
-        logger.info(f"")
-        
-        # Afficher les premières lignes du prompt pour vérification
-        logger.info(f"🔬 📄 APERÇU DU PROMPT SYSTÈME (50 premières lignes):")
-        for i, line in enumerate(prompt_lines[:50]):
-            if line.strip():  # Ignorer les lignes vides
-                logger.info(f"🔬    {i+1:2d}│ {line}")
-        if total_lines > 50:
-            logger.info(f"🔬      │ ... ({total_lines - 50} lignes supplémentaires)")
-        logger.info(f"")
-        
-        # Message utilisateur structuré
+        # Compter les images pour le log résumé
         total_images = len([c for c in user_message['content'] if c['type'] == 'image_url'])
-        total_text_items = len([c for c in user_message['content'] if c['type'] == 'text'])
-        
-        logger.info(f"🔬 💬 MESSAGE UTILISATEUR (role: user):")
-        logger.info(f"🔬    ├─ Éléments texte: {total_text_items}")
-        logger.info(f"🔬    └─ Images: {total_images} ({len(valid_checkin)} checkin + {len(valid_checkout)} checkout)")
-        logger.info(f"")
-        
-        # Détail du contenu utilisateur
-        text_counter = 0
-        image_counter = 0
-        for content_item in user_message['content']:
-            if content_item['type'] == 'text':
-                text_counter += 1
-                text_content = content_item['text']
-                if len(text_content) > 150:
-                    text_preview = text_content[:150] + "..."
-                else:
-                    text_preview = text_content
-                logger.info(f"🔬    📝 TEXTE {text_counter}: {text_preview}")
-            elif content_item['type'] == 'image_url':
-                image_counter += 1
-                image_url = content_item['image_url']['url']
-                image_detail = content_item['image_url'].get('detail', 'default')
-                # Extraire le nom de fichier de l'URL
-                filename = image_url.split('/')[-1][:30] if '/' in image_url else image_url[:30]
-                logger.info(f"🔬    🖼️ IMAGE {image_counter}: {filename}... (detail: {image_detail})")
-        
-        logger.info(f"")
-        logger.info(f"🔬 ✅ RÉSUMÉ FINAL:")
-        logger.info(f"🔬    ├─ Prompt système: {len(dynamic_prompt)} caractères ({total_lines} lignes)")
-        logger.info(f"🔬    ├─ Variables injectées: {len(input_data.elements_critiques) + len(input_data.points_ignorables) + len(input_data.defauts_frequents)} au total")
-        logger.info(f"🔬    ├─ Images analysées: {total_images} ({len(valid_checkin)} checkin + {len(valid_checkout)} checkout)")
-        logger.info(f"🔬    └─ Pièce: {input_data.nom} (ID: {input_data.piece_id})")
-        logger.info(f"")
-        logger.info(f"🔬 ╚══════════════════════════════════════════════════════════════════════════════╝")
-        logger.info(f"")
 
         # 🔗 ENVOI PARALLÈLE DU PAYLOAD VERS BUBBLE (pour debug)
         async def send_payload_to_bubble():
@@ -1644,7 +1428,8 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                 model=OPENAI_MODEL,
                 input=input_content,
                 text={"format": {"type": "json_object"}},
-                max_output_tokens=16000
+                max_output_tokens=20000,
+                reasoning={"effort": "high"}
             )
         except Exception as openai_error:
             error_str = str(openai_error)
@@ -1652,9 +1437,9 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
 
             # 🔍 DEBUG: Vérifier le contenu de error_str
             error_str_lower = error_str.lower()
-            logger.info(f"🔍 DEBUG - error_str_lower contient 'timeout while downloading': {'timeout while downloading' in error_str_lower}")
-            logger.info(f"🔍 DEBUG - error_str_lower contient 'error while downloading': {'error while downloading' in error_str_lower}")
-            logger.info(f"🔍 DEBUG - error_str_lower contient 'invalid_image_url': {'invalid_image_url' in error_str_lower}")
+            logger.debug(f"🔍 DEBUG - error_str_lower contient 'timeout while downloading': {'timeout while downloading' in error_str_lower}")
+            logger.debug(f"🔍 DEBUG - error_str_lower contient 'error while downloading': {'error while downloading' in error_str_lower}")
+            logger.debug(f"🔍 DEBUG - error_str_lower contient 'invalid_image_url': {'invalid_image_url' in error_str_lower}")
 
             # 🔄 FALLBACK 1: Erreurs de téléchargement d'URL → Convertir en Data URI
             if any(keyword in error_str_lower for keyword in [
@@ -1694,7 +1479,8 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                         model=OPENAI_MODEL,
                         input=input_content,
                         text={"format": {"type": "json_object"}},
-                        max_output_tokens=16000
+                        max_output_tokens=20000,
+                        reasoning={"effort": "high"}
                     )
                     logger.info("✅ Analyse réussie avec Data URIs (fallback téléchargement)")
 
@@ -1729,7 +1515,8 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                             model=OPENAI_MODEL,
                             input=input_content,
                             text={"format": {"type": "json_object"}},
-                            max_output_tokens=16000
+                            max_output_tokens=20000,
+                            reasoning={"effort": "high"}
                         )
                         logger.info("✅ Analyse réussie en mode fallback (sans images)")
                     except Exception as final_error:
@@ -1784,7 +1571,8 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                         model=OPENAI_MODEL,
                         input=input_content,
                         text={"format": {"type": "json_object"}},
-                        max_output_tokens=16000
+                        max_output_tokens=20000,
+                        reasoning={"effort": "high"}
                     )
                     logger.info("✅ Analyse réussie en mode fallback (sans images)")
                 except Exception as fallback_error:
@@ -1840,9 +1628,9 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
 
             # 🔍 DEBUG CRITIQUE: Logger la réponse BRUTE de l'IA AVANT validation
             preliminary_issues_count = len(response_json.get("preliminary_issues", []))
-            logger.info(f"🔍 DEBUG - Réponse BRUTE de l'IA: {preliminary_issues_count} issues détectées")
+            logger.debug(f"🔍 DEBUG - Réponse BRUTE de l'IA: {preliminary_issues_count} issues détectées")
             if preliminary_issues_count > 0:
-                logger.info(f"🔍 DEBUG - Premières issues brutes: {json.dumps(response_json.get('preliminary_issues', [])[:3], indent=2, ensure_ascii=False)}")
+                logger.debug(f"🔍 DEBUG - Premières issues brutes: {json.dumps(response_json.get('preliminary_issues', [])[:3], indent=2, ensure_ascii=False)}")
             else:
                 logger.warning(f"⚠️ DEBUG - L'IA n'a détecté AUCUNE ISSUE dans sa réponse brute !")
 
@@ -2603,7 +2391,8 @@ def _extract_inventory_fallback_openai(piece_id: str, nom_piece: str, user_conte
             model=OPENAI_MODEL,
             input=input_content,
             text={"format": {"type": "json_object"}},
-            max_output_tokens=8000
+            max_output_tokens=10000,
+            reasoning={"effort": "medium"}
         )
 
         response_text = response.output_text if hasattr(response, 'output_text') else str(response.output[0].content[0].text)
@@ -2770,7 +2559,8 @@ def _verify_inventory_fallback_openai(
             model=OPENAI_MODEL,
             input=input_content,
             text={"format": {"type": "json_object"}},
-            max_output_tokens=8000
+            max_output_tokens=10000,
+            reasoning={"effort": "medium"}
         )
 
         response_text = response.output_text if hasattr(response, 'output_text') else str(response.output[0].content[0].text)
@@ -3104,12 +2894,14 @@ RÉPONDS EN JSON:
 
         # 🔄 TRAITEMENT DES IMAGES pour la classification
         logger.info(f"🖼️ Traitement des images pour classification de la pièce {input_data.piece_id}")
-        
-        # Traiter toutes les images disponibles
-        all_pictures_raw = [pic.dict() for pic in input_data.checkin_pictures] + [pic.dict() for pic in input_data.checkout_pictures]
-        all_pictures_processed = process_pictures_list(all_pictures_raw)
-        
-        logger.info(f"✅ Traitement terminé: {len(all_pictures_processed)} images pour classification")
+
+        # 🎯 IMPORTANT: Utiliser UNIQUEMENT les checkin_pictures (photos AVANT) pour la classification
+        # Les photos AVANT représentent l'état de référence de la pièce, sans désordre ou objets manquants
+        logger.info(f"📸 Classification basée UNIQUEMENT sur les checkin_pictures (photos AVANT)")
+        checkin_pictures_raw = [pic.dict() for pic in input_data.checkin_pictures]
+        all_pictures_processed = process_pictures_list(checkin_pictures_raw)
+
+        logger.info(f"✅ Traitement terminé: {len(all_pictures_processed)} images checkin pour classification")
 
         # Préparer le message avec les images valides uniquement
         user_message = {
@@ -3127,8 +2919,8 @@ RÉPONDS EN JSON:
         for photo in all_pictures_processed:
             # 🔧 NORMALISER L'URL JUSTE AVANT ENVOI À OPENAI
             normalized_photo_url = normalize_url(photo['url'])
-            logger.info(f"🔍 CLASSIFICATION - URL avant normalisation: '{photo['url']}'")
-            logger.info(f"🔍 CLASSIFICATION - URL après normalisation: '{normalized_photo_url}'")
+            logger.debug(f"🔍 URL avant normalisation: '{photo['url']}'")
+            logger.debug(f"�� URL après normalisation: '{normalized_photo_url}'")
 
             if is_valid_image_url(normalized_photo_url) and not normalized_photo_url.startswith('data:image/gif;base64,R0lGOD'):
                 valid_images.append(photo)
@@ -3259,7 +3051,8 @@ RÉPONDS EN JSON:
                 model=OPENAI_MODEL,
                 input=input_content,
                 text={"format": {"type": "json_object"}},
-                max_output_tokens=1000
+                max_output_tokens=1000,
+                reasoning={"effort": "low"}
             )
         except Exception as openai_error:
             error_str = str(openai_error)
@@ -3267,9 +3060,9 @@ RÉPONDS EN JSON:
 
             # 🔍 DEBUG: Vérifier le contenu de error_str
             error_str_lower = error_str.lower()
-            logger.info(f"🔍 DEBUG - error_str_lower contient 'timeout while downloading': {'timeout while downloading' in error_str_lower}")
-            logger.info(f"🔍 DEBUG - error_str_lower contient 'error while downloading': {'error while downloading' in error_str_lower}")
-            logger.info(f"🔍 DEBUG - error_str_lower contient 'invalid_image_url': {'invalid_image_url' in error_str_lower}")
+            logger.debug(f"🔍 DEBUG - error_str_lower contient 'timeout while downloading': {'timeout while downloading' in error_str_lower}")
+            logger.debug(f"🔍 DEBUG - error_str_lower contient 'error while downloading': {'error while downloading' in error_str_lower}")
+            logger.debug(f"🔍 DEBUG - error_str_lower contient 'invalid_image_url': {'invalid_image_url' in error_str_lower}")
 
             # 🔄 FALLBACK 1: Erreurs de téléchargement d'URL → Convertir en Data URI
             if any(keyword in error_str_lower for keyword in [
@@ -3302,7 +3095,8 @@ RÉPONDS EN JSON:
                         model=OPENAI_MODEL,
                         input=input_content,
                         text={"format": {"type": "json_object"}},
-                        max_output_tokens=1000
+                        max_output_tokens=1000,
+                        reasoning={"effort": "low"}
                     )
                     logger.info("✅ Classification réussie avec Data URIs (fallback téléchargement)")
 
@@ -3330,7 +3124,8 @@ RÉPONDS EN JSON:
                             model=OPENAI_MODEL,
                             input=input_content,
                             text={"format": {"type": "json_object"}},
-                            max_output_tokens=1000
+                            max_output_tokens=1000,
+                            reasoning={"effort": "low"}
                         )
                         logger.info("✅ Classification réussie en mode fallback (sans images)")
                     except Exception as final_error:
@@ -3374,7 +3169,8 @@ RÉPONDS EN JSON:
                         model=OPENAI_MODEL,
                         input=input_content,
                         text={"format": {"type": "json_object"}},
-                        max_output_tokens=1000
+                        max_output_tokens=1000,
+                        reasoning={"effort": "low"}
                     )
                     logger.info("✅ Classification réussie en mode fallback (sans images)")
                 except Exception as fallback_error:
@@ -3678,6 +3474,8 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
         # 🚨 VÉRIFICATION: Si photos invalides, créer une issue critique
         if not classification_result.is_valid_room:
             logger.error(f"🚫 PHOTOS INVALIDES DÉTECTÉES - Création d'une issue critique 'wrong_room'")
+            logger.warning(f"⚠️ BLOCAGE TOTAL: Aucune autre analyse (propreté, dégradation, etc.) ne sera effectuée")
+            logger.warning(f"⚠️ Raison: {classification_result.validation_message}")
 
             # Créer une issue wrong_room avec sévérité high
             wrong_room_issue = Probleme(
@@ -3688,6 +3486,7 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
             )
 
             # Retourner directement un résultat avec cette issue critique
+            # ⚠️ IMPORTANT: On retourne ICI sans faire d'autres analyses
             return CombinedAnalysisResponse(
                 piece_id=input_data.piece_id,
                 nom_piece=f"{classification_result.room_name} {classification_result.room_icon}",
@@ -3729,11 +3528,11 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
 
         analysis_result = analyze_images(enhanced_input_data, parcours_type, request_id=request_id)
 
-        logger.info(f"✅ Analyse terminée: Score {analysis_result.analyse_globale.score}/10, {len(analysis_result.preliminary_issues)} problèmes détectés")
+        logger.info(f"✅ Analyse IA terminée: {len(analysis_result.preliminary_issues)} problèmes détectés (score sera calculé algorithmiquement)")
 
         # 🔍 DEBUG: Logger les issues détectées
         if analysis_result.preliminary_issues:
-            logger.info(f"🔍 DEBUG - Issues détectées par l'IA:")
+            logger.debug(f"🔍 DEBUG - Issues détectées par l'IA:")
             for idx, issue in enumerate(analysis_result.preliminary_issues):
                 logger.info(f"   [{idx+1}] {issue.description} ({issue.category}, {issue.severity}, {issue.confidence}%)")
         else:
@@ -3802,6 +3601,23 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
         # FIN DOUBLE-PASS
         # ═══════════════════════════════════════════════════════════════
 
+        # ═══════════════════════════════════════════════════════════════
+        # ÉTAPE 3.9: CALCUL DU SCORE ALGORITHMIQUE
+        # ═══════════════════════════════════════════════════════════════
+        logger.info(f"🧮 ÉTAPE 3.9 - Calcul du score algorithmique pour la pièce")
+
+        # Calculer le score algorithmique basé sur les issues détectées
+        algorithmic_score_result = calculate_room_algorithmic_score(
+            issues=analysis_result.preliminary_issues,
+            parcours_type=parcours_type
+        )
+
+        # Remplacer le score IA par le score algorithmique
+        analysis_result.analyse_globale.score = algorithmic_score_result["note_sur_5"]
+
+        logger.info(f"✅ Score algorithmique appliqué: {algorithmic_score_result['note_sur_5']}/5 ({algorithmic_score_result['label']})")
+        logger.info(f"   📊 Détails: {algorithmic_score_result['issues_count']} issues, {algorithmic_score_result['score_brut']} points bruts")
+
         # ÉTAPE 4: Combinaison des résultats
         logger.info(f"🔄 ÉTAPE 4 - Combinaison des résultats de classification et d'analyse")
 
@@ -3814,7 +3630,7 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
         )
 
         logger.info(f"🎉 Analyse combinée terminée avec succès pour la pièce {input_data.piece_id}")
-        logger.info(f"🔍 DEBUG - CombinedAnalysisResponse créé avec {len(combined_result.issues)} issues")
+        logger.debug(f"🔍 DEBUG - CombinedAnalysisResponse créé avec {len(combined_result.issues)} issues")
         
         return combined_result
         
@@ -4012,6 +3828,8 @@ class EtapeIssue(BaseModel):
     category: Literal["missing_item", "damage", "cleanliness", "positioning", "added_item", "image_quality", "wrong_room"]
     severity: Literal["low", "medium", "high"]
     confidence: int = Field(ge=0, le=100)
+    validation_status: Optional[Literal["VALIDÉ", "NON_VALIDÉ", "INCERTAIN"]] = None  # 🆕 Statut de validation de l'étape
+    commentaire: Optional[str] = None  # 🆕 Commentaire explicatif
 
 class EtapesAnalysisResponse(BaseModel):
     preliminary_issues: List[EtapeIssue]
@@ -4081,14 +3899,14 @@ Compare les photos avant/après et réponds en JSON:
                 # 🔧 NORMALISER LES URLs JUSTE AVANT ENVOI À OPENAI
                 if checking_url is not None and isinstance(checking_url, str):
                     checking_url_normalized = normalize_url(checking_url)
-                    logger.info(f"🔍 ÉTAPE CHECKING - URL avant normalisation: '{checking_url}'")
-                    logger.info(f"🔍 ÉTAPE CHECKING - URL après normalisation: '{checking_url_normalized}'")
+                    logger.debug(f"🔍 URL avant normalisation: '{checking_url}'")
+                    logger.debug(f"�� URL après normalisation: '{checking_url_normalized}'")
                     checking_url = checking_url_normalized
 
                 if checkout_url is not None and isinstance(checkout_url, str):
                     checkout_url_normalized = normalize_url(checkout_url)
-                    logger.info(f"🔍 ÉTAPE CHECKOUT - URL avant normalisation: '{checkout_url}'")
-                    logger.info(f"🔍 ÉTAPE CHECKOUT - URL après normalisation: '{checkout_url_normalized}'")
+                    logger.debug(f"🔍 URL avant normalisation: '{checkout_url}'")
+                    logger.debug(f"�� URL après normalisation: '{checkout_url_normalized}'")
                     checkout_url = checkout_url_normalized
 
                 # Déterminer si les URLs sont utilisables (non None et non placeholders)
@@ -4196,7 +4014,8 @@ Compare les photos avant/après et réponds en JSON:
                         model=OPENAI_MODEL,
                         input=input_content,
                         text={"format": {"type": "json_object"}},
-                        max_output_tokens=16000
+                        max_output_tokens=20000,
+                        reasoning={"effort": "high"}
                     )
                 except Exception as openai_error:
                     error_str = str(openai_error)
@@ -4240,7 +4059,8 @@ Compare les photos avant/après et réponds en JSON:
                                 model=OPENAI_MODEL,
                                 input=input_content,
                                 text={"format": {"type": "json_object"}},
-                                max_output_tokens=16000
+                                max_output_tokens=20000,
+                                reasoning={"effort": "high"}
                             )
                             logger.info(f"✅ Analyse de l'étape {etape.etape_id} réussie avec Data URIs (fallback téléchargement)")
 
@@ -4275,7 +4095,8 @@ Compare les photos avant/après et réponds en JSON:
                                     model=OPENAI_MODEL,
                                     input=input_content,
                                     text={"format": {"type": "json_object"}},
-                                    max_output_tokens=16000
+                                    max_output_tokens=20000,
+                                    reasoning={"effort": "high"}
                                 )
                                 logger.info(f"✅ Analyse de l'étape {etape.etape_id} réussie en mode fallback (sans images)")
                             except Exception as final_error:
@@ -4321,7 +4142,8 @@ Compare les photos avant/après et réponds en JSON:
                                 model=OPENAI_MODEL,
                                 input=input_content,
                                 text={"format": {"type": "json_object"}},
-                                max_output_tokens=16000
+                                max_output_tokens=20000,
+                                reasoning={"effort": "high"}
                             )
                             logger.info(f"✅ Analyse de l'étape {etape.etape_id} réussie en mode fallback (sans images)")
                         except Exception as fallback_error:
@@ -4386,18 +4208,39 @@ Compare les photos avant/après et réponds en JSON:
                     ))
                     continue  # Passer à l'étape suivante
                 
-                # Ajouter les issues trouvées avec l'etape_id
+                # 🆕 Extraire validation_status et commentaire
+                validation_status = etape_result.get("validation_status")
+                commentaire = etape_result.get("commentaire", "")
+
+                logger.info(f"📋 Étape {etape.etape_id} - validation_status: {validation_status}")
+
+                # Ajouter les issues trouvées avec l'etape_id + validation_status
                 if "issues" in etape_result and etape_result["issues"]:
                     for issue in etape_result["issues"]:
                         all_issues.append(EtapeIssue(
                             etape_id=etape.etape_id,
                             description=issue["description"],
-                            category=issue["category"], 
+                            category=issue["category"],
                             severity=issue["severity"],
-                            confidence=issue["confidence"]
+                            confidence=issue["confidence"],
+                            validation_status=validation_status,
+                            commentaire=commentaire
                         ))
-                
-                logger.info(f"✅ Analyse terminée pour l'étape {etape.etape_id}: {len(etape_result.get('issues', []))} problèmes détectés")
+                else:
+                    # 🆕 Si pas d'issues mais validation_status existe, créer une entrée de suivi
+                    if validation_status:
+                        # Pour VALIDÉ ou INCERTAIN sans issues, on crée quand même une entrée de tracking
+                        all_issues.append(EtapeIssue(
+                            etape_id=etape.etape_id,
+                            description=commentaire if commentaire else f"Étape {validation_status.lower()}",
+                            category="cleanliness",  # Catégorie par défaut
+                            severity="low",
+                            confidence=etape_result.get("confidence", 100),
+                            validation_status=validation_status,
+                            commentaire=commentaire
+                        ))
+
+                logger.info(f"✅ Analyse terminée pour l'étape {etape.etape_id}: validation_status={validation_status}, {len(etape_result.get('issues', []))} problèmes détectés")
 
         return EtapesAnalysisResponse(preliminary_issues=all_issues)
 
@@ -4952,6 +4795,14 @@ def transform_to_individual_report(
             if hasattr(issue, 'etape_id') and issue.etape_id:
                 probleme_dict["etapeId"] = issue.etape_id
 
+            # 🆕 Ajouter validation_status si disponible
+            if hasattr(issue, 'validation_status') and issue.validation_status:
+                probleme_dict["validationStatus"] = issue.validation_status
+
+            # 🆕 Ajouter commentaireIA si disponible
+            if hasattr(issue, 'commentaire') and issue.commentaire:
+                probleme_dict["commentaireIA"] = issue.commentaire
+
             problemes.append(probleme_dict)
 
         # Consignes IA (extraites du commentaire global)
@@ -4967,8 +4818,66 @@ def transform_to_individual_report(
         # Résumé de la pièce
         resume = piece_analysis.analyse_globale.commentaire_global if piece_analysis.analyse_globale else ""
 
-        # Note de la pièce
-        note = piece_analysis.analyse_globale.score if piece_analysis.analyse_globale else 3
+        # Note de la pièce (base IA)
+        note_base = piece_analysis.analyse_globale.score if piece_analysis.analyse_globale else 3
+
+        # ═══════════════════════════════════════════════════════════════
+        # 🆕 MALUS POUR TÂCHES/ÉTAPES NON VALIDÉES (Barème strict)
+        # ═══════════════════════════════════════════════════════════════
+
+        # Compter les tâches manuellement non approuvées
+        taches_non_approuvees = sum(1 for etape in piece_input.etapes if etape.tache_approuvee == False)
+
+        # Compter les étapes avec validation_status NON_VALIDÉ (issues IA)
+        etapes_non_validees = sum(1 for p in problemes if p.get("validationStatus") == "NON_VALIDÉ")
+
+        # Compter les étapes INCERTAIN (malus léger)
+        etapes_incertaines = sum(1 for p in problemes if p.get("validationStatus") == "INCERTAIN")
+
+        # 🆕 Compter les signalements utilisateurs pour cette pièce
+        signalements_piece = 0
+        if input_data.signalements_utilisateur:
+            signalements_piece = sum(1 for s in input_data.signalements_utilisateur if s.piece_id == piece_input.piece_id)
+
+        # Total des non-conformités (pondéré)
+        total_non_conformites = taches_non_approuvees + etapes_non_validees + (etapes_incertaines * 0.5)
+
+        # Barème de malus STRICT pour non-conformités
+        if total_non_conformites >= 5:
+            malus_conformites = 2.0  # Très sévère : -2 points
+        elif total_non_conformites >= 3:
+            malus_conformites = 1.5  # Sévère : -1.5 points
+        elif total_non_conformites >= 2:
+            malus_conformites = 1.0  # Modéré : -1 point
+        elif total_non_conformites >= 1:
+            malus_conformites = 0.5  # Léger : -0.5 point
+        else:
+            malus_conformites = 0.0
+
+        # 🆕 Barème de malus MODÉRÉ pour signalements utilisateurs
+        if signalements_piece >= 4:
+            malus_signalements = 1.0  # Beaucoup de signalements : -1 point
+        elif signalements_piece >= 2:
+            malus_signalements = 0.5  # Quelques signalements : -0.5 point
+        elif signalements_piece >= 1:
+            malus_signalements = 0.3  # Un signalement : -0.3 point
+        else:
+            malus_signalements = 0.0
+
+        # Malus total (cumul des deux)
+        malus_total = malus_conformites + malus_signalements
+
+        # Appliquer le malus (minimum 0)
+        note = max(0, note_base - malus_total)
+
+        # Log si malus appliqué
+        if malus_total > 0:
+            details = []
+            if malus_conformites > 0:
+                details.append(f"{int(total_non_conformites)} non-conformités=-{malus_conformites}")
+            if malus_signalements > 0:
+                details.append(f"{signalements_piece} signalement(s)=-{malus_signalements}")
+            logger.info(f"📉 Pièce {piece_name}: Note {note_base} → {note} ({', '.join(details)})")
 
         detail_par_piece_section.append({
             "id": piece_input.piece_id,
@@ -5169,7 +5078,7 @@ def calculate_weighted_severity_score(
     logger.info("═" * 80)
 
     # 🔍 DEBUG: Logger ce que la fonction reçoit
-    logger.info(f"🔍 DEBUG - calculate_weighted_severity_score reçoit:")
+    logger.debug(f"🔍 DEBUG - calculate_weighted_severity_score reçoit:")
     logger.info(f"   - {len(pieces_analysis)} pièces")
     logger.info(f"   - {general_issues_count} issues générales (paramètre)")
     logger.info(f"   - {etapes_issues_count} issues d'étapes (paramètre)")
@@ -5345,6 +5254,79 @@ def convert_weighted_average_to_grade(weighted_average_score: float, config: dic
 
     # Par défaut, retourner la note la plus basse
     return (1.0, "CRITIQUE")
+
+
+def calculate_room_algorithmic_score(
+    issues: List[Probleme],
+    parcours_type: str = "Voyageur"
+) -> dict:
+    """
+    Calcule le score algorithmique d'une pièce basé sur ses issues
+
+    Cette fonction utilise la même logique que calculate_weighted_severity_score()
+    mais pour une seule pièce, garantissant la cohérence avec le score global.
+
+    Args:
+        issues: Liste des issues détectées dans la pièce
+        parcours_type: Type de parcours ("Voyageur" ou "Ménage")
+
+    Returns:
+        dict: {
+            "score_brut": float,      # Score brut (points de pénalité)
+            "note_sur_5": float,      # Note convertie sur 5 (1.0 à 5.0)
+            "label": str,             # Label (EXCELLENT, BON, PASSABLE, etc.)
+            "issues_count": int,      # Nombre d'issues prises en compte
+            "issues_details": list    # Détails des issues avec leur score
+        }
+    """
+    config = load_scoring_config(parcours_type)
+    scoring_config = config.get("scoring_system", {})
+
+    SEVERITY_BASE_SCORE = scoring_config.get("severity_base_score", {"low": 1, "medium": 3, "high": 10})
+    CATEGORY_MULTIPLIER = scoring_config.get("category_multiplier", {
+        "damage": 2.0, "cleanliness": 1.5, "missing_item": 1.3,
+        "positioning": 0.5, "added_item": 0.4, "image_quality": 0.2, "wrong_room": 0.3
+    })
+    CONFIDENCE_THRESHOLD = scoring_config.get("confidence_threshold", {}).get("value", 90)
+    ETAPE_REDUCTION_FACTOR = scoring_config.get("etape_reduction_factor", {}).get("value", 0.6)
+
+    # Calculer le score brut de la pièce
+    piece_score = 0
+    issues_details = []
+
+    for issue in issues:
+        if issue.confidence >= CONFIDENCE_THRESHOLD:
+            base_score = SEVERITY_BASE_SCORE.get(issue.severity, 1)
+            category_mult = CATEGORY_MULTIPLIER.get(issue.category, 1.0)
+
+            # Détecter si c'est une issue d'étape (description commence par "[ÉTAPE]")
+            is_etape_issue = issue.description.startswith("[ÉTAPE]")
+            if is_etape_issue:
+                issue_score = base_score * category_mult * ETAPE_REDUCTION_FACTOR
+            else:
+                issue_score = base_score * category_mult
+
+            piece_score += issue_score
+            issues_details.append({
+                "description": issue.description[:50] + "..." if len(issue.description) > 50 else issue.description,
+                "category": issue.category,
+                "severity": issue.severity,
+                "score": round(issue_score, 2),
+                "is_etape": is_etape_issue
+            })
+
+    # Convertir le score brut en note /5 en utilisant les mêmes seuils que le score global
+    grade, label = convert_weighted_average_to_grade(piece_score, config)
+
+    logger.info(f"   🧮 Score algorithmique calculé: {piece_score:.2f} points → {grade}/5 ({label})")
+
+    return {
+        "score_brut": round(piece_score, 2),
+        "note_sur_5": grade,
+        "label": label,
+        "issues_count": len(issues_details),
+        "issues_details": issues_details
+    }
 
 
 def generate_logement_enrichment(logement_id: str, pieces_analysis: List[CombinedAnalysisResponse], total_issues: int, general_issues: int, etapes_issues: int, parcours_type: str = "Voyageur", request_id: str = None) -> LogementAnalysisEnrichment:
@@ -5548,11 +5530,12 @@ Génère une synthèse en JSON:
                 model=OPENAI_MODEL,
                 input=input_content,
                 text={"format": {"type": "json_object"}},
-                max_output_tokens=8000
+                max_output_tokens=12000,
+                reasoning={"effort": "medium"}
             )
 
             logger.info(f"✅ Réponse OpenAI reçue avec succès")
-            
+
         except Exception as openai_error:
             error_str = str(openai_error)
             logger.error(f"❌ Erreur OpenAI lors de l'enrichissement du logement {logement_id}: {error_str}")
@@ -5911,7 +5894,8 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
                 model=OPENAI_MODEL,
                 input=input_content,
                 text={"format": {"type": "json_object"}},
-                max_output_tokens=1000
+                max_output_tokens=1000,
+                temperature=0.2
             )
         else:
             logger.warning("⚠️ async_client non disponible, utilisation du client synchrone (lent)")
@@ -5919,7 +5903,8 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
                 model=OPENAI_MODEL,
                 input=input_content,
                 text={"format": {"type": "json_object"}},
-                max_output_tokens=1000
+                max_output_tokens=1000,
+                temperature=0.2
             )
 
         # Parser la réponse
@@ -5952,6 +5937,12 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
             logger.error(f"📄 Contenu reçu: {response_text[:500]}...")
             return []  # Retourner liste vide en cas d'erreur
 
+        # 🆕 Extraire validation_status et commentaire
+        validation_status = response_data.get("validation_status")
+        commentaire = response_data.get("commentaire", "")
+
+        logger.info(f"📋 [ASYNC] Étape {etape.etape_id} - validation_status: {validation_status}")
+
         # Extraire les issues
         issues = []
         for issue_data in response_data.get("issues", []):
@@ -5962,11 +5953,25 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
                 description=issue_data.get("description", ""),
                 category=issue_data.get("category", "cleanliness"),
                 severity=issue_data.get("severity", "medium"),
-                confidence=issue_data.get("confidence", 70)
+                confidence=issue_data.get("confidence", 70),
+                validation_status=validation_status,
+                commentaire=commentaire
             )
             issues.append(issue)
 
-        logger.info(f"✅ [ASYNC] Étape {etape.etape_id} analysée: {len(issues)} issues détectées (TOUTES conservées)")
+        # 🆕 Si pas d'issues mais validation_status existe, créer une entrée de suivi
+        if not issues and validation_status:
+            issues.append(EtapeIssue(
+                etape_id=etape.etape_id,
+                description=commentaire if commentaire else f"Étape {validation_status.lower()}",
+                category="cleanliness",
+                severity="low",
+                confidence=response_data.get("confidence", 100),
+                validation_status=validation_status,
+                commentaire=commentaire
+            ))
+
+        logger.info(f"✅ [ASYNC] Étape {etape.etape_id} analysée: validation_status={validation_status}, {len(issues)} issues")
         return issues
 
     except Exception as e:
@@ -6113,7 +6118,7 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput, re
 
         # 🔍 DEBUG: Logger les issues de chaque pièce
         for piece_result in pieces_analysis_results:
-            logger.info(f"🔍 DEBUG - Pièce {piece_result.piece_id}: {len(piece_result.issues)} issues détectées")
+            logger.debug(f"🔍 DEBUG - Pièce {piece_result.piece_id}: {len(piece_result.issues)} issues détectées")
             if piece_result.issues:
                 for idx, issue in enumerate(piece_result.issues[:3]):  # Afficher max 3 issues
                     logger.info(f"      [{idx+1}] {issue.description[:50]}...")
@@ -6225,7 +6230,7 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput, re
         logger.info(f"📊 [PARALLEL] Compteurs: {total_issues_count} total ({general_issues_count} générales + {etapes_issues_count} étapes)")
 
         # 🔍 DEBUG: Logger les issues après reconstruction
-        logger.info(f"🔍 DEBUG - Après reconstruction des objets (issues fusionnées):")
+        logger.debug(f"🔍 DEBUG - Après reconstruction des objets (issues fusionnées):")
         for piece_result in pieces_analysis_results:
             logger.info(f"   Pièce {piece_result.piece_id}: {len(piece_result.issues)} issues TOTALES (générales + étapes fusionnées)")
 
@@ -6421,7 +6426,7 @@ async def analyze_complete_logement_ultra_parallel(input_data: EtapesAnalysisInp
         logger.info(f"📊 [PARALLEL] Compteurs: {total_issues_count} total ({general_issues_count} générales + {etapes_issues_count} étapes)")
 
         # 🔍 DEBUG: Logger les issues après reconstruction
-        logger.info(f"🔍 DEBUG - Après reconstruction des objets (issues fusionnées):")
+        logger.debug(f"🔍 DEBUG - Après reconstruction des objets (issues fusionnées):")
         for piece_result in pieces_analysis_results:
             logger.info(f"   Pièce {piece_result.piece_id}: {len(piece_result.issues)} issues TOTALES (générales + étapes fusionnées)")
 
