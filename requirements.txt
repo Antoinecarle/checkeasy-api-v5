@@ -10,10 +10,7 @@ nest-asyncio==1.6.0
 
 # Image processing - versions mises à jour 2025
 Pillow==10.3.0
-pillow-heif==0.16.0
-
-# 🎨 Support AVIF - CORRECTION DU NOM DU PACKAGE
-pillow-avif>=1.0.0  # Support AVIF (nom correct sans -plugin)
+pillow-heif==0.16.0  # Support HEIC + AVIF (via libheif)
 
 # 🔥 CONVERSION HEIC MODERNE 2025 - Librairies alternatives
 # Solution 1: Heiya (2025) - Spécialisé photographes
@@ -27,7 +24,7 @@ Wand>=0.6.13
 
 # Utilitaires de conversion supplémentaires
 imageio>=2.31.0
-av>=10.0.0  # PyAV pour support AVIF dans imageio
+imageio-ffmpeg>=0.4.9  # Support vidéo et formats additionnels
 
 # Système d'analyse des logs
 tqdm>=4.66.0
