@@ -6902,7 +6902,7 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
         message=f"🚀 Analyse complète démarrée pour le logement {input_data.logement_id}"
     )
 
-    logger.info(f"🏠 DÉBUT ANALYSE - Logement: {logement_display_name} (ID: {input_data.logement_id})")
+    logger.warning(f"🏠 DÉBUT ANALYSE - Logement: {logement_display_name} (ID: {input_data.logement_id})")
     logger.debug(f"🚀 Analyse complète démarrée pour le logement {input_data.logement_id}")
 
     try:
@@ -7049,9 +7049,9 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
         try:
             final_score = result.analysis_enrichment.global_score.score
             final_label = result.analysis_enrichment.global_score.label
-            logger.info(f"✅ FIN ANALYSE - Logement: {logement_display_name} - Note: {final_score}/5 ({final_label})")
+            logger.warning(f"✅ FIN ANALYSE - Logement: {logement_display_name} - Note: {final_score}/5 ({final_label})")
         except Exception:
-            logger.info(f"✅ FIN ANALYSE - Logement: {logement_display_name}")
+            logger.warning(f"✅ FIN ANALYSE - Logement: {logement_display_name}")
 
         logs_manager.complete_request(
             request_id=request_id,
