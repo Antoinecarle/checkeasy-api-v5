@@ -1383,7 +1383,13 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                 logger.warning(f"⚠️ Erreur envoi vers Bubble: {e} (analyse continue)")
         
         # Lancer l'envoi vers Bubble en arrière-plan (non bloquant)
-        asyncio.create_task(send_payload_to_bubble())
+        # 🔒 Vérifier qu'un event loop est disponible avant de créer la tâche
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(send_payload_to_bubble())
+        except RuntimeError:
+            # Pas d'event loop (exécution dans un thread pool) - skip l'envoi Bubble
+            logger.debug("⏭️ Skip envoi Bubble (pas d'event loop - exécution parallèle)")
 
         # 📝 LOG DES PROMPTS POUR LE SYSTÈME DE LOGS
         if request_id:
@@ -3223,7 +3229,13 @@ RÉPONDS EN JSON:
                 logger.warning(f"⚠️ Erreur envoi CLASSIFICATION vers Bubble: {e} (classification continue)")
         
         # Lancer l'envoi vers Bubble en arrière-plan (non bloquant)
-        asyncio.create_task(send_classification_payload_to_bubble())
+        # 🔒 Vérifier qu'un event loop est disponible avant de créer la tâche
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(send_classification_payload_to_bubble())
+        except RuntimeError:
+            # Pas d'event loop (exécution dans un thread pool) - skip l'envoi Bubble
+            logger.debug("⏭️ Skip envoi Bubble classification (pas d'event loop - exécution parallèle)")
 
         # 📝 LOG DES PROMPTS POUR LE SYSTÈME DE LOGS (Classification)
         if request_id:
@@ -6048,10 +6060,14 @@ async def analyze_single_piece_async(piece: PieceWithEtapes, parcours_type: str 
         )
 
         # Effectuer l'analyse avec classification automatique (fonction synchrone)
-        # Note: analyze_with_auto_classification est synchrone, on l'appelle normalement
-        # ⚠️ La parallélisation via run_in_executor ne fonctionne pas car les fonctions
-        # internes (classify_room_type, etc.) utilisent du code async (appels Bubble)
-        piece_analysis = analyze_with_auto_classification(input_data_piece, parcours_type, request_id=request_id)
+        # 🚀 Utiliser run_in_executor pour exécuter dans un thread pool
+        # Cela permet la VRAIE parallélisation des pièces via asyncio.gather()
+        # Note: Les appels Bubble sont skippés dans ce mode (pas d'event loop dans le thread)
+        loop = asyncio.get_running_loop()
+        piece_analysis = await loop.run_in_executor(
+            None,  # Utilise le ThreadPoolExecutor par défaut
+            lambda: analyze_with_auto_classification(input_data_piece, parcours_type, request_id=request_id)
+        )
 
         logger.debug(f"✅ [ASYNC] Pièce {piece.piece_id} analysée: {len(piece_analysis.issues)} issues générales détectées")
 
