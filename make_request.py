@@ -6048,8 +6048,13 @@ async def analyze_single_piece_async(piece: PieceWithEtapes, parcours_type: str 
         )
 
         # Effectuer l'analyse avec classification automatique (fonction synchrone)
-        # Note: analyze_with_auto_classification est synchrone, on l'appelle normalement
-        piece_analysis = analyze_with_auto_classification(input_data_piece, parcours_type, request_id=request_id)
+        # 🚀 Utiliser run_in_executor pour exécuter dans un thread pool
+        # Cela permet la VRAIE parallélisation des pièces via asyncio.gather()
+        loop = asyncio.get_event_loop()
+        piece_analysis = await loop.run_in_executor(
+            None,  # Utilise le ThreadPoolExecutor par défaut
+            lambda: analyze_with_auto_classification(input_data_piece, parcours_type, request_id=request_id)
+        )
 
         logger.debug(f"✅ [ASYNC] Pièce {piece.piece_id} analysée: {len(piece_analysis.issues)} issues générales détectées")
 
