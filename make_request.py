@@ -4212,11 +4212,39 @@ Compare les photos avant/après et réponds en JSON:
                 validation_status = etape_result.get("validation_status")
                 commentaire = etape_result.get("commentaire", "")
 
-                logger.info(f"📋 Étape {etape.etape_id} - validation_status: {validation_status}")
+                logger.info(f"📋 Étape {etape.etape_id} - validation_status IA: {validation_status}")
 
-                # Ajouter les issues trouvées avec l'etape_id + validation_status
+                # Extraire les issues temporaires
+                temp_issues = []
                 if "issues" in etape_result and etape_result["issues"]:
                     for issue in etape_result["issues"]:
+                        temp_issues.append({
+                            "description": issue["description"],
+                            "category": issue["category"],
+                            "severity": issue["severity"],
+                            "confidence": issue["confidence"]
+                        })
+
+                # ═══════════════════════════════════════════════════════════════
+                # 🔄 APPLIQUER LA LOGIQUE EN 2 ÉTAPES (POST-TRAITEMENT)
+                # ═══════════════════════════════════════════════════════════════
+                has_checking = bool(etape_data.get("checking_picture_processed"))
+                has_checkout = bool(etape_data.get("checkout_picture_processed"))
+
+                validation_status, temp_issues, commentaire = apply_two_step_validation_logic_sync(
+                    validation_status=validation_status,
+                    issues=temp_issues,
+                    has_checking=has_checking,
+                    checking_picture_url=etape_data.get("checking_picture_processed", {}).get("url", "") if has_checking else "",
+                    checkout_picture_url=etape_data.get("checkout_picture_processed", {}).get("url", "") if has_checkout else "",
+                    etape_id=etape.etape_id,
+                    task_name=etape.task_name,
+                    commentaire=commentaire
+                )
+
+                # Ajouter les issues finales avec l'etape_id + validation_status
+                if temp_issues:
+                    for issue in temp_issues:
                         all_issues.append(EtapeIssue(
                             etape_id=etape.etape_id,
                             description=issue["description"],
@@ -4240,7 +4268,7 @@ Compare les photos avant/après et réponds en JSON:
                             commentaire=commentaire
                         ))
 
-                logger.debug(f"✅ Analyse terminée pour l'étape {etape.etape_id}: validation_status={validation_status}, {len(etape_result.get('issues', []))} problèmes détectés")
+                logger.info(f"✅ Analyse terminée pour l'étape {etape.etape_id}: validation_status FINAL={validation_status}, {len(temp_issues)} problèmes détectés")
 
         return EtapesAnalysisResponse(preliminary_issues=all_issues)
 
@@ -5889,6 +5917,339 @@ async def analyze_single_piece_async(piece: PieceWithEtapes, parcours_type: str 
         raise
 
 
+def apply_two_step_validation_logic_sync(
+    validation_status: str,
+    issues: list,
+    has_checking: bool,
+    checking_picture_url: str,
+    checkout_picture_url: str,
+    etape_id: str,
+    task_name: str,
+    commentaire: str
+) -> tuple:
+    """
+    🔄 LOGIQUE EN 2 ÉTAPES - Post-traitement de la validation IA (VERSION SYNCHRONE)
+
+    Identique à apply_two_step_validation_logic mais en version synchrone pour analyze_etapes
+    """
+    try:
+        # ═══════════════════════════════════════════════════════════════
+        # CAS 1 : VALIDÉ par l'IA → On garde VALIDÉ (ÉTAPE 1 réussie)
+        # ═══════════════════════════════════════════════════════════════
+        if validation_status == "VALIDÉ":
+            logger.debug(f"✅ [2-STEP] Étape {etape_id}: VALIDÉ par IA (ÉTAPE 1 réussie) → Validation confirmée")
+            return validation_status, issues, commentaire
+
+        # ═══════════════════════════════════════════════════════════════
+        # CAS 2 : NON_VALIDÉ ou INCERTAIN → Vérifier ÉTAPE 2
+        # ═══════════════════════════════════════════════════════════════
+        if validation_status in ["NON_VALIDÉ", "INCERTAIN"]:
+            logger.debug(f"⚠️ [2-STEP] Étape {etape_id}: {validation_status} par IA (ÉTAPE 1 échouée) → Passage à ÉTAPE 2")
+
+            # Si pas de checking_picture, on ne peut pas faire l'ÉTAPE 2
+            if not has_checking or not checking_picture_url:
+                logger.debug(f"⏭️ [2-STEP] Étape {etape_id}: Pas de checking_picture → Impossible de faire ÉTAPE 2 → Garder {validation_status}")
+                return validation_status, issues, commentaire
+
+            # ═══════════════════════════════════════════════════════════════
+            # ÉTAPE 2 : Comparer checking vs checkout avec l'IA
+            # ═══════════════════════════════════════════════════════════════
+            logger.debug(f"🔍 [2-STEP] Étape {etape_id}: Comparaison checking vs checkout...")
+
+            # Construire un prompt simple pour comparer les deux images
+            comparison_prompt = f"""Tu es un expert en comparaison d'images.
+
+🎯 OBJECTIF : Déterminer si deux photos montrent le MÊME ÉTAT ou un état DIFFÉRENT.
+
+📸 CONTEXTE :
+- Photo 1 (AVANT) : État initial
+- Photo 2 (APRÈS) : État final
+- Tâche : {task_name}
+
+🔍 QUESTION :
+Les deux photos montrent-elles le MÊME ÉTAT (équivalent) ou un état DIFFÉRENT (dégradé/amélioré) ?
+
+⚠️ RÈGLES :
+- Ignore les différences d'angle, de luminosité, de cadrage
+- Concentre-toi sur l'ÉTAT RÉEL des éléments visibles
+- Petites variations normales = MÊME ÉTAT
+- Changement significatif = ÉTAT DIFFÉRENT
+
+📋 RÉPONDS EN JSON :
+{{
+    "same_state": true/false,
+    "confidence": 0-100,
+    "explanation": "Explication courte"
+}}
+
+- same_state = true → Les deux photos montrent le même état (équivalent)
+- same_state = false → Les deux photos montrent un état différent"""
+
+            # Préparer le message avec les deux images
+            comparison_content = [
+                {"type": "text", "text": "Compare ces deux photos et détermine si elles montrent le même état :"},
+                {"type": "image_url", "image_url": {"url": checking_picture_url, "detail": "high"}},
+                {"type": "image_url", "image_url": {"url": checkout_picture_url, "detail": "high"}}
+            ]
+
+            comparison_messages = [
+                {"role": "system", "content": comparison_prompt},
+                {"role": "user", "content": comparison_content}
+            ]
+
+            try:
+                # Appel à l'IA pour comparer les images (VERSION SYNCHRONE)
+                input_content = convert_chat_messages_to_responses_input(comparison_messages)
+
+                comparison_response = client.responses.create(
+                    model=OPENAI_MODEL,
+                    input=input_content,
+                    text={"format": {"type": "json_object"}},
+                    max_output_tokens=500,
+                    temperature=0.1
+                )
+
+                # Parser la réponse
+                comparison_text = comparison_response.output_text if hasattr(comparison_response, 'output_text') else str(comparison_response.output[0].content[0].text)
+
+                # Extraire le JSON
+                start_idx = comparison_text.find('{')
+                end_idx = comparison_text.rfind('}')
+                if start_idx != -1 and end_idx != -1:
+                    json_content = comparison_text[start_idx:end_idx+1]
+                    comparison_data = json.loads(json_content)
+                else:
+                    comparison_data = json.loads(comparison_text)
+
+                same_state = comparison_data.get("same_state", False)
+                comparison_confidence = comparison_data.get("confidence", 0)
+                explanation = comparison_data.get("explanation", "")
+
+                logger.debug(f"🔍 [2-STEP] Étape {etape_id}: Comparaison terminée - same_state={same_state}, confidence={comparison_confidence}")
+                logger.debug(f"💬 [2-STEP] Explication: {explanation}")
+
+                # ═══════════════════════════════════════════════════════════════
+                # DÉCISION FINALE basée sur la comparaison
+                # ═══════════════════════════════════════════════════════════════
+                if same_state and comparison_confidence >= 70:
+                    # Les images sont similaires → FORCER VALIDÉ (état maintenu)
+                    logger.info(f"✅ [2-STEP] Étape {etape_id}: Images similaires (confidence={comparison_confidence}) → FORCER VALIDÉ (état maintenu)")
+
+                    new_commentaire = f"État maintenu par rapport à l'état initial (pas de dégradation). {explanation}"
+
+                    # Supprimer les issues car on force VALIDÉ
+                    return "VALIDÉ", [], new_commentaire
+                else:
+                    # Les images sont différentes → GARDER NON_VALIDÉ (dégradation)
+                    logger.info(f"❌ [2-STEP] Étape {etape_id}: Images différentes (same_state={same_state}, confidence={comparison_confidence}) → GARDER {validation_status}")
+
+                    # Enrichir le commentaire avec l'explication
+                    if explanation:
+                        enriched_commentaire = f"{commentaire}. Comparaison avec état initial: {explanation}"
+                    else:
+                        enriched_commentaire = commentaire
+
+                    return validation_status, issues, enriched_commentaire
+
+            except Exception as comparison_error:
+                logger.error(f"❌ [2-STEP] Erreur lors de la comparaison d'images pour étape {etape_id}: {str(comparison_error)}")
+                # En cas d'erreur, on garde le statut original
+                return validation_status, issues, commentaire
+
+        # ═══════════════════════════════════════════════════════════════
+        # CAS 3 : Autre statut (ne devrait pas arriver)
+        # ═══════════════════════════════════════════════════════════════
+        logger.warning(f"⚠️ [2-STEP] Étape {etape_id}: Statut inconnu '{validation_status}' → Garder tel quel")
+        return validation_status, issues, commentaire
+
+    except Exception as e:
+        logger.error(f"❌ [2-STEP] Erreur dans apply_two_step_validation_logic_sync pour étape {etape_id}: {str(e)}")
+        # En cas d'erreur, on retourne les valeurs originales
+        return validation_status, issues, commentaire
+
+
+async def apply_two_step_validation_logic(
+    validation_status: str,
+    issues: list,
+    has_checking: bool,
+    checking_picture_url: str,
+    checkout_picture_url: str,
+    etape_id: str,
+    task_name: str,
+    commentaire: str
+) -> tuple:
+    """
+    🔄 LOGIQUE EN 2 ÉTAPES - Post-traitement de la validation IA
+
+    Cette fonction applique la logique de validation en 2 étapes APRÈS l'analyse IA
+    pour garantir qu'elle soit toujours respectée, même si l'IA ne l'a pas bien comprise.
+
+    ÉTAPE 1 : L'IA a vérifié si checkout répond à la consigne
+        ✅ VALIDÉ → On garde VALIDÉ
+        ❌ NON_VALIDÉ → On passe à l'ÉTAPE 2
+
+    ÉTAPE 2 : Comparer checkout avec checking (si disponible)
+        ✅ Images similaires → Forcer VALIDÉ (état maintenu)
+        ❌ Images différentes → Garder NON_VALIDÉ (dégradation)
+
+    Args:
+        validation_status: Statut retourné par l'IA
+        issues: Liste des issues détectées par l'IA
+        has_checking: Si une photo checking est disponible
+        checking_picture_url: URL de la photo checking
+        checkout_picture_url: URL de la photo checkout
+        etape_id: ID de l'étape
+        task_name: Nom de la tâche
+        commentaire: Commentaire de l'IA
+
+    Returns:
+        tuple: (validation_status_final, issues_final, commentaire_final)
+    """
+    try:
+        # ═══════════════════════════════════════════════════════════════
+        # CAS 1 : VALIDÉ par l'IA → On garde VALIDÉ (ÉTAPE 1 réussie)
+        # ═══════════════════════════════════════════════════════════════
+        if validation_status == "VALIDÉ":
+            logger.debug(f"✅ [2-STEP] Étape {etape_id}: VALIDÉ par IA (ÉTAPE 1 réussie) → Validation confirmée")
+            return validation_status, issues, commentaire
+
+        # ═══════════════════════════════════════════════════════════════
+        # CAS 2 : NON_VALIDÉ ou INCERTAIN → Vérifier ÉTAPE 2
+        # ═══════════════════════════════════════════════════════════════
+        if validation_status in ["NON_VALIDÉ", "INCERTAIN"]:
+            logger.debug(f"⚠️ [2-STEP] Étape {etape_id}: {validation_status} par IA (ÉTAPE 1 échouée) → Passage à ÉTAPE 2")
+
+            # Si pas de checking_picture, on ne peut pas faire l'ÉTAPE 2
+            if not has_checking or not checking_picture_url:
+                logger.debug(f"⏭️ [2-STEP] Étape {etape_id}: Pas de checking_picture → Impossible de faire ÉTAPE 2 → Garder {validation_status}")
+                return validation_status, issues, commentaire
+
+            # ═══════════════════════════════════════════════════════════════
+            # ÉTAPE 2 : Comparer checking vs checkout avec l'IA
+            # ═══════════════════════════════════════════════════════════════
+            logger.debug(f"🔍 [2-STEP] Étape {etape_id}: Comparaison checking vs checkout...")
+
+            # Construire un prompt simple pour comparer les deux images
+            comparison_prompt = f"""Tu es un expert en comparaison d'images.
+
+🎯 OBJECTIF : Déterminer si deux photos montrent le MÊME ÉTAT ou un état DIFFÉRENT.
+
+📸 CONTEXTE :
+- Photo 1 (AVANT) : État initial
+- Photo 2 (APRÈS) : État final
+- Tâche : {task_name}
+
+🔍 QUESTION :
+Les deux photos montrent-elles le MÊME ÉTAT (équivalent) ou un état DIFFÉRENT (dégradé/amélioré) ?
+
+⚠️ RÈGLES :
+- Ignore les différences d'angle, de luminosité, de cadrage
+- Concentre-toi sur l'ÉTAT RÉEL des éléments visibles
+- Petites variations normales = MÊME ÉTAT
+- Changement significatif = ÉTAT DIFFÉRENT
+
+📋 RÉPONDS EN JSON :
+{{
+    "same_state": true/false,
+    "confidence": 0-100,
+    "explanation": "Explication courte"
+}}
+
+- same_state = true → Les deux photos montrent le même état (équivalent)
+- same_state = false → Les deux photos montrent un état différent"""
+
+            # Préparer le message avec les deux images
+            comparison_content = [
+                {"type": "text", "text": "Compare ces deux photos et détermine si elles montrent le même état :"},
+                {"type": "image_url", "image_url": {"url": checking_picture_url, "detail": "high"}},
+                {"type": "image_url", "image_url": {"url": checkout_picture_url, "detail": "high"}}
+            ]
+
+            comparison_messages = [
+                {"role": "system", "content": comparison_prompt},
+                {"role": "user", "content": comparison_content}
+            ]
+
+            try:
+                # Appel à l'IA pour comparer les images
+                input_content = convert_chat_messages_to_responses_input(comparison_messages)
+
+                if 'async_client' in globals() and async_client:
+                    comparison_response = await async_client.responses.create(
+                        model=OPENAI_MODEL,
+                        input=input_content,
+                        text={"format": {"type": "json_object"}},
+                        max_output_tokens=500,
+                        temperature=0.1
+                    )
+                else:
+                    comparison_response = client.responses.create(
+                        model=OPENAI_MODEL,
+                        input=input_content,
+                        text={"format": {"type": "json_object"}},
+                        max_output_tokens=500,
+                        temperature=0.1
+                    )
+
+                # Parser la réponse
+                comparison_text = comparison_response.output_text if hasattr(comparison_response, 'output_text') else str(comparison_response.output[0].content[0].text)
+
+                # Extraire le JSON
+                start_idx = comparison_text.find('{')
+                end_idx = comparison_text.rfind('}')
+                if start_idx != -1 and end_idx != -1:
+                    json_content = comparison_text[start_idx:end_idx+1]
+                    comparison_data = json.loads(json_content)
+                else:
+                    comparison_data = json.loads(comparison_text)
+
+                same_state = comparison_data.get("same_state", False)
+                comparison_confidence = comparison_data.get("confidence", 0)
+                explanation = comparison_data.get("explanation", "")
+
+                logger.debug(f"🔍 [2-STEP] Étape {etape_id}: Comparaison terminée - same_state={same_state}, confidence={comparison_confidence}")
+                logger.debug(f"💬 [2-STEP] Explication: {explanation}")
+
+                # ═══════════════════════════════════════════════════════════════
+                # DÉCISION FINALE basée sur la comparaison
+                # ═══════════════════════════════════════════════════════════════
+                if same_state and comparison_confidence >= 70:
+                    # Les images sont similaires → FORCER VALIDÉ (état maintenu)
+                    logger.info(f"✅ [2-STEP] Étape {etape_id}: Images similaires (confidence={comparison_confidence}) → FORCER VALIDÉ (état maintenu)")
+
+                    new_commentaire = f"État maintenu par rapport à l'état initial (pas de dégradation). {explanation}"
+
+                    # Supprimer les issues car on force VALIDÉ
+                    return "VALIDÉ", [], new_commentaire
+                else:
+                    # Les images sont différentes → GARDER NON_VALIDÉ (dégradation)
+                    logger.info(f"❌ [2-STEP] Étape {etape_id}: Images différentes (same_state={same_state}, confidence={comparison_confidence}) → GARDER {validation_status}")
+
+                    # Enrichir le commentaire avec l'explication
+                    if explanation:
+                        enriched_commentaire = f"{commentaire}. Comparaison avec état initial: {explanation}"
+                    else:
+                        enriched_commentaire = commentaire
+
+                    return validation_status, issues, enriched_commentaire
+
+            except Exception as comparison_error:
+                logger.error(f"❌ [2-STEP] Erreur lors de la comparaison d'images pour étape {etape_id}: {str(comparison_error)}")
+                # En cas d'erreur, on garde le statut original
+                return validation_status, issues, commentaire
+
+        # ═══════════════════════════════════════════════════════════════
+        # CAS 3 : Autre statut (ne devrait pas arriver)
+        # ═══════════════════════════════════════════════════════════════
+        logger.warning(f"⚠️ [2-STEP] Étape {etape_id}: Statut inconnu '{validation_status}' → Garder tel quel")
+        return validation_status, issues, commentaire
+
+    except Exception as e:
+        logger.error(f"❌ [2-STEP] Erreur dans apply_two_step_validation_logic pour étape {etape_id}: {str(e)}")
+        # En cas d'erreur, on retourne les valeurs originales
+        return validation_status, issues, commentaire
+
+
 async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: str, parcours_type: str = "Voyageur", request_id: str = None) -> List[EtapeIssue]:
     """
     Analyse asynchrone d'une seule étape
@@ -6098,7 +6459,7 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
         validation_status = response_data.get("validation_status")
         commentaire = response_data.get("commentaire", "")
 
-        logger.info(f"📋 [ASYNC] Étape {etape.etape_id} - validation_status: {validation_status}")
+        logger.info(f"📋 [ASYNC] Étape {etape.etape_id} - validation_status IA: {validation_status}")
 
         # Extraire les issues
         issues = []
@@ -6116,6 +6477,25 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
             )
             issues.append(issue)
 
+        # ═══════════════════════════════════════════════════════════════
+        # 🔄 APPLIQUER LA LOGIQUE EN 2 ÉTAPES (POST-TRAITEMENT)
+        # ═══════════════════════════════════════════════════════════════
+        validation_status, issues, commentaire = await apply_two_step_validation_logic(
+            validation_status=validation_status,
+            issues=issues,
+            has_checking=has_checking,
+            checking_picture_url=etape_data.get("checking_picture_processed", {}).get("url", "") if has_checking else "",
+            checkout_picture_url=etape_data.get("checkout_picture_processed", {}).get("url", "") if has_checkout else "",
+            etape_id=etape.etape_id,
+            task_name=etape.task_name,
+            commentaire=commentaire
+        )
+
+        # Mettre à jour le validation_status et commentaire dans les issues
+        for issue in issues:
+            issue.validation_status = validation_status
+            issue.commentaire = commentaire
+
         # 🆕 Si pas d'issues mais validation_status existe, créer une entrée de suivi
         if not issues and validation_status:
             issues.append(EtapeIssue(
@@ -6128,7 +6508,7 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
                 commentaire=commentaire
             ))
 
-        logger.debug(f"✅ [ASYNC] Étape {etape.etape_id} analysée: validation_status={validation_status}, {len(issues)} issues")
+        logger.info(f"✅ [ASYNC] Étape {etape.etape_id} analysée: validation_status FINAL={validation_status}, {len(issues)} issues")
         return issues
 
     except Exception as e:
