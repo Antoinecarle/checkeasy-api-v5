@@ -1212,7 +1212,7 @@ async def convert_message_urls_to_data_uris_parallel(user_message: dict) -> dict
         if not urls_to_convert:
             return user_message
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         conversion_tasks = [
             loop.run_in_executor(None, convert_url_to_data_uri, url)
             for url in urls_to_convert
@@ -1237,6 +1237,52 @@ async def convert_message_urls_to_data_uris_parallel(user_message: dict) -> dict
     except Exception as e:
         logger.error(f"❌ Erreur conversion parallèle: {e}")
         return user_message
+
+
+def convert_message_urls_to_data_uris_sync(user_message: dict) -> dict:
+    """
+    🔄 VERSION SYNCHRONE - Convertit toutes les URLs d'images en data URIs
+    Utilisée dans les fallbacks quand asyncio.run() n'est pas disponible (thread pool)
+
+    Args:
+        user_message: Message utilisateur avec des image_url
+
+    Returns:
+        Message modifié avec data URIs
+    """
+    try:
+        converted_count = 0
+        failed_count = 0
+        cached_count = 0
+
+        for content_item in user_message.get("content", []):
+            if content_item.get("type") == "image_url":
+                original_url = content_item["image_url"]["url"]
+                if not original_url.startswith("data:"):
+                    # Vérifier le cache
+                    with _data_uri_cache_lock:
+                        if original_url in _data_uri_cache:
+                            content_item["image_url"]["url"] = _data_uri_cache[original_url]
+                            cached_count += 1
+                            continue
+
+                    # Convertir (synchrone)
+                    data_uri = convert_url_to_data_uri(original_url)
+                    if data_uri:
+                        content_item["image_url"]["url"] = data_uri
+                        with _data_uri_cache_lock:
+                            _data_uri_cache[original_url] = data_uri
+                        converted_count += 1
+                    else:
+                        failed_count += 1
+
+        logger.debug(f"🔄 Conversion sync: {converted_count} converties, {cached_count} cached, {failed_count} échouées")
+        return user_message
+
+    except Exception as e:
+        logger.error(f"❌ Erreur conversion sync: {e}")
+        return user_message
+
 
 def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", request_id: str = None) -> AnalyseResponse:
     """
@@ -1454,13 +1500,11 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                 "invalid_image_url",
                 "failed to download"
             ]):
-                logger.warning("⚠️ Erreur de téléchargement d'image détectée, tentative avec Data URIs PARALLÈLES")
+                logger.warning("⚠️ Erreur de téléchargement d'image détectée, tentative avec Data URIs")
 
                 try:
-                    # 🚀 Convertir toutes les URLs en data URIs EN PARALLÈLE (beaucoup plus rapide)
-                    user_message_with_data_uris = asyncio.run(
-                        convert_message_urls_to_data_uris_parallel(user_message.copy())
-                    )
+                    # 🔄 Convertir toutes les URLs en data URIs (version sync pour compatibilité thread pool)
+                    user_message_with_data_uris = convert_message_urls_to_data_uris_sync(user_message.copy())
 
                     # Compter les images converties
                     data_uri_count = sum(
@@ -3282,13 +3326,11 @@ RÉPONDS EN JSON:
                 "invalid_image_url",
                 "failed to download"
             ]):
-                logger.warning("⚠️ Erreur de téléchargement d'image détectée, tentative avec Data URIs PARALLÈLES")
+                logger.warning("⚠️ Erreur de téléchargement d'image détectée, tentative avec Data URIs")
 
                 try:
-                    # 🚀 Convertir toutes les URLs en data URIs EN PARALLÈLE (beaucoup plus rapide)
-                    user_message_with_data_uris = asyncio.run(
-                        convert_message_urls_to_data_uris_parallel(user_message.copy())
-                    )
+                    # 🔄 Convertir toutes les URLs en data URIs (version sync pour compatibilité thread pool)
+                    user_message_with_data_uris = convert_message_urls_to_data_uris_sync(user_message.copy())
 
                     # Compter les images converties
                     data_uri_count = sum(
@@ -4239,13 +4281,11 @@ Compare les photos avant/après et réponds en JSON:
                         "invalid_image_url",
                         "failed to download"
                     ]):
-                        logger.warning(f"⚠️ Erreur de téléchargement d'image détectée pour l'étape {etape.etape_id}, tentative avec Data URIs PARALLÈLES")
+                        logger.warning(f"⚠️ Erreur de téléchargement d'image détectée pour l'étape {etape.etape_id}, tentative avec Data URIs")
 
                         try:
-                            # 🚀 Convertir toutes les URLs en data URIs EN PARALLÈLE (beaucoup plus rapide)
-                            user_message_with_data_uris = asyncio.run(
-                                convert_message_urls_to_data_uris_parallel(user_message.copy())
-                            )
+                            # 🔄 Convertir toutes les URLs en data URIs (version sync pour compatibilité thread pool)
+                            user_message_with_data_uris = convert_message_urls_to_data_uris_sync(user_message.copy())
 
                             # Compter les images converties
                             data_uri_count = sum(
@@ -6811,8 +6851,8 @@ async def process_single_etape_image_task(etape: dict, index: int, total: int) -
     Remplace le traitement séquentiel de process_etapes_images.
     """
     try:
-        loop = asyncio.get_event_loop()
-        
+        loop = asyncio.get_running_loop()
+
         etape_id = etape.get('etape_id')
         task_name = etape.get('task_name')
         consigne = etape.get('consigne')
