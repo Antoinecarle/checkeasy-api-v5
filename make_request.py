@@ -6893,12 +6893,16 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
         }
     )
 
+    # Récupérer le nom du logement pour les logs
+    logement_display_name = input_data.logement_name or input_data.logement_adresse or input_data.logement_id
+
     logs_manager.add_log(
         request_id=request_id,
         level="INFO",
         message=f"🚀 Analyse complète démarrée pour le logement {input_data.logement_id}"
     )
 
+    logger.info(f"🏠 DÉBUT ANALYSE - Logement: {logement_display_name} (ID: {input_data.logement_id})")
     logger.debug(f"🚀 Analyse complète démarrée pour le logement {input_data.logement_id}")
 
     try:
@@ -7040,6 +7044,11 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
             level="INFO",
             message=f"✅ Analyse complète terminée avec succès - Retour du rapport transformé"
         )
+
+        # Log de fin avec le nom du logement et la note
+        final_score = result.analysis_enrichment.global_score.score if result.analysis_enrichment else "N/A"
+        final_label = result.analysis_enrichment.global_score.label if result.analysis_enrichment else "N/A"
+        logger.info(f"✅ FIN ANALYSE - Logement: {logement_display_name} - Note: {final_score}/5 ({final_label})")
 
         logs_manager.complete_request(
             request_id=request_id,
