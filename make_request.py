@@ -4434,8 +4434,8 @@ Compare les photos avant/après et réponds en JSON:
                     validation_status=validation_status,
                     issues=temp_issues,
                     has_checking=has_checking,
-                    checking_picture_url=etape_data.get("checking_picture_processed", {}).get("url", "") if has_checking else "",
-                    checkout_picture_url=etape_data.get("checkout_picture_processed", {}).get("url", "") if has_checkout else "",
+                    checking_picture_url=etape_data.get("checking_picture_processed", "") if has_checking else "",
+                    checkout_picture_url=etape_data.get("checkout_picture_processed", "") if has_checkout else "",
                     etape_id=etape.etape_id,
                     task_name=etape.task_name,
                     commentaire=commentaire
@@ -6683,8 +6683,8 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
             validation_status=validation_status,
             issues=issues,
             has_checking=has_checking,
-            checking_picture_url=etape_data.get("checking_picture_processed", {}).get("url", "") if has_checking else "",
-            checkout_picture_url=etape_data.get("checkout_picture_processed", {}).get("url", "") if has_checkout else "",
+            checking_picture_url=etape_data.get("checking_picture_processed", "") if has_checking else "",
+            checkout_picture_url=etape_data.get("checkout_picture_processed", "") if has_checkout else "",
             etape_id=etape.etape_id,
             task_name=etape.task_name,
             commentaire=commentaire
