@@ -2925,7 +2925,7 @@ def verify_checkin_checkout_coherence(
             messages=[checkin_user_message],
             response_format={"type": "json_object"},
             temperature=0.3,
-            max_tokens=500
+            max_completion_tokens=500
         )
 
         checkin_result = json.loads(checkin_response.choices[0].message.content)
@@ -2956,7 +2956,7 @@ def verify_checkin_checkout_coherence(
             messages=[checkout_user_message],
             response_format={"type": "json_object"},
             temperature=0.3,
-            max_tokens=500
+            max_completion_tokens=500
         )
 
         checkout_result = json.loads(checkout_response.choices[0].message.content)
