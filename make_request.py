@@ -7046,9 +7046,12 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
         )
 
         # Log de fin avec le nom du logement et la note
-        final_score = result.analysis_enrichment.global_score.score if result.analysis_enrichment else "N/A"
-        final_label = result.analysis_enrichment.global_score.label if result.analysis_enrichment else "N/A"
-        logger.info(f"✅ FIN ANALYSE - Logement: {logement_display_name} - Note: {final_score}/5 ({final_label})")
+        try:
+            final_score = result.analysis_enrichment.global_score.score
+            final_label = result.analysis_enrichment.global_score.label
+            logger.info(f"✅ FIN ANALYSE - Logement: {logement_display_name} - Note: {final_score}/5 ({final_label})")
+        except Exception:
+            logger.info(f"✅ FIN ANALYSE - Logement: {logement_display_name}")
 
         logs_manager.complete_request(
             request_id=request_id,
