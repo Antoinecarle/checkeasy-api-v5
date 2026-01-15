@@ -1534,7 +1534,7 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                                 Probleme(
                                     description="Erreur technique lors de l'analyse",
                                     category="image_quality",
-                                    severity="medium",
+                                    severity="high",
                                     confidence=100
                                 )
                             ]
@@ -1591,7 +1591,7 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                             Probleme(
                                 description="Erreur technique lors de l'analyse",
                                 category="image_quality",
-                                severity="medium",
+                                severity="high",
                                 confidence=100
                             )
                         ]
@@ -4304,7 +4304,7 @@ Compare les photos avant/après et réponds en JSON:
                                     etape_id=etape.etape_id,
                                     description=f"Impossibilité d'analyser l'étape '{etape.task_name}' - erreur technique",
                                     category="image_quality",
-                                    severity="medium",
+                                    severity="high",
                                     confidence=100
                                 ))
                                 logger.debug(f"⚠️ Problème générique ajouté pour l'étape {etape.etape_id}")
@@ -4352,7 +4352,7 @@ Compare les photos avant/après et réponds en JSON:
                                 etape_id=etape.etape_id,
                                 description=f"Impossibilité d'analyser l'étape '{etape.task_name}' - images en format non supporté",
                                 category="image_quality",
-                                severity="medium",
+                                severity="high",
                                 confidence=100
                             ))
                             logger.debug(f"⚠️ Problème générique ajouté pour l'étape {etape.etape_id}")
@@ -4364,7 +4364,7 @@ Compare les photos avant/après et réponds en JSON:
                             etape_id=etape.etape_id,
                             description=f"Erreur technique lors de l'analyse de l'étape '{etape.task_name}'",
                             category="image_quality",
-                            severity="medium",
+                            severity="high",
                             confidence=100
                         ))
                         continue  # Passer à l'étape suivante
@@ -4402,7 +4402,7 @@ Compare les photos avant/après et réponds en JSON:
                         etape_id=etape.etape_id,
                         description=f"Erreur de parsing JSON pour l'étape '{etape.task_name}'",
                         category="image_quality",
-                        severity="medium",
+                        severity="high",
                         confidence=100
                     ))
                     continue  # Passer à l'étape suivante
