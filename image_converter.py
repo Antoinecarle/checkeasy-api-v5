@@ -58,20 +58,14 @@ def normalize_url(url: str) -> str:
     # Nettoyer les espaces
     url = url.strip()
 
-    # 🔍 DEBUG: Logger l'URL après strip pour diagnostiquer
-    logger.info(f"🔍 normalize_url - URL après strip: '{url}' (premiers chars: {repr(url[:10]) if len(url) >= 10 else repr(url)})")
-
     # Cas 1: URL commence par "//" (protocole manquant)
     # Exemple: "//cdn.bubble.io/image.jpg" -> "https://cdn.bubble.io/image.jpg"
     if url.startswith('//'):
-        logger.info(f"🔧 Ajout du protocole https: à l'URL: {url}")
+        logger.info(f"🔧 Correction URL Bubble: {url[:60]}... → https:{url[:60]}...")
         url = 'https:' + url
-        logger.info(f"✅ URL normalisée: {url}")
     elif url.startswith('/'):
         # Cas où l'URL commence par un seul slash (chemin relatif invalide)
-        logger.warning(f"⚠️ URL commence par un seul slash (invalide): {url}")
-    else:
-        logger.info(f"🔍 URL ne commence pas par // : {url[:50]}...")
+        logger.warning(f"⚠️ URL invalide (commence par /): {url[:80]}")
 
     # Cas 2: Double protocole "https:https://"
     # Exemple: "https:https://cdn.bubble.io/image.jpg" -> "https://cdn.bubble.io/image.jpg"
@@ -276,17 +270,18 @@ class ImageConverter:
             # Tentative de détection alternative par les premiers bytes
             try:
                 # Vérification des signatures de fichier (magic bytes)
+                # ⚠️ IMPORTANT: Vérifier AVIF AVANT HEIC car les deux utilisent 'ftyp'
                 if len(image_data) >= 12:
-                    # HEIC/HEIF signature - vérification plus robuste
-                    if (b'ftyp' in image_data[:20] and
+                    # AVIF signature (PRIORITÉ 1)
+                    if b'ftyp' in image_data[:20] and b'avif' in image_data[:32]:
+                        logger.info("🔍 Format AVIF détecté par signature")
+                        return 'avif'
+                    # HEIC/HEIF signature - vérification plus robuste (PRIORITÉ 2)
+                    elif (b'ftyp' in image_data[:20] and
                         (b'heic' in image_data[:32] or b'mif1' in image_data[:32] or
                          b'heif' in image_data[:32] or b'heix' in image_data[:32])):
                         logger.info("🔍 Format HEIC/HEIF détecté par signature")
                         return 'heic'
-                    # AVIF signature
-                    elif b'ftyp' in image_data[:20] and b'avif' in image_data[:32]:
-                        logger.info("🔍 Format AVIF détecté par signature")
-                        return 'avif'
                     # JPEG signature
                     elif image_data[:2] == b'\xff\xd8':
                         logger.info("🔍 Format JPEG détecté par signature")
@@ -398,7 +393,57 @@ class ImageConverter:
             # === TRAITEMENT SPÉCIAL AVIF ===
             if image_format and image_format.lower() == 'avif':
                 logger.info("🎨 Conversion AVIF → JPEG pour compatibilité OpenAI")
-            
+
+                try:
+                    # Méthode 1: Essayer avec pillow-avif-plugin si disponible
+                    try:
+                        import pillow_avif
+                        # Le plugin s'enregistre automatiquement à l'import
+                        logger.info("✅ Plugin AVIF (pillow-avif) activé")
+                    except ImportError:
+                        logger.warning("⚠️ pillow-avif non installé, tentative avec imageio")
+                    except Exception as plugin_error:
+                        logger.warning(f"⚠️ Erreur plugin AVIF: {plugin_error}, tentative avec imageio")
+
+                    # Méthode 2: Utiliser imageio comme fallback
+                    try:
+                        import imageio.v3 as iio
+                        logger.info("🔄 Conversion AVIF avec imageio...")
+
+                        # Lire l'image AVIF avec imageio
+                        img_array = iio.imread(io.BytesIO(image_data))
+
+                        # Convertir en PIL Image
+                        img = Image.fromarray(img_array)
+
+                        # Convertir en RGB si nécessaire
+                        if img.mode in ('RGBA', 'LA'):
+                            background = Image.new('RGB', img.size, (255, 255, 255))
+                            if img.mode == 'RGBA':
+                                background.paste(img, mask=img.split()[-1])
+                            else:
+                                background.paste(img, mask=img.split()[1])
+                            img = background
+                        elif img.mode != 'RGB':
+                            img = img.convert('RGB')
+
+                        # Sauvegarder en JPEG haute qualité
+                        output = io.BytesIO()
+                        img.save(output, format='JPEG', quality=98, optimize=True)
+                        output.seek(0)
+
+                        logger.info("✅ Conversion AVIF réussie avec imageio")
+                        return output.getvalue()
+
+                    except Exception as imageio_error:
+                        logger.error(f"❌ Échec conversion AVIF avec imageio: {imageio_error}")
+                        # Continuer avec le traitement normal (peut échouer)
+                        logger.info("🔄 Tentative de fallback avec PIL standard")
+
+                except Exception as avif_error:
+                    logger.error(f"❌ Erreur lors du traitement AVIF: {avif_error}")
+                    # Continuer avec le traitement normal
+
             # === TRAITEMENT NORMAL POUR AUTRES FORMATS ===
             # S'assurer que le support HEIF est activé avant la conversion
             if ensure_heif_support():
@@ -619,10 +664,10 @@ class ImageConverter:
             
             # ÉTAPE 2: Détecter le format depuis l'URL
             url_format = ImageConverter.get_image_format_from_url(url)
-            
-            # Si format HEIC détecté depuis l'URL, procéder directement à la conversion
-            if url_format == 'heic':
-                logger.info(f"🎯 Format HEIC détecté depuis l'URL, conversion nécessaire")
+
+            # Si format HEIC ou AVIF détecté depuis l'URL, procéder directement à la conversion
+            if url_format in ['heic', 'avif']:
+                logger.info(f"🎯 Format {url_format.upper()} détecté depuis l'URL, conversion nécessaire")
                 # Pas besoin de test HEAD, on sait qu'il faut convertir
                 # Passer directement au téléchargement et conversion
             elif url_format and url_format in SUPPORTED_FORMATS:
@@ -699,7 +744,6 @@ class ImageConverter:
             logger.info("⚠️ Utilisation d'un placeholder en dernier recours")
             return create_placeholder_image_url()
 
-@staticmethod
 def validate_converted_image(image_data: bytes, original_format: str = None) -> dict:
     """
     Valide la qualité d'une image convertie pour s'assurer qu'elle est optimale pour l'IA
@@ -806,7 +850,6 @@ def validate_converted_image(image_data: bytes, original_format: str = None) -> 
             "error": str(e)
         }
 
-@staticmethod
 def test_heic_conversion(test_url: str = None) -> bool:
     """
     Teste la conversion HEIC pour s'assurer qu'elle fonctionne correctement
@@ -1235,7 +1278,15 @@ def detect_image_format_enhanced(image_data) -> Optional[str]:
         
         # === DÉTECTION PAR SIGNATURES ÉTENDUES ===
 
-        # HEIC/HEIF - Signatures multiples
+        # ⚠️ IMPORTANT: Vérifier AVIF AVANT HEIC car les deux utilisent 'ftyp'
+
+        # AVIF - Signature (PRIORITÉ 1)
+        if len(header_bytes) >= 12:
+            if b'ftyp' in header_bytes[:20] and b'avif' in header_bytes[:32]:
+                logger.info("🎯 Format AVIF détecté par signature")
+                return 'avif'
+
+        # HEIC/HEIF - Signatures multiples (PRIORITÉ 2)
         if len(header_bytes) >= 12:
             if (b'ftyp' in header_bytes[:20] and
                 (b'heic' in header_bytes[:32] or b'mif1' in header_bytes[:32] or
@@ -1243,12 +1294,6 @@ def detect_image_format_enhanced(image_data) -> Optional[str]:
                  b'msf1' in header_bytes[:32] or b'hevc' in header_bytes[:32])):
                 logger.info("🎯 Format HEIC/HEIF détecté par signature étendue")
                 return 'heic'
-
-        # AVIF - Signature
-        if len(header_bytes) >= 12:
-            if b'ftyp' in header_bytes[:20] and b'avif' in header_bytes[:32]:
-                logger.info("🎯 Format AVIF détecté par signature")
-                return 'avif'
 
         # JPEG - Standard
         if header_bytes[:2] == b'\xff\xd8':

@@ -419,14 +419,14 @@ except Exception as e:
 # 🚀 CONFIGURATION MODÈLE OPENAI (depuis variable d'environnement Railway)
 # ═══════════════════════════════════════════════════════════════════════════════
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.2-2025-12-11")
-logger.info("")
-logger.info("=" * 100)
-logger.info("🤖🤖🤖  CONFIGURATION MODÈLE OPENAI  🤖🤖🤖")
-logger.info("=" * 100)
-logger.info(f"📌 MODÈLE UTILISÉ: {OPENAI_MODEL}")
-logger.info(f"📌 SOURCE: {'Variable OPENAI_MODEL' if os.environ.get('OPENAI_MODEL') else 'Valeur par défaut'}")
-logger.info("=" * 100)
-logger.info("")
+logger.debug("")
+logger.debug("=" * 100)
+logger.debug("🤖🤖🤖  CONFIGURATION MODÈLE OPENAI  🤖🤖🤖")
+logger.debug("=" * 100)
+logger.debug(f"📌 MODÈLE UTILISÉ: {OPENAI_MODEL}")
+logger.debug(f"📌 SOURCE: {'Variable OPENAI_MODEL' if os.environ.get('OPENAI_MODEL') else 'Valeur par défaut'}")
+logger.debug("=" * 100)
+logger.debug("")
 
 def call_openai_responses(
     system_prompt: str,
@@ -455,19 +455,19 @@ def call_openai_responses(
     
     try:
         # 🟢🟢🟢 LOG APPEL API - TRÈS VISIBLE 🟢🟢🟢
-        logger.info("")
-        logger.info("=" * 100)
-        logger.info("🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵")
-        logger.info("🤖🤖🤖  APPEL API OPENAI RESPONSES  🤖🤖🤖")
-        logger.info("🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵")
-        logger.info("=" * 100)
-        logger.info(f"📌 MODÈLE: {OPENAI_MODEL}")
-        logger.info(f"📌 JSON RESPONSE: {json_response}")
-        logger.info(f"📌 MAX TOKENS: {max_tokens}")
-        logger.info(f"📌 IMAGES: {len(user_images) if user_images else 0}")
-        logger.info(f"📌 LONGUEUR SYSTEM PROMPT: {len(system_prompt)} caractères")
-        logger.info(f"📌 LONGUEUR USER INPUT: {len(user_input) if user_input else 0} caractères")
-        logger.info("=" * 100)
+        logger.debug("")
+        logger.debug("=" * 100)
+        logger.debug("🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵")
+        logger.debug("🤖🤖🤖  APPEL API OPENAI RESPONSES  🤖🤖🤖")
+        logger.debug("🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵")
+        logger.debug("=" * 100)
+        logger.debug(f"📌 MODÈLE: {OPENAI_MODEL}")
+        logger.debug(f"📌 JSON RESPONSE: {json_response}")
+        logger.debug(f"📌 MAX TOKENS: {max_tokens}")
+        logger.debug(f"📌 IMAGES: {len(user_images) if user_images else 0}")
+        logger.debug(f"📌 LONGUEUR SYSTEM PROMPT: {len(system_prompt)} caractères")
+        logger.debug(f"📌 LONGUEUR USER INPUT: {len(user_input) if user_input else 0} caractères")
+        logger.debug("=" * 100)
         
         # Construire l'input pour l'API Responses
         input_content = []
@@ -522,7 +522,7 @@ def call_openai_responses(
         if max_tokens:
             response_config["max_output_tokens"] = max_tokens
         
-        logger.info(f"📤 Envoi de la requête à OpenAI Responses API...")
+        logger.debug(f"📤 Envoi de la requête à OpenAI Responses API...")
         
         # Appel à l'API Responses
         response = client.responses.create(**response_config)
@@ -530,7 +530,7 @@ def call_openai_responses(
         # Extraire le contenu de la réponse
         response_text = response.output_text if hasattr(response, 'output_text') else str(response.output[0].content[0].text)
         
-        logger.info(f"✅ Réponse reçue: {len(response_text)} caractères")
+        logger.debug(f"✅ Réponse reçue: {len(response_text)} caractères")
         
         # Parser en JSON si demandé
         if json_response:
@@ -566,7 +566,7 @@ async def call_openai_responses_async(
         return call_openai_responses(system_prompt, user_input, user_images, json_response, max_tokens)
 
     try:
-        logger.info(f"📤 Appel async à OpenAI Responses API (modèle: {OPENAI_MODEL})...")
+        logger.debug(f"📤 Appel async à OpenAI Responses API (modèle: {OPENAI_MODEL})...")
 
         # Construire l'input
         input_content = []
@@ -730,9 +730,9 @@ def load_room_templates(parcours_type: str = "Voyageur"):
         room_templates_env = os.environ.get(env_var_name)
         if room_templates_env:
             try:
-                logger.info(f"📡 Chargement des templates depuis la variable d'environnement {env_var_name}")
+                logger.debug(f"📡 Chargement des templates depuis la variable d'environnement {env_var_name}")
                 templates = json.loads(room_templates_env)
-                logger.info(f"✅ Templates {parcours_type} chargés depuis variable d'environnement ({len(templates.get('room_types', {}))} types de pièces)")
+                logger.debug(f"✅ Templates {parcours_type} chargés depuis variable d'environnement ({len(templates.get('room_types', {}))} types de pièces)")
                 return templates
             except json.JSONDecodeError as e:
                 logger.error(f"❌ Erreur lors du parsing JSON de {env_var_name}: {e}")
@@ -746,10 +746,10 @@ def load_room_templates(parcours_type: str = "Voyageur"):
 
         for path in possible_paths:
             if os.path.exists(path):
-                logger.info(f"📁 Chargement des templates depuis le fichier: {path}")
+                logger.debug(f"📁 Chargement des templates depuis le fichier: {path}")
                 with open(path, 'r', encoding='utf-8') as f:
                     templates = json.load(f)
-                logger.info(f"✅ Templates {parcours_type} chargés depuis fichier ({len(templates.get('room_types', {}))} types de pièces)")
+                logger.debug(f"✅ Templates {parcours_type} chargés depuis fichier ({len(templates.get('room_types', {}))} types de pièces)")
                 # Log des points_ignorables pour la chambre (debug)
                 if 'chambre' in templates.get('room_types', {}):
                     chambre_ignorables = templates['room_types']['chambre']['verifications'].get('points_ignorables', [])
@@ -910,7 +910,7 @@ async def send_webhook(payload: dict, webhook_url: str) -> bool:
         bool: True si succès, False sinon
     """
     try:
-        logger.info(f"📤 Envoi webhook vers: {webhook_url}")
+        logger.debug(f"📤 Envoi webhook vers: {webhook_url}")
         
         # Configuration du timeout et des headers
         timeout = aiohttp.ClientTimeout(total=30)  # 30 secondes max
@@ -927,7 +927,7 @@ async def send_webhook(payload: dict, webhook_url: str) -> bool:
             ) as response:
                 if response.status == 200:
                     response_text = await response.text()
-                    logger.info(f"✅ Webhook envoyé avec succès (200): {response_text[:200]}...")
+                    logger.debug(f"✅ Webhook envoyé avec succès (200): {response_text[:200]}...")
                     return True
                 else:
                     error_text = await response.text()
@@ -1016,33 +1016,33 @@ def build_dynamic_prompt(input_data: InputData, parcours_type: str = "Voyageur")
         
         # Vérifier que le prompt n'est pas vide
         if full_prompt and len(full_prompt) > 100:
-            logger.info(f"✅ Prompt construit: {len(full_prompt)} caractères")
+            logger.debug(f"✅ Prompt construit: {len(full_prompt)} caractères")
             
             # 🟢🟢🟢 DEBUG PROMPT FINAL CONSTRUIT - TRÈS VISIBLE 🟢🟢🟢
-            logger.info("")
-            logger.info("=" * 100)
-            logger.info("🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢")
-            logger.info("🔵🔵🔵  PROMPT FINAL ENVOYÉ À OPENAI (après injection variables)  🔵🔵🔵")
-            logger.info("🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢")
-            logger.info("=" * 100)
-            logger.info(f"📊 LONGUEUR TOTALE: {len(full_prompt)} caractères")
-            logger.info(f"📊 NOMBRE DE LIGNES: {len(full_prompt.split(chr(10)))}")
-            logger.info(f"🧳 TYPE PARCOURS: {parcours_type}")
-            logger.info(f"🏠 PIÈCE: {input_data.nom}")
-            logger.info("-" * 100)
-            logger.info("📜 CONTENU COMPLET DU PROMPT FINAL:")
-            logger.info("-" * 100)
+            logger.debug("")
+            logger.debug("=" * 100)
+            logger.debug("🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢")
+            logger.debug("🔵🔵🔵  PROMPT FINAL ENVOYÉ À OPENAI (après injection variables)  🔵🔵🔵")
+            logger.debug("🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢")
+            logger.debug("=" * 100)
+            logger.debug(f"📊 LONGUEUR TOTALE: {len(full_prompt)} caractères")
+            logger.debug(f"📊 NOMBRE DE LIGNES: {len(full_prompt.split(chr(10)))}")
+            logger.debug(f"🧳 TYPE PARCOURS: {parcours_type}")
+            logger.debug(f"🏠 PIÈCE: {input_data.nom}")
+            logger.debug("-" * 100)
+            logger.debug("📜 CONTENU COMPLET DU PROMPT FINAL:")
+            logger.debug("-" * 100)
             
             # Afficher le prompt ligne par ligne
             prompt_lines = full_prompt.split('\n')
             for i, line in enumerate(prompt_lines):
-                logger.info(f"   {i+1:4d} | {line}")
+                logger.debug(f"   {i+1:4d} | {line}")
             
-            logger.info("-" * 100)
-            logger.info("=" * 100)
-            logger.info("🟢🟢🟢  FIN PROMPT FINAL  🟢🟢🟢")
-            logger.info("=" * 100)
-            logger.info("")
+            logger.debug("-" * 100)
+            logger.debug("=" * 100)
+            logger.debug("🟢🟢🟢  FIN PROMPT FINAL  🟢🟢🟢")
+            logger.debug("=" * 100)
+            logger.debug("")
             # 🟢🟢🟢 FIN DEBUG PROMPT FINAL 🟢🟢🟢
             
             return full_prompt
@@ -1090,7 +1090,7 @@ RÉPONDS EN FORMAT JSON :
 
 # 🚀 FALLBACK SYSTEM VERSION
 FALLBACK_SYSTEM_VERSION = "v1.0.0-data-uri-fallback"
-logger.info(f"🚀 Système de fallback Data URI chargé: {FALLBACK_SYSTEM_VERSION}")
+logger.debug(f"🚀 Système de fallback Data URI chargé: {FALLBACK_SYSTEM_VERSION}")
 
 def convert_url_to_data_uri(url: str) -> Optional[str]:
     """
@@ -1355,7 +1355,7 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                     }
                 }
                 
-                logger.info(f"🔗 Envoi payload vers Bubble: {bubble_endpoint}")
+                logger.debug(f"🔗 Envoi payload vers Bubble: {bubble_endpoint}")
                 
                 # Configuration du timeout et des headers
                 timeout = aiohttp.ClientTimeout(total=10)  # 10 secondes max pour ne pas bloquer
@@ -1372,7 +1372,7 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                     ) as response:
                         if response.status == 200:
                             response_text = await response.text()
-                            logger.info(f"✅ Payload envoyé à Bubble avec succès: {response_text[:100]}...")
+                            logger.debug(f"✅ Payload envoyé à Bubble avec succès: {response_text[:100]}...")
                         else:
                             error_text = await response.text()
                             logger.warning(f"⚠️ Bubble réponse non-200 ({response.status}): {error_text[:100]}...")
@@ -1462,7 +1462,7 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                         if c.get("type") == "image_url" and c["image_url"]["url"].startswith("data:")
                     )
 
-                    logger.info(f"🔄 Retry avec {data_uri_count} images en Data URI")
+                    logger.debug(f"🔄 Retry avec {data_uri_count} images en Data URI")
 
                     # Réessayer avec les data URIs
                     # 🚀 MIGRATION vers Responses API
@@ -1717,7 +1717,7 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                 logger.warning(f"   Type reçu: {type(response_json.get('preliminary_issues'))}")
                 response_json["preliminary_issues"] = []
             else:
-                logger.info(f"✅ DEBUG - preliminary_issues valide: {len(response_json['preliminary_issues'])} issues conservées")
+                logger.debug(f"✅ DEBUG - preliminary_issues valide: {len(response_json['preliminary_issues'])} issues conservées")
             
             # Valider piece_id et nom_piece
             if "piece_id" not in response_json:
@@ -1970,7 +1970,7 @@ def call_openrouter_vision(
                         cleaned_content = cleaned_content[:json_end + 1]
 
                     parsed = json.loads(cleaned_content)
-                    logger.info(f"✅ [OPENROUTER] {model_name} répondu avec succès")
+                    logger.debug(f"✅ [OPENROUTER] {model_name} répondu avec succès")
                     return {"success": True, "model": model_id, "response": parsed, "error": None}
                 except json.JSONDecodeError as e:
                     logger.warning(f"⚠️ [OPENROUTER] {model_name} JSON invalide: {e}")
@@ -2011,12 +2011,12 @@ def call_multi_models_parallel(
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeoutError
 
-    logger.info(f"")
-    logger.info(f"      🔄 [MULTI-MODEL] {phase_name}")
-    logger.info(f"      📊 Appel parallèle de {len(VISION_MODELS)} modèles:")
+    logger.debug(f"")
+    logger.debug(f"      🔄 [MULTI-MODEL] {phase_name}")
+    logger.debug(f"      📊 Appel parallèle de {len(VISION_MODELS)} modèles:")
     for model in VISION_MODELS:
-        logger.info(f"         • {model['name']} (poids: {model['weight']})")
-    logger.info(f"      ⏳ Attente des réponses (timeout: 120s par modèle)...")
+        logger.debug(f"         • {model['name']} (poids: {model['weight']})")
+    logger.debug(f"      ⏳ Attente des réponses (timeout: 120s par modèle)...")
 
     # Exécuter les appels en parallèle avec ThreadPoolExecutor
     results = []
@@ -2045,7 +2045,7 @@ def call_multi_models_parallel(
 
     # Filtrer les réponses réussies
     successful_responses = []
-    logger.info(f"      📋 Résultats:")
+    logger.debug(f"      📋 Résultats:")
     for model, result in results:
         if result.get("success"):
             successful_responses.append({
@@ -2054,12 +2054,12 @@ def call_multi_models_parallel(
                 "weight": model["weight"],
                 "response": result["response"]
             })
-            logger.info(f"         ✅ {model['name']}: OK")
+            logger.debug(f"         ✅ {model['name']}: OK")
         else:
             logger.warning(f"         ❌ {model['name']}: {result.get('error', 'Erreur inconnue')}")
 
-    logger.info(f"      ✅ {len(successful_responses)}/{len(VISION_MODELS)} modèles ont répondu avec succès")
-    logger.info(f"")
+    logger.debug(f"      ✅ {len(successful_responses)}/{len(VISION_MODELS)} modèles ont répondu avec succès")
+    logger.debug(f"")
     return successful_responses
 
 
@@ -2077,36 +2077,36 @@ def aggregate_inventory_responses(responses: list, piece_id: str) -> InventoryEx
     Returns:
         InventoryExtractionResponse agrégée
     """
-    logger.info(f"      🔀 [AGGREGATE] Début agrégation...")
+    logger.debug(f"      🔀 [AGGREGATE] Début agrégation...")
 
     if not responses:
         logger.warning("      ⚠️ [AGGREGATE] Aucune réponse à agréger")
         return InventoryExtractionResponse(piece_id=piece_id, total_objects=0, objects=[])
 
-    logger.info(f"      🔀 [AGGREGATE] Agrégation de {len(responses)} réponses d'inventaire...")
+    logger.debug(f"      🔀 [AGGREGATE] Agrégation de {len(responses)} réponses d'inventaire...")
 
     # 🆕 DEBUG: Afficher ce que chaque modèle a retourné
-    logger.info(f"      📋 Détail des réponses:")
+    logger.debug(f"      📋 Détail des réponses:")
     for resp in responses:
         model_name = resp.get("model_name", "Unknown")
         raw_response = resp.get("response", {})
         objects = raw_response.get("objects", [])
-        logger.info(f"         📊 {model_name}: {len(objects)} objets détectés")
+        logger.debug(f"         📊 {model_name}: {len(objects)} objets détectés")
         if len(objects) > 0:
             obj_names = [obj.get('name', 'N/A') for obj in objects[:3]]
-            logger.info(f"            ✅ Exemples: {obj_names}")
+            logger.debug(f"            ✅ Exemples: {obj_names}")
         else:
             logger.warning(f"            ⚠️ Aucun objet détecté")
 
     # Collecter tous les objets avec leur fréquence de détection
     object_votes = {}  # clé: nom_objet_normalisé -> {count, weight_sum, best_description}
 
-    logger.info(f"      🔄 Collecte des votes...")
+    logger.debug(f"      🔄 Collecte des votes...")
     try:
         for resp in responses:
             model_weight = resp.get("weight", 1.0)
             objects = resp.get("response", {}).get("objects", [])
-            logger.info(f"         Processing {len(objects)} objects from model...")
+            logger.debug(f"         Processing {len(objects)} objects from model...")
 
             for obj in objects:
                 # Normaliser le nom pour le regroupement
@@ -2133,7 +2133,7 @@ def aggregate_inventory_responses(responses: list, piece_id: str) -> InventoryEx
                 object_votes[key]["weight_sum"] += model_weight
                 object_votes[key]["examples"].append(obj)
 
-        logger.info(f"      ✅ Collecte terminée: {len(object_votes)} objets candidats")
+        logger.debug(f"      ✅ Collecte terminée: {len(object_votes)} objets candidats")
     except Exception as e:
         logger.error(f"      ❌ Erreur lors de la collecte des votes: {e}")
         raise
@@ -2142,7 +2142,7 @@ def aggregate_inventory_responses(responses: list, piece_id: str) -> InventoryEx
     consensus_objects = []
     obj_counter = 1
 
-    logger.info(f"      🔍 Filtrage par consensus (seuil: {CONSENSUS_THRESHOLD}/5)...")
+    logger.debug(f"      🔍 Filtrage par consensus (seuil: {CONSENSUS_THRESHOLD}/5)...")
     try:
         for key, data in object_votes.items():
             # Consensus: détecté par au moins 3 modèles OU poids pondéré >= 2.5
@@ -2159,9 +2159,9 @@ def aggregate_inventory_responses(responses: list, piece_id: str) -> InventoryEx
                     importance=best_example.get("importance", data["importance"])
                 ))
                 obj_counter += 1
-                logger.info(f"         ✓ {data['name']} (votes: {data['count']}/5, poids: {data['weight_sum']:.1f})")
+                logger.debug(f"         ✓ {data['name']} (votes: {data['count']}/5, poids: {data['weight_sum']:.1f})")
 
-        logger.info(f"      ✅ [AGGREGATE] {len(consensus_objects)} objets validés par consensus sur {len(object_votes)} candidats")
+        logger.debug(f"      ✅ [AGGREGATE] {len(consensus_objects)} objets validés par consensus sur {len(object_votes)} candidats")
     except Exception as e:
         logger.error(f"      ❌ Erreur lors du filtrage par consensus: {e}")
         raise
@@ -2202,7 +2202,7 @@ def aggregate_verification_responses(
             present_objects=[]
         )
 
-    logger.info(f"🔀 [AGGREGATE] Agrégation de {len(responses)} réponses de vérification...")
+    logger.debug(f"🔀 [AGGREGATE] Agrégation de {len(responses)} réponses de vérification...")
 
     # Collecter les votes pour chaque objet de l'inventaire
     object_status_votes = {}  # object_id -> {missing: count, moved: count, present: count, details: []}
@@ -2269,17 +2269,17 @@ def aggregate_verification_responses(
             result.status = "missing"
             if confidence >= 70:  # Seuil de confiance minimum
                 missing_objects.append(result)
-                logger.info(f"   ❌ MANQUANT: {votes['name']} (votes: {votes['missing']:.1f}, conf: {confidence}%)")
+                logger.debug(f"   ❌ MANQUANT: {votes['name']} (votes: {votes['missing']:.1f}, conf: {confidence}%)")
         elif votes["moved"] >= CONSENSUS_THRESHOLD and votes["moved"] == max_votes:
             result.status = "moved"
             if confidence >= 70:
                 moved_objects.append(result)
-                logger.info(f"   🔄 DÉPLACÉ: {votes['name']} (votes: {votes['moved']:.1f}, conf: {confidence}%)")
+                logger.debug(f"   🔄 DÉPLACÉ: {votes['name']} (votes: {votes['moved']:.1f}, conf: {confidence}%)")
         else:
             result.status = "present"
             present_objects.append(result)
 
-    logger.info(f"✅ [AGGREGATE] Résultat: {len(missing_objects)} manquants, {len(moved_objects)} déplacés, {len(present_objects)} présents")
+    logger.debug(f"✅ [AGGREGATE] Résultat: {len(missing_objects)} manquants, {len(moved_objects)} déplacés, {len(present_objects)} présents")
 
     return InventoryVerificationResponse(
         piece_id=piece_id,
@@ -2301,19 +2301,19 @@ def extract_inventory_from_images(piece_id: str, nom_piece: str, checkin_picture
 
     🆕 MULTI-MODÈLES: Utilise 5 modèles de vision via OpenRouter pour un consensus robuste
     """
-    logger.info(f"")
-    logger.info(f"{'='*80}")
-    logger.info(f"📦 PHASE 1 - EXTRACTION INVENTAIRE")
-    logger.info(f"{'='*80}")
-    logger.info(f"   📍 Pièce: {nom_piece} (ID: {piece_id})")
-    logger.info(f"   📸 Photos de référence: {len(checkin_pictures)}")
-    logger.info(f"   🔄 Mode MULTI-MODÈLES activé ({len(VISION_MODELS)} modèles)")
-    logger.info(f"   🎯 Seuil consensus: {CONSENSUS_THRESHOLD}/5 modèles")
+    logger.debug(f"")
+    logger.debug(f"{'='*80}")
+    logger.debug(f"📦 PHASE 1 - EXTRACTION INVENTAIRE")
+    logger.debug(f"{'='*80}")
+    logger.debug(f"   📍 Pièce: {nom_piece} (ID: {piece_id})")
+    logger.debug(f"   📸 Photos de référence: {len(checkin_pictures)}")
+    logger.debug(f"   🔄 Mode MULTI-MODÈLES activé ({len(VISION_MODELS)} modèles)")
+    logger.debug(f"   🎯 Seuil consensus: {CONSENSUS_THRESHOLD}/5 modèles")
 
     # 🔄 CONVERSION DES IMAGES - Utiliser le système de conversion existant
-    logger.info(f"   [ÉTAPE 1.1] 🔄 Conversion des images checkin pour compatibilité...")
+    logger.debug(f"   [ÉTAPE 1.1] 🔄 Conversion des images checkin pour compatibilité...")
     processed_pictures = process_pictures_list([pic.dict() for pic in checkin_pictures])
-    logger.info(f"   [ÉTAPE 1.1] ✅ {len(processed_pictures)}/{len(checkin_pictures)} images converties avec succès")
+    logger.debug(f"   [ÉTAPE 1.1] ✅ {len(processed_pictures)}/{len(checkin_pictures)} images converties avec succès")
 
     if not processed_pictures:
         logger.error(f"   [ÉTAPE 1.1] ❌ Aucune image valide après conversion pour {piece_id}")
@@ -2324,7 +2324,7 @@ def extract_inventory_from_images(piece_id: str, nom_piece: str, checkin_picture
     if len(processed_pictures) > MAX_IMAGES_FOR_MODELS:
         logger.warning(f"   [ÉTAPE 1.1] ⚠️ {len(processed_pictures)} images détectées, limitation à {MAX_IMAGES_FOR_MODELS} pour compatibilité Mistral")
         processed_pictures = processed_pictures[:MAX_IMAGES_FOR_MODELS]
-        logger.info(f"   [ÉTAPE 1.1] ✅ Limitation appliquée: {len(processed_pictures)} images utilisées")
+        logger.debug(f"   [ÉTAPE 1.1] ✅ Limitation appliquée: {len(processed_pictures)} images utilisées")
 
     # Construire le message avec les images CONVERTIES
     user_content = [{"type": "text", "text": f"Pièce: {nom_piece} (ID: {piece_id})\n\nAnalyse les photos de RÉFÉRENCE suivantes et liste TOUS les objets visibles:"}]
@@ -2337,13 +2337,13 @@ def extract_inventory_from_images(piece_id: str, nom_piece: str, checkin_picture
 
     try:
         # 🆕 APPEL MULTI-MODÈLES EN PARALLÈLE (synchrone avec ThreadPool)
-        logger.info(f"   [ÉTAPE 1.2] 🔄 Appel parallèle des 5 modèles OpenRouter...")
+        logger.debug(f"   [ÉTAPE 1.2] 🔄 Appel parallèle des 5 modèles OpenRouter...")
         responses = call_multi_models_parallel(
             system_prompt=INVENTORY_EXTRACTION_PROMPT,
             user_content=user_content,
             phase_name="PHASE 1 - Inventaire"
         )
-        logger.info(f"   [ÉTAPE 1.2] ✅ {len(responses)}/5 modèles ont répondu avec succès")
+        logger.debug(f"   [ÉTAPE 1.2] ✅ {len(responses)}/5 modèles ont répondu avec succès")
 
         # Vérifier le minimum de réponses
         if len(responses) < MINIMUM_MODELS_FOR_CONSENSUS:
@@ -2353,14 +2353,14 @@ def extract_inventory_from_images(piece_id: str, nom_piece: str, checkin_picture
             return _extract_inventory_fallback_openai(piece_id, nom_piece, user_content)
 
         # 🆕 AGRÉGATION PAR CONSENSUS
-        logger.info(f"   [ÉTAPE 1.3] 🔀 Agrégation des réponses par consensus...")
+        logger.debug(f"   [ÉTAPE 1.3] 🔀 Agrégation des réponses par consensus...")
         result = aggregate_inventory_responses(responses, piece_id)
-        logger.info(f"   [ÉTAPE 1.3] ✅ Agrégation terminée: {result.total_objects} objets validés par consensus")
-        logger.info(f"")
-        logger.info(f"{'='*80}")
-        logger.info(f"✅ PHASE 1 TERMINÉE - {result.total_objects} objets inventoriés")
-        logger.info(f"{'='*80}")
-        logger.info(f"")
+        logger.debug(f"   [ÉTAPE 1.3] ✅ Agrégation terminée: {result.total_objects} objets validés par consensus")
+        logger.debug(f"")
+        logger.debug(f"{'='*80}")
+        logger.debug(f"✅ PHASE 1 TERMINÉE - {result.total_objects} objets inventoriés")
+        logger.debug(f"{'='*80}")
+        logger.debug(f"")
 
         return result
 
@@ -2413,7 +2413,7 @@ def _extract_inventory_fallback_openai(piece_id: str, nom_piece: str, user_conte
             except Exception as e:
                 logger.warning(f"⚠️ Objet invalide ignoré: {e}")
 
-        logger.info(f"✅ PHASE 1 terminée (FALLBACK OpenAI): {len(objects)} objets inventoriés")
+        logger.debug(f"✅ PHASE 1 terminée (FALLBACK OpenAI): {len(objects)} objets inventoriés")
 
         return InventoryExtractionResponse(
             piece_id=piece_id,
@@ -2436,19 +2436,19 @@ def verify_inventory_on_checkout(
 
     🆕 MULTI-MODÈLES: Utilise 5 modèles de vision via OpenRouter pour un consensus robuste
     """
-    logger.info(f"")
-    logger.info(f"{'='*80}")
-    logger.info(f"🔎 PHASE 2 - VÉRIFICATION INVENTAIRE")
-    logger.info(f"{'='*80}")
-    logger.info(f"   📍 Pièce ID: {piece_id}")
-    logger.info(f"   📦 Objets à vérifier: {inventory.total_objects}")
-    logger.info(f"   📸 Photos de sortie: {len(checkout_pictures)}")
-    logger.info(f"   🔄 Mode MULTI-MODÈLES activé ({len(VISION_MODELS)} modèles)")
-    logger.info(f"   🎯 Seuil consensus: {CONSENSUS_THRESHOLD}/5 modèles")
+    logger.debug(f"")
+    logger.debug(f"{'='*80}")
+    logger.debug(f"🔎 PHASE 2 - VÉRIFICATION INVENTAIRE")
+    logger.debug(f"{'='*80}")
+    logger.debug(f"   📍 Pièce ID: {piece_id}")
+    logger.debug(f"   📦 Objets à vérifier: {inventory.total_objects}")
+    logger.debug(f"   📸 Photos de sortie: {len(checkout_pictures)}")
+    logger.debug(f"   🔄 Mode MULTI-MODÈLES activé ({len(VISION_MODELS)} modèles)")
+    logger.debug(f"   🎯 Seuil consensus: {CONSENSUS_THRESHOLD}/5 modèles")
 
     if inventory.total_objects == 0:
         logger.warning(f"   ⚠️ Aucun objet à vérifier (inventaire vide)")
-        logger.info(f"{'='*80}")
+        logger.debug(f"{'='*80}")
         return InventoryVerificationResponse(
             piece_id=piece_id,
             total_checked=0,
@@ -2458,9 +2458,9 @@ def verify_inventory_on_checkout(
         )
 
     # 🔄 CONVERSION DES IMAGES - Utiliser le système de conversion existant
-    logger.info(f"   🔄 Conversion des images checkout pour compatibilité...")
+    logger.debug(f"   🔄 Conversion des images checkout pour compatibilité...")
     processed_pictures = process_pictures_list([pic.dict() for pic in checkout_pictures])
-    logger.info(f"   ✅ {len(processed_pictures)} images converties avec succès")
+    logger.debug(f"   ✅ {len(processed_pictures)} images converties avec succès")
 
     if not processed_pictures:
         logger.warning(f"⚠️ Aucune image checkout valide après conversion pour {piece_id}")
@@ -2491,13 +2491,13 @@ def verify_inventory_on_checkout(
 
     try:
         # 🆕 APPEL MULTI-MODÈLES EN PARALLÈLE (synchrone avec ThreadPool)
-        logger.info(f"   [ÉTAPE 2.1] 🔄 Appel parallèle des 5 modèles OpenRouter...")
+        logger.debug(f"   [ÉTAPE 2.1] 🔄 Appel parallèle des 5 modèles OpenRouter...")
         responses = call_multi_models_parallel(
             system_prompt=system_prompt,
             user_content=user_content,
             phase_name="PHASE 2 - Vérification"
         )
-        logger.info(f"   [ÉTAPE 2.1] ✅ {len(responses)}/5 modèles ont répondu avec succès")
+        logger.debug(f"   [ÉTAPE 2.1] ✅ {len(responses)}/5 modèles ont répondu avec succès")
 
         # Vérifier le minimum de réponses
         if len(responses) < MINIMUM_MODELS_FOR_CONSENSUS:
@@ -2507,17 +2507,17 @@ def verify_inventory_on_checkout(
             return _verify_inventory_fallback_openai(piece_id, inventory, system_prompt, user_content)
 
         # 🆕 AGRÉGATION PAR CONSENSUS
-        logger.info(f"   [ÉTAPE 2.2] 🔀 Agrégation des réponses par consensus...")
+        logger.debug(f"   [ÉTAPE 2.2] 🔀 Agrégation des réponses par consensus...")
         result = aggregate_verification_responses(responses, piece_id, inventory)
-        logger.info(f"   [ÉTAPE 2.2] ✅ Agrégation terminée:")
-        logger.info(f"      - Objets manquants: {len(result.missing_objects)}")
-        logger.info(f"      - Objets déplacés: {len(result.moved_objects)}")
-        logger.info(f"      - Objets présents: {len(result.present_objects)}")
-        logger.info(f"")
-        logger.info(f"{'='*80}")
-        logger.info(f"✅ PHASE 2 TERMINÉE - {len(result.missing_objects)} manquants détectés")
-        logger.info(f"{'='*80}")
-        logger.info(f"")
+        logger.debug(f"   [ÉTAPE 2.2] ✅ Agrégation terminée:")
+        logger.debug(f"      - Objets manquants: {len(result.missing_objects)}")
+        logger.debug(f"      - Objets déplacés: {len(result.moved_objects)}")
+        logger.debug(f"      - Objets présents: {len(result.present_objects)}")
+        logger.debug(f"")
+        logger.debug(f"{'='*80}")
+        logger.debug(f"✅ PHASE 2 TERMINÉE - {len(result.missing_objects)} manquants détectés")
+        logger.debug(f"{'='*80}")
+        logger.debug(f"")
 
         return result
 
@@ -2603,7 +2603,7 @@ def _verify_inventory_fallback_openai(
                 details=obj.get("details", "Présent")
             ))
 
-        logger.info(f"✅ PHASE 2 terminée (FALLBACK OpenAI): {len(missing)} manquants, {len(moved)} déplacés")
+        logger.debug(f"✅ PHASE 2 terminée (FALLBACK OpenAI): {len(missing)} manquants, {len(moved)} déplacés")
 
         return InventoryVerificationResponse(
             piece_id=piece_id,
@@ -2651,7 +2651,7 @@ def convert_inventory_to_issues(verification: InventoryVerificationResponse) -> 
             confidence=obj.confidence
         ))
 
-    logger.info(f"🔄 Conversion: {len(issues)} issues générées depuis l'inventaire")
+    logger.debug(f"🔄 Conversion: {len(issues)} issues générées depuis l'inventaire")
     return issues
 
 
@@ -2667,7 +2667,7 @@ async def extract_inventory_endpoint(input_data: RoomClassificationInput):
 
     Analyse les photos checkin et retourne une liste structurée de tous les objets détectés.
     """
-    logger.info(f"📦 API /extract-inventory - Pièce: {input_data.nom} ({input_data.piece_id})")
+    logger.debug(f"📦 API /extract-inventory - Pièce: {input_data.nom} ({input_data.piece_id})")
 
     return extract_inventory_from_images(
         piece_id=input_data.piece_id,
@@ -2689,7 +2689,7 @@ async def verify_inventory_endpoint(input_data: VerifyInventoryInput):
 
     Prend l'inventaire extrait en Phase 1 et vérifie chaque objet sur les photos checkout.
     """
-    logger.info(f"🔎 API /verify-inventory - {input_data.inventory.total_objects} objets à vérifier")
+    logger.debug(f"🔎 API /verify-inventory - {input_data.inventory.total_objects} objets à vérifier")
 
     return verify_inventory_on_checkout(
         piece_id=input_data.piece_id,
@@ -2893,15 +2893,15 @@ RÉPONDS EN JSON:
 }}"""
 
         # 🔄 TRAITEMENT DES IMAGES pour la classification
-        logger.info(f"🖼️ Traitement des images pour classification de la pièce {input_data.piece_id}")
+        logger.debug(f"🖼️ Traitement des images pour classification de la pièce {input_data.piece_id}")
 
         # 🎯 IMPORTANT: Utiliser UNIQUEMENT les checkin_pictures (photos AVANT) pour la classification
         # Les photos AVANT représentent l'état de référence de la pièce, sans désordre ou objets manquants
-        logger.info(f"📸 Classification basée UNIQUEMENT sur les checkin_pictures (photos AVANT)")
+        logger.debug(f"📸 Classification basée UNIQUEMENT sur les checkin_pictures (photos AVANT)")
         checkin_pictures_raw = [pic.dict() for pic in input_data.checkin_pictures]
         all_pictures_processed = process_pictures_list(checkin_pictures_raw)
 
-        logger.info(f"✅ Traitement terminé: {len(all_pictures_processed)} images checkin pour classification")
+        logger.debug(f"✅ Traitement terminé: {len(all_pictures_processed)} images checkin pour classification")
 
         # Préparer le message avec les images valides uniquement
         user_message = {
@@ -2931,11 +2931,11 @@ RÉPONDS EN JSON:
                         "detail": "high"
                     }
                 })
-                logger.info(f"✅ CLASSIFICATION - Image ajoutée au payload OpenAI: {normalized_photo_url}")
+                logger.debug(f"✅ CLASSIFICATION - Image ajoutée au payload OpenAI: {normalized_photo_url}")
             else:
                 logger.warning(f"⚠️ CLASSIFICATION - Image invalide ignorée: {normalized_photo_url}")
         
-        logger.info(f"📷 Images valides envoyées à OpenAI: {len(valid_images)}/{len(all_pictures_processed)}")
+        logger.debug(f"📷 Images valides envoyées à OpenAI: {len(valid_images)}/{len(all_pictures_processed)}")
         
         # Si aucune image valide, ajouter une note et adapter le prompt
         if len(valid_images) == 0:
@@ -2945,11 +2945,11 @@ RÉPONDS EN JSON:
             })
         
         # 🔍 PAYLOAD OPENAI - CLASSIFICATION
-        logger.info(f"🤖 ═══ PAYLOAD CLASSIFICATION → OPENAI ═══")
+        logger.debug(f"🤖 ═══ PAYLOAD CLASSIFICATION → OPENAI ═══")
         prompt_text = next((c['text'] for c in user_message['content'] if c['type'] == 'text'), "Aucun prompt")
-        logger.info(f"🤖 PROMPT: {prompt_text[:200]}...")
-        logger.info(f"🤖 IMAGES: {len([c for c in user_message['content'] if c['type'] == 'image_url'])} images")
-        logger.info(f"🤖 ════════════════════════════════════════")
+        logger.debug(f"🤖 PROMPT: {prompt_text[:200]}...")
+        logger.debug(f"🤖 IMAGES: {len([c for c in user_message['content'] if c['type'] == 'image_url'])} images")
+        logger.debug(f"🤖 ════════════════════════════════════════")
 
         # 🔗 ENVOI PARALLÈLE DU PAYLOAD DE CLASSIFICATION VERS BUBBLE
         async def send_classification_payload_to_bubble():
@@ -2996,7 +2996,7 @@ RÉPONDS EN JSON:
                     }
                 }
                 
-                logger.info(f"🔗 Envoi payload CLASSIFICATION vers Bubble: {bubble_endpoint}")
+                logger.debug(f"🔗 Envoi payload CLASSIFICATION vers Bubble: {bubble_endpoint}")
                 
                 # Configuration du timeout et des headers
                 timeout = aiohttp.ClientTimeout(total=8)  # 8 secondes pour classification
@@ -3013,7 +3013,7 @@ RÉPONDS EN JSON:
                     ) as response:
                         if response.status == 200:
                             response_text = await response.text()
-                            logger.info(f"✅ Payload CLASSIFICATION envoyé à Bubble: {response_text[:100]}...")
+                            logger.debug(f"✅ Payload CLASSIFICATION envoyé à Bubble: {response_text[:100]}...")
                         else:
                             error_text = await response.text()
                             logger.warning(f"⚠️ Bubble CLASSIFICATION réponse non-200 ({response.status}): {error_text[:100]}...")
@@ -3085,7 +3085,7 @@ RÉPONDS EN JSON:
                         if c.get("type") == "image_url" and c["image_url"]["url"].startswith("data:")
                     )
 
-                    logger.info(f"🔄 Retry classification avec {data_uri_count} images en Data URI")
+                    logger.debug(f"🔄 Retry classification avec {data_uri_count} images en Data URI")
 
                     # Réessayer avec les data URIs
                     # 🚀 MIGRATION vers Responses API
@@ -3225,7 +3225,7 @@ RÉPONDS EN JSON:
 
             if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
                 json_content = response_content[start_idx:end_idx+1]
-                logger.info(f"✂️ JSON extrait (de position {start_idx} à {end_idx})")
+                logger.debug(f"✂️ JSON extrait (de position {start_idx} à {end_idx})")
                 classification_result = json.loads(json_content)
             else:
                 logger.warning("⚠️ Pas d'accolades trouvées, tentative de parsing direct")
@@ -3251,7 +3251,7 @@ RÉPONDS EN JSON:
         # Si confiance = 0, l'ajuster à 10 minimum pour éviter les problèmes
         if confidence == 0:
             confidence = 10
-            logger.info(f"📊 Confiance ajustée de 0 à {confidence} pour éviter une valeur nulle")
+            logger.debug(f"📊 Confiance ajustée de 0 à {confidence} pour éviter une valeur nulle")
 
         # 🗺️ ÉTAPE DE MAPPING - Convertir les variations vers les types valides (sauf si wrong_room)
         original_detected_type = detected_room_type
@@ -3265,9 +3265,9 @@ RÉPONDS EN JSON:
                 confidence = max(confidence - 20, 10)  # Réduire la confiance
             else:
                 if original_detected_type != detected_room_type:
-                    logger.info(f"✅ Mapping réussi: '{original_detected_type}' → '{detected_room_type}' reconnu")
+                    logger.debug(f"✅ Mapping réussi: '{original_detected_type}' → '{detected_room_type}' reconnu")
                 else:
-                    logger.info(f"✅ Type de pièce '{detected_room_type}' reconnu directement")
+                    logger.debug(f"✅ Type de pièce '{detected_room_type}' reconnu directement")
 
         # Récupérer les informations du template (ou valeurs par défaut pour wrong_room)
         if detected_room_type == "wrong_room":
@@ -3453,7 +3453,7 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
     """
     try:
         # ÉTAPE 1: Classification de la pièce
-        logger.info(f"🔍 ÉTAPE 1 - Classification automatique pour la pièce {input_data.piece_id} (parcours: {parcours_type})")
+        logger.debug(f"🔍 ÉTAPE 1 - Classification automatique pour la pièce {input_data.piece_id} (parcours: {parcours_type})")
 
         # Convertir InputData en RoomClassificationInput
         classification_input = RoomClassificationInput(
@@ -3467,9 +3467,9 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
         # Effectuer la classification avec le type de parcours
         classification_result = classify_room_type(classification_input, parcours_type, request_id=request_id)
         
-        logger.info(f"✅ Classification terminée: {classification_result.room_type} ({classification_result.confidence}%)")
+        logger.debug(f"✅ Classification terminée: {classification_result.room_type} ({classification_result.confidence}%)")
         logger.info(f"📝 Nom détecté: {classification_result.room_name} {classification_result.room_icon}")
-        logger.info(f"🔍 Validation photos: is_valid_room={classification_result.is_valid_room}, message={classification_result.validation_message}")
+        logger.debug(f"🔍 Validation photos: is_valid_room={classification_result.is_valid_room}, message={classification_result.validation_message}")
 
         # 🚨 VÉRIFICATION: Si photos invalides, créer une issue critique
         if not classification_result.is_valid_room:
@@ -3518,23 +3518,23 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
         )
         
         # Logs détaillés de l'injection
-        logger.info(f"📌 INJECTION DES CRITÈRES:")
-        logger.info(f"   🔍 Éléments critiques injectés ({len(enhanced_input_data.elements_critiques)}): {enhanced_input_data.elements_critiques}")
-        logger.info(f"   ➖ Points ignorables injectés ({len(enhanced_input_data.points_ignorables)}): {enhanced_input_data.points_ignorables}")
-        logger.info(f"   ⚠️ Défauts fréquents injectés ({len(enhanced_input_data.defauts_frequents)}): {enhanced_input_data.defauts_frequents}")
+        logger.debug(f"📌 INJECTION DES CRITÈRES:")
+        logger.debug(f"   🔍 Éléments critiques injectés ({len(enhanced_input_data.elements_critiques)}): {enhanced_input_data.elements_critiques}")
+        logger.debug(f"   ➖ Points ignorables injectés ({len(enhanced_input_data.points_ignorables)}): {enhanced_input_data.points_ignorables}")
+        logger.debug(f"   ⚠️ Défauts fréquents injectés ({len(enhanced_input_data.defauts_frequents)}): {enhanced_input_data.defauts_frequents}")
         
         # ÉTAPE 3: Analyse avec les critères injectés
-        logger.info(f"🔬 ÉTAPE 3 - Analyse détaillée avec critères spécifiques au type '{classification_result.room_type}'")
+        logger.debug(f"🔬 ÉTAPE 3 - Analyse détaillée avec critères spécifiques au type '{classification_result.room_type}'")
 
         analysis_result = analyze_images(enhanced_input_data, parcours_type, request_id=request_id)
 
-        logger.info(f"✅ Analyse IA terminée: {len(analysis_result.preliminary_issues)} problèmes détectés (score sera calculé algorithmiquement)")
+        logger.debug(f"✅ Analyse IA terminée: {len(analysis_result.preliminary_issues)} problèmes détectés (score sera calculé algorithmiquement)")
 
         # 🔍 DEBUG: Logger les issues détectées
         if analysis_result.preliminary_issues:
             logger.debug(f"🔍 DEBUG - Issues détectées par l'IA:")
             for idx, issue in enumerate(analysis_result.preliminary_issues):
-                logger.info(f"   [{idx+1}] {issue.description} ({issue.category}, {issue.severity}, {issue.confidence}%)")
+                logger.debug(f"   [{idx+1}] {issue.description} ({issue.category}, {issue.severity}, {issue.confidence}%)")
         else:
             logger.warning(f"⚠️ DEBUG - AUCUNE ISSUE DÉTECTÉE par l'IA pour la pièce {input_data.piece_id}")
 
@@ -3543,7 +3543,7 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
         # 🔴 DÉSACTIVÉ TEMPORAIREMENT (DOUBLE_PASS_ENABLED = False)
         # ═══════════════════════════════════════════════════════════════
         if DOUBLE_PASS_ENABLED:
-            logger.info(f"📦 ÉTAPE 3.5 - DOUBLE-PASS: Vérification renforcée des objets manquants")
+            logger.debug(f"📦 ÉTAPE 3.5 - DOUBLE-PASS: Vérification renforcée des objets manquants")
 
             try:
                 # PHASE 1: Extraction de l'inventaire depuis les photos checkin
@@ -3554,7 +3554,7 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
                 )
 
                 if inventory.total_objects > 0:
-                    logger.info(f"📦 PHASE 1 OK: {inventory.total_objects} objets inventoriés")
+                    logger.debug(f"📦 PHASE 1 OK: {inventory.total_objects} objets inventoriés")
 
                     # PHASE 2: Vérification sur les photos checkout
                     verification = verify_inventory_on_checkout(
@@ -3563,7 +3563,7 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
                         checkout_pictures=input_data.checkout_pictures
                     )
 
-                    logger.info(f"🔎 PHASE 2 OK: {len(verification.missing_objects)} manquants, {len(verification.moved_objects)} déplacés")
+                    logger.debug(f"🔎 PHASE 2 OK: {len(verification.missing_objects)} manquants, {len(verification.moved_objects)} déplacés")
 
                     # Convertir en issues et fusionner avec les issues existantes
                     inventory_issues = convert_inventory_to_issues(verification)
@@ -3583,19 +3583,19 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
 
                             if not is_duplicate:
                                 new_issues.append(inv_issue)
-                                logger.info(f"   ➕ Nouvel objet manquant détecté: {inv_issue.description}")
+                                logger.debug(f"   ➕ Nouvel objet manquant détecté: {inv_issue.description}")
 
                         # Ajouter les nouvelles issues
                         analysis_result.preliminary_issues.extend(new_issues)
-                        logger.info(f"✅ DOUBLE-PASS: {len(new_issues)} issues ajoutées (total: {len(analysis_result.preliminary_issues)})")
+                        logger.debug(f"✅ DOUBLE-PASS: {len(new_issues)} issues ajoutées (total: {len(analysis_result.preliminary_issues)})")
                 else:
-                    logger.info(f"📦 PHASE 1: Aucun objet inventorié (pièce peut-être vide ou photos insuffisantes)")
+                    logger.debug(f"📦 PHASE 1: Aucun objet inventorié (pièce peut-être vide ou photos insuffisantes)")
 
             except Exception as dp_error:
                 logger.warning(f"⚠️ DOUBLE-PASS: Erreur non bloquante - {dp_error}")
                 # Le double-pass est optionnel, on continue sans lui en cas d'erreur
         else:
-            logger.info(f"📦 ÉTAPE 3.5 - DOUBLE-PASS: ⏸️ DÉSACTIVÉ (DOUBLE_PASS_ENABLED = False)")
+            logger.debug(f"📦 ÉTAPE 3.5 - DOUBLE-PASS: ⏸️ DÉSACTIVÉ (DOUBLE_PASS_ENABLED = False)")
 
         # ═══════════════════════════════════════════════════════════════
         # FIN DOUBLE-PASS
@@ -3604,7 +3604,7 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
         # ═══════════════════════════════════════════════════════════════
         # ÉTAPE 3.9: CALCUL DU SCORE ALGORITHMIQUE
         # ═══════════════════════════════════════════════════════════════
-        logger.info(f"🧮 ÉTAPE 3.9 - Calcul du score algorithmique pour la pièce")
+        logger.debug(f"🧮 ÉTAPE 3.9 - Calcul du score algorithmique pour la pièce")
 
         # Calculer le score algorithmique basé sur les issues détectées
         algorithmic_score_result = calculate_room_algorithmic_score(
@@ -3615,11 +3615,11 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
         # Remplacer le score IA par le score algorithmique
         analysis_result.analyse_globale.score = algorithmic_score_result["note_sur_5"]
 
-        logger.info(f"✅ Score algorithmique appliqué: {algorithmic_score_result['note_sur_5']}/5 ({algorithmic_score_result['label']})")
-        logger.info(f"   📊 Détails: {algorithmic_score_result['issues_count']} issues, {algorithmic_score_result['score_brut']} points bruts")
+        logger.debug(f"✅ Score algorithmique appliqué: {algorithmic_score_result['note_sur_5']}/5 ({algorithmic_score_result['label']})")
+        logger.debug(f"   📊 Détails: {algorithmic_score_result['issues_count']} issues, {algorithmic_score_result['score_brut']} points bruts")
 
         # ÉTAPE 4: Combinaison des résultats
-        logger.info(f"🔄 ÉTAPE 4 - Combinaison des résultats de classification et d'analyse")
+        logger.debug(f"🔄 ÉTAPE 4 - Combinaison des résultats de classification et d'analyse")
 
         combined_result = CombinedAnalysisResponse(
             piece_id=input_data.piece_id,
@@ -3629,7 +3629,7 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
             issues=analysis_result.preliminary_issues
         )
 
-        logger.info(f"🎉 Analyse combinée terminée avec succès pour la pièce {input_data.piece_id}")
+        logger.debug(f"🎉 Analyse combinée terminée avec succès pour la pièce {input_data.piece_id}")
         logger.debug(f"🔍 DEBUG - CombinedAnalysisResponse créé avec {len(combined_result.issues)} issues")
         
         return combined_result
@@ -3688,13 +3688,13 @@ async def analyze_with_classification(input_data: InputData):
     - Workflow automatisé sans intervention manuelle
     - Garantie d'utilisation des bons critères de vérification
     """
-    logger.info(f"🚀 Analyse combinée démarrée pour la pièce {input_data.piece_id}")
+    logger.debug(f"🚀 Analyse combinée démarrée pour la pièce {input_data.piece_id}")
 
     try:
         # Récupérer le type de parcours depuis input_data
         parcours_type = input_data.type if hasattr(input_data, 'type') else "Voyageur"
         result = analyze_with_auto_classification(input_data, parcours_type)
-        logger.info(f"🎯 Analyse combinée terminée pour la pièce {input_data.piece_id}")
+        logger.debug(f"🎯 Analyse combinée terminée pour la pièce {input_data.piece_id}")
         return result
     except Exception as e:
         logger.error(f"❌ Erreur dans l'endpoint analyze-with-classification: {str(e)}")
@@ -3847,9 +3847,9 @@ def analyze_etapes(input_data: EtapesAnalysisInput) -> EtapesAnalysisResponse:
         
         for piece in input_data.pieces:
             # 🔄 TRAITEMENT DES IMAGES DES ÉTAPES pour cette pièce
-            logger.info(f"🖼️ Traitement des images des étapes pour la pièce {piece.piece_id}")
+            logger.debug(f"🖼️ Traitement des images des étapes pour la pièce {piece.piece_id}")
             processed_etapes = process_etapes_images([etape.dict() for etape in piece.etapes])
-            logger.info(f"✅ {len(processed_etapes)} étapes traitées pour la pièce {piece.piece_id}")
+            logger.debug(f"✅ {len(processed_etapes)} étapes traitées pour la pièce {piece.piece_id}")
             
             for i, etape_data in enumerate(processed_etapes):
                 etape = piece.etapes[i]  # Garder l'objet original pour les autres propriétés
@@ -3857,10 +3857,10 @@ def analyze_etapes(input_data: EtapesAnalysisInput) -> EtapesAnalysisResponse:
                 # 🚫 RÈGLE: Exclure les tâches sans checkout_picture de l'analyse AI
                 # Si checkout_picture est vide/null dans l'étape originale, ne pas analyser
                 if not etape.checkout_picture or etape.checkout_picture.strip() == "":
-                    logger.info(f"⏭️ Étape {etape.etape_id} skippée: pas de checkout_picture requis (tâche sans photo)")
+                    logger.debug(f"⏭️ Étape {etape.etape_id} skippée: pas de checkout_picture requis (tâche sans photo)")
                     continue
 
-                logger.info(f"🔍 Analyse de l'étape {etape.etape_id}: {etape.task_name}")
+                logger.debug(f"🔍 Analyse de l'étape {etape.etape_id}: {etape.task_name}")
 
                 # Construire le prompt spécifique pour l'étape depuis la config JSON
                 try:
@@ -3913,7 +3913,7 @@ Compare les photos avant/après et réponds en JSON:
                 checking_usable = checking_url is not None and not (isinstance(checking_url, str) and checking_url.startswith('data:image/gif;base64,R0lGOD'))
                 checkout_usable = checkout_url is not None and not (isinstance(checkout_url, str) and checkout_url.startswith('data:image/gif;base64,R0lGOD'))
 
-                logger.info(f"🔍 Validation images pour étape {etape.etape_id}: checking_usable={checking_usable}, checkout_usable={checkout_usable}")
+                logger.debug(f"🔍 Validation images pour étape {etape.etape_id}: checking_usable={checking_usable}, checkout_usable={checkout_usable}")
 
                 # Construire le message en fonction des images disponibles
                 user_content = [
@@ -3925,7 +3925,7 @@ Compare les photos avant/après et réponds en JSON:
 
                 # Ajouter images seulement si elles sont utilisables
                 if checking_usable:
-                    logger.info(f"✅ ÉTAPE CHECKING - Image ajoutée au payload OpenAI: {checking_url}")
+                    logger.debug(f"✅ ÉTAPE CHECKING - Image ajoutée au payload OpenAI: {checking_url}")
                     user_content.extend([
                         {
                             "type": "text",
@@ -3947,7 +3947,7 @@ Compare les photos avant/après et réponds en JSON:
                     })
 
                 if checkout_usable:
-                    logger.info(f"✅ ÉTAPE CHECKOUT - Image ajoutée au payload OpenAI: {checkout_url}")
+                    logger.debug(f"✅ ÉTAPE CHECKOUT - Image ajoutée au payload OpenAI: {checkout_url}")
                     user_content.extend([
                         {
                             "type": "text",
@@ -4042,7 +4042,7 @@ Compare les photos avant/après et réponds en JSON:
                                 if c.get("type") == "image_url" and c["image_url"]["url"].startswith("data:")
                             )
 
-                            logger.info(f"🔄 Retry étape {etape.etape_id} avec {data_uri_count} images en Data URI")
+                            logger.debug(f"🔄 Retry étape {etape.etape_id} avec {data_uri_count} images en Data URI")
 
                             # Réessayer avec les data URIs
                             # 🚀 MIGRATION vers Responses API
@@ -4062,7 +4062,7 @@ Compare les photos avant/après et réponds en JSON:
                                 max_output_tokens=20000,
                                 reasoning={"effort": "high"}
                             )
-                            logger.info(f"✅ Analyse de l'étape {etape.etape_id} réussie avec Data URIs (fallback téléchargement)")
+                            logger.debug(f"✅ Analyse de l'étape {etape.etape_id} réussie avec Data URIs (fallback téléchargement)")
 
                         except Exception as data_uri_error:
                             logger.error(f"❌ Échec du fallback Data URI pour l'étape {etape.etape_id}: {data_uri_error}")
@@ -4098,7 +4098,7 @@ Compare les photos avant/après et réponds en JSON:
                                     max_output_tokens=20000,
                                     reasoning={"effort": "high"}
                                 )
-                                logger.info(f"✅ Analyse de l'étape {etape.etape_id} réussie en mode fallback (sans images)")
+                                logger.debug(f"✅ Analyse de l'étape {etape.etape_id} réussie en mode fallback (sans images)")
                             except Exception as final_error:
                                 logger.error(f"❌ Échec de tous les fallbacks pour l'étape {etape.etape_id}: {final_error}")
                                 all_issues.append(EtapeIssue(
@@ -4108,7 +4108,7 @@ Compare les photos avant/après et réponds en JSON:
                                     severity="medium",
                                     confidence=100
                                 ))
-                                logger.info(f"⚠️ Problème générique ajouté pour l'étape {etape.etape_id}")
+                                logger.debug(f"⚠️ Problème générique ajouté pour l'étape {etape.etape_id}")
                                 continue  # Passer à l'étape suivante
 
                     # 🔄 FALLBACK 2: Erreurs de format d'image → Sans images
@@ -4145,7 +4145,7 @@ Compare les photos avant/après et réponds en JSON:
                                 max_output_tokens=20000,
                                 reasoning={"effort": "high"}
                             )
-                            logger.info(f"✅ Analyse de l'étape {etape.etape_id} réussie en mode fallback (sans images)")
+                            logger.debug(f"✅ Analyse de l'étape {etape.etape_id} réussie en mode fallback (sans images)")
                         except Exception as fallback_error:
                             logger.error(f"❌ Échec du fallback OpenAI pour l'étape {etape.etape_id}: {fallback_error}")
                             # Ajouter un problème générique pour cette étape
@@ -4156,7 +4156,7 @@ Compare les photos avant/après et réponds en JSON:
                                 severity="medium",
                                 confidence=100
                             ))
-                            logger.info(f"⚠️ Problème générique ajouté pour l'étape {etape.etape_id}")
+                            logger.debug(f"⚠️ Problème générique ajouté pour l'étape {etape.etape_id}")
                             continue  # Passer à l'étape suivante
                     else:
                         # Autres erreurs OpenAI - ajouter un problème générique
@@ -4240,7 +4240,7 @@ Compare les photos avant/après et réponds en JSON:
                             commentaire=commentaire
                         ))
 
-                logger.info(f"✅ Analyse terminée pour l'étape {etape.etape_id}: validation_status={validation_status}, {len(etape_result.get('issues', []))} problèmes détectés")
+                logger.debug(f"✅ Analyse terminée pour l'étape {etape.etape_id}: validation_status={validation_status}, {len(etape_result.get('issues', []))} problèmes détectés")
 
         return EtapesAnalysisResponse(preliminary_issues=all_issues)
 
@@ -4322,12 +4322,12 @@ async def analyze_etapes_endpoint(input_data: EtapesAnalysisInput):
     - `medium` : Problème modéré nécessitant attention
     - `high` : Problème majeur nécessitant intervention
     """
-    logger.info(f"🚀 Analyse des étapes démarrée pour le logement {input_data.logement_id}")
+    logger.debug(f"🚀 Analyse des étapes démarrée pour le logement {input_data.logement_id}")
     
     try:
         result = analyze_etapes(input_data)
         total_issues = len(result.preliminary_issues)
-        logger.info(f"🎯 Analyse des étapes terminée pour le logement {input_data.logement_id}: {total_issues} problèmes détectés")
+        logger.debug(f"🎯 Analyse des étapes terminée pour le logement {input_data.logement_id}: {total_issues} problèmes détectés")
         return result
     except Exception as e:
         logger.error(f"❌ Erreur dans l'endpoint analyze-etapes: {str(e)}")
@@ -4450,11 +4450,11 @@ def calculate_category_scores(pieces_analysis: List[CombinedAnalysisResponse]) -
             # Arrondir à 1 décimale
             final_scores[category] = round(score, 1)
 
-    logger.info(f"📊 Scores par catégorie calculés :")
-    logger.info(f"   - Présence objets : {final_scores['presenceObjets']}/5 ({category_scores['presenceObjets']['count']} issues)")
-    logger.info(f"   - État objets : {final_scores['etatObjets']}/5 ({category_scores['etatObjets']['count']} issues)")
-    logger.info(f"   - Propreté : {final_scores['proprete']}/5 ({category_scores['proprete']['count']} issues)")
-    logger.info(f"   - Agencement : {final_scores['agencement']}/5 ({category_scores['agencement']['count']} issues)")
+    logger.debug(f"📊 Scores par catégorie calculés :")
+    logger.debug(f"   - Présence objets : {final_scores['presenceObjets']}/5 ({category_scores['presenceObjets']['count']} issues)")
+    logger.debug(f"   - État objets : {final_scores['etatObjets']}/5 ({category_scores['etatObjets']['count']} issues)")
+    logger.debug(f"   - Propreté : {final_scores['proprete']}/5 ({category_scores['proprete']['count']} issues)")
+    logger.debug(f"   - Agencement : {final_scores['agencement']}/5 ({category_scores['agencement']['count']} issues)")
 
     return final_scores
 
@@ -4877,7 +4877,7 @@ def transform_to_individual_report(
                 details.append(f"{int(total_non_conformites)} non-conformités=-{malus_conformites}")
             if malus_signalements > 0:
                 details.append(f"{signalements_piece} signalement(s)=-{malus_signalements}")
-            logger.info(f"📉 Pièce {piece_name}: Note {note_base} → {note} ({', '.join(details)})")
+            logger.debug(f"📉 Pièce {piece_name}: Note {note_base} → {note} ({', '.join(details)})")
 
         detail_par_piece_section.append({
             "id": piece_input.piece_id,
@@ -5072,25 +5072,25 @@ def calculate_weighted_severity_score(
     # CHARGEMENT DE LA CONFIGURATION DYNAMIQUE
     # ═══════════════════════════════════════════════════════════
 
-    logger.info("")
-    logger.info("═" * 80)
+    logger.debug("")
+    logger.debug("═" * 80)
     logger.info("🧮 CALCUL DU SCORE ALGORITHMIQUE (APPROCHE 2 - MOYENNE PONDÉRÉE)")
-    logger.info("═" * 80)
+    logger.debug("═" * 80)
 
     # 🔍 DEBUG: Logger ce que la fonction reçoit
     logger.debug(f"🔍 DEBUG - calculate_weighted_severity_score reçoit:")
-    logger.info(f"   - {len(pieces_analysis)} pièces")
-    logger.info(f"   - {general_issues_count} issues générales (paramètre)")
-    logger.info(f"   - {etapes_issues_count} issues d'étapes (paramètre)")
+    logger.debug(f"   - {len(pieces_analysis)} pièces")
+    logger.debug(f"   - {general_issues_count} issues générales (paramètre)")
+    logger.debug(f"   - {etapes_issues_count} issues d'étapes (paramètre)")
     total_issues_in_pieces = sum(len(p.issues) for p in pieces_analysis)
-    logger.info(f"   - {total_issues_in_pieces} issues TOTALES dans les objets pieces_analysis (générales + étapes fusionnées)")
+    logger.debug(f"   - {total_issues_in_pieces} issues TOTALES dans les objets pieces_analysis (générales + étapes fusionnées)")
     for piece in pieces_analysis:
-        logger.info(f"      Pièce {piece.piece_id}: {len(piece.issues)} issues totales")
+        logger.debug(f"      Pièce {piece.piece_id}: {len(piece.issues)} issues totales")
 
     config = load_scoring_config(parcours_type)
     scoring_config = config.get("scoring_system", {})
 
-    logger.info(f"📊 Utilisation de la configuration scoring pour le parcours: {parcours_type}")
+    logger.debug(f"📊 Utilisation de la configuration scoring pour le parcours: {parcours_type}")
 
     # Extraire les paramètres de configuration
     SEVERITY_BASE_SCORE = scoring_config.get("severity_base_score", {"low": 1, "medium": 3, "high": 10})
@@ -5114,11 +5114,11 @@ def calculate_weighted_severity_score(
     total_weight = 0
     weighted_sum = 0
 
-    logger.info(f"")
-    logger.info(f"🔢 CALCUL DU SCORE MOYEN PONDÉRÉ PAR PIÈCE")
-    logger.info(f"   📊 Nombre de pièces à analyser : {len(pieces_analysis)}")
-    logger.info(f"   🎯 Seuil de confiance : {CONFIDENCE_THRESHOLD}%")
-    logger.info(f"")
+    logger.debug(f"")
+    logger.debug(f"🔢 CALCUL DU SCORE MOYEN PONDÉRÉ PAR PIÈCE")
+    logger.debug(f"   📊 Nombre de pièces à analyser : {len(pieces_analysis)}")
+    logger.debug(f"   🎯 Seuil de confiance : {CONFIDENCE_THRESHOLD}%")
+    logger.debug(f"")
 
     for idx, piece in enumerate(pieces_analysis, 1):
         room_type = piece.room_classification.room_type
@@ -5184,11 +5184,11 @@ def calculate_weighted_severity_score(
     else:
         weighted_average_score = 0
 
-    logger.info(f"")
-    logger.info(f"📊 RÉSULTAT DU CALCUL :")
-    logger.info(f"   📈 Somme pondérée : {weighted_sum:.2f}")
-    logger.info(f"   ⚖️  Poids total : {total_weight:.2f}")
-    logger.info(f"   📉 Moyenne pondérée : {weighted_average_score:.2f}")
+    logger.debug(f"")
+    logger.debug(f"📊 RÉSULTAT DU CALCUL :")
+    logger.debug(f"   📈 Somme pondérée : {weighted_sum:.2f}")
+    logger.debug(f"   ⚖️  Poids total : {total_weight:.2f}")
+    logger.debug(f"   📉 Moyenne pondérée : {weighted_average_score:.2f}")
 
     # ═══════════════════════════════════════════════════════════
     # CONVERSION EN NOTE /5
@@ -5196,8 +5196,8 @@ def calculate_weighted_severity_score(
 
     final_grade, label = convert_weighted_average_to_grade(weighted_average_score, config)
 
-    logger.info(f"   🏆 Note finale : {final_grade}/5")
-    logger.info(f"   🏷️  Label : {label}")
+    logger.debug(f"   🏆 Note finale : {final_grade}/5")
+    logger.debug(f"   🏷️  Label : {label}")
 
     # ═══════════════════════════════════════════════════════════
     # RÉSUMÉ
@@ -5318,7 +5318,7 @@ def calculate_room_algorithmic_score(
     # Convertir le score brut en note /5 en utilisant les mêmes seuils que le score global
     grade, label = convert_weighted_average_to_grade(piece_score, config)
 
-    logger.info(f"   🧮 Score algorithmique calculé: {piece_score:.2f} points → {grade}/5 ({label})")
+    logger.debug(f"   🧮 Score algorithmique calculé: {piece_score:.2f} points → {grade}/5 ({label})")
 
     return {
         "score_brut": round(piece_score, 2),
@@ -5340,20 +5340,20 @@ def generate_logement_enrichment(logement_id: str, pieces_analysis: List[Combine
     """
     try:
         # 🛡️ LOGS D'ENTRÉE DÉTAILLÉS
-        logger.info(f"🚀 DÉBUT generate_logement_enrichment pour logement {logement_id}")
-        logger.info(f"   📊 Paramètres reçus:")
-        logger.info(f"   - total_issues: {total_issues}")
-        logger.info(f"   - general_issues: {general_issues}")
-        logger.info(f"   - etapes_issues: {etapes_issues}")
-        logger.info(f"   - pieces_analysis: {len(pieces_analysis)} pièces")
+        logger.debug(f"🚀 DÉBUT generate_logement_enrichment pour logement {logement_id}")
+        logger.debug(f"   📊 Paramètres reçus:")
+        logger.debug(f"   - total_issues: {total_issues}")
+        logger.debug(f"   - general_issues: {general_issues}")
+        logger.debug(f"   - etapes_issues: {etapes_issues}")
+        logger.debug(f"   - pieces_analysis: {len(pieces_analysis)} pièces")
 
         # ═══════════════════════════════════════════════════════════
         # ÉTAPE 0 : CALCUL DU SCORE ALGORITHMIQUE (NOUVEAU)
         # ═══════════════════════════════════════════════════════════
 
-        logger.info(f"")
-        logger.info(f"🎯 ÉTAPE 0 - CALCUL DU SCORE ALGORITHMIQUE")
-        logger.info(f"   📊 Utilisation du système de notation à score pondéré (APPROCHE 2)")
+        logger.debug(f"")
+        logger.debug(f"🎯 ÉTAPE 0 - CALCUL DU SCORE ALGORITHMIQUE")
+        logger.debug(f"   📊 Utilisation du système de notation à score pondéré (APPROCHE 2)")
 
         score_result = calculate_weighted_severity_score(
             pieces_analysis=pieces_analysis,
@@ -5366,14 +5366,14 @@ def generate_logement_enrichment(logement_id: str, pieces_analysis: List[Combine
         algorithmic_label = score_result["label"]
         weighted_average = score_result["weighted_average_score"]
 
-        logger.info(f"")
-        logger.info(f"✅ SCORE ALGORITHMIQUE CALCULÉ :")
-        logger.info(f"   🏆 Note finale : {algorithmic_score}/5")
-        logger.info(f"   🏷️  Label : {algorithmic_label}")
-        logger.info(f"   📊 Score moyen pondéré : {weighted_average:.2f}")
-        logger.info(f"   📈 Nombre de pièces : {score_result['summary']['num_pieces']}")
-        logger.info(f"   📋 Issues analysées : {score_result['summary']['total_issues_analyzed']}")
-        logger.info(f"")
+        logger.debug(f"")
+        logger.debug(f"✅ SCORE ALGORITHMIQUE CALCULÉ :")
+        logger.debug(f"   🏆 Note finale : {algorithmic_score}/5")
+        logger.debug(f"   🏷️  Label : {algorithmic_label}")
+        logger.debug(f"   📊 Score moyen pondéré : {weighted_average:.2f}")
+        logger.debug(f"   📈 Nombre de pièces : {score_result['summary']['num_pieces']}")
+        logger.debug(f"   📋 Issues analysées : {score_result['summary']['total_issues_analyzed']}")
+        logger.debug(f"")
         
         # Vérifier que le client OpenAI est disponible
         if client is None:
@@ -5381,7 +5381,7 @@ def generate_logement_enrichment(logement_id: str, pieces_analysis: List[Combine
             raise HTTPException(status_code=503, detail="Service OpenAI non disponible")
 
         # 🔍 ÉTAPE 1: Créer un résumé structuré des problèmes détectés
-        logger.info(f"🔍 ÉTAPE 1 - Création du résumé structuré des problèmes")
+        logger.debug(f"🔍 ÉTAPE 1 - Création du résumé structuré des problèmes")
         issues_summary = []
         pieces_avec_problemes = 0
         
@@ -5411,7 +5411,7 @@ def generate_logement_enrichment(logement_id: str, pieces_analysis: List[Combine
                     issues_filtrees += 1
             
             if issues_filtrees > 0:
-                logger.info(f"   🔽 Pièce {piece.piece_id}: {issues_filtrees} issues filtrées (confiance < 90%)")
+                logger.debug(f"   🔽 Pièce {piece.piece_id}: {issues_filtrees} issues filtrées (confiance < 90%)")
             
             # Ajouter à issues_summary seulement si il y a des problèmes qualifiés
             if piece_issues:
@@ -5424,15 +5424,15 @@ def generate_logement_enrichment(logement_id: str, pieces_analysis: List[Combine
                     "global_status": piece.analyse_globale.status,
                     "issues": piece_issues
                 })
-                logger.info(f"   📋 Pièce {i+1} ({piece.piece_id}): {len(piece_issues)} issues qualifiées ajoutées")
+                logger.debug(f"   📋 Pièce {i+1} ({piece.piece_id}): {len(piece_issues)} issues qualifiées ajoutées")
             else:
-                logger.info(f"   ✅ Pièce {i+1} ({piece.piece_id}): Aucune issue qualifiée")
+                logger.debug(f"   ✅ Pièce {i+1} ({piece.piece_id}): Aucune issue qualifiée")
 
-        logger.info(f"✅ Résumé créé: {pieces_avec_problemes}/{len(pieces_analysis)} pièces avec problèmes qualifiés")
-        logger.info(f"ℹ️ L'IA évaluera la note globale selon son ressenti général, indépendamment du comptage d'issues")
+        logger.debug(f"✅ Résumé créé: {pieces_avec_problemes}/{len(pieces_analysis)} pièces avec problèmes qualifiés")
+        logger.debug(f"ℹ️ L'IA évaluera la note globale selon son ressenti général, indépendamment du comptage d'issues")
         
         # 🔍 ÉTAPE 2: Construire le prompt pour la synthèse globale
-        logger.info(f"🔍 ÉTAPE 2 - Construction du prompt de synthèse")
+        logger.debug(f"🔍 ÉTAPE 2 - Construction du prompt de synthèse")
         
         try:
             prompts_config = load_prompts_config(parcours_type)
@@ -5447,10 +5447,10 @@ def generate_logement_enrichment(logement_id: str, pieces_analysis: List[Combine
                 "issues_summary": json.dumps(issues_summary, indent=2, ensure_ascii=False)
             }
             
-            logger.info(f"   📋 Variables préparées pour le template:")
-            logger.info(f"   - logement_id: {logement_id}")
-            logger.info(f"   - total_issues: {total_issues}")
-            logger.info(f"   - issues_summary: {len(issues_summary)} pièces")
+            logger.debug(f"   📋 Variables préparées pour le template:")
+            logger.debug(f"   - logement_id: {logement_id}")
+            logger.debug(f"   - total_issues: {total_issues}")
+            logger.debug(f"   - issues_summary: {len(issues_summary)} pièces")
             
             # Utiliser la fonction standardisée
             synthesis_prompt = build_full_prompt_from_config(synthesis_global_config, variables)
@@ -5458,13 +5458,13 @@ def generate_logement_enrichment(logement_id: str, pieces_analysis: List[Combine
             if not synthesis_prompt or len(synthesis_prompt) < 200:
                 raise ValueError("Prompt de synthèse vide")
             
-            logger.info(f"✅ Prompt construit: {len(synthesis_prompt)} caractères")
+            logger.debug(f"✅ Prompt construit: {len(synthesis_prompt)} caractères")
 
             # 🔍 LOG DÉTAILLÉ DU PROMPT POUR DEBUG
             logger.info(f"📋 PROMPT DE SYNTHÈSE (premiers 500 caractères):")
-            logger.info(synthesis_prompt[:500])
+            logger.debug(synthesis_prompt[:500])
             logger.info(f"📋 PROMPT DE SYNTHÈSE (derniers 500 caractères):")
-            logger.info(synthesis_prompt[-500:])
+            logger.debug(synthesis_prompt[-500:])
 
         except Exception as config_error:
             logger.warning(f"⚠️ Erreur config synthèse: {config_error}, utilisation fallback")
@@ -5494,15 +5494,15 @@ Génère une synthèse en JSON:
         "description": "Description de l'état général et justification de la note"
     }}
 }}"""
-            logger.info(f"✅ Prompt fallback utilisé: {len(synthesis_prompt)} caractères")
+            logger.debug(f"✅ Prompt fallback utilisé: {len(synthesis_prompt)} caractères")
 
         # 🔍 ÉTAPE 3: Faire l'appel API pour la synthèse
-        logger.info(f"🔍 ÉTAPE 3 - Appel à l'IA de synthèse (OpenAI)")
+        logger.debug(f"🔍 ÉTAPE 3 - Appel à l'IA de synthèse (OpenAI)")
 
         try:
-            logger.info(f"   🤖 Modèle: {OPENAI_MODEL}")
-            logger.info(f"   🌡️ Température: 0.1")
-            logger.info(f"   📏 Max tokens: 16000")
+            logger.debug(f"   🤖 Modèle: {OPENAI_MODEL}")
+            logger.debug(f"   🌡️ Température: 0.1")
+            logger.debug(f"   📏 Max tokens: 16000")
 
             # 📝 LOG DU PROMPT DE SYNTHÈSE
             if request_id:
@@ -5534,7 +5534,7 @@ Génère une synthèse en JSON:
                 reasoning={"effort": "medium"}
             )
 
-            logger.info(f"✅ Réponse OpenAI reçue avec succès")
+            logger.debug(f"✅ Réponse OpenAI reçue avec succès")
 
         except Exception as openai_error:
             error_str = str(openai_error)
@@ -5548,11 +5548,11 @@ Génère une synthèse en JSON:
             )
         
         # 🔍 ÉTAPE 4: Parser et valider la réponse
-        logger.info(f"🔍 ÉTAPE 4 - Parsing et validation de la réponse IA")
+        logger.debug(f"🔍 ÉTAPE 4 - Parsing et validation de la réponse IA")
 
         # 🚀 MIGRATION: Extraction depuis Responses API
         response_content = (response.output_text if hasattr(response, 'output_text') else str(response.output[0].content[0].text)).strip()
-        logger.info(f"   📄 Longueur réponse: {len(response_content)} caractères")
+        logger.debug(f"   📄 Longueur réponse: {len(response_content)} caractères")
 
         # 📝 LOG DE LA RÉPONSE DE SYNTHÈSE
         if request_id:
@@ -5567,7 +5567,7 @@ Génère une synthèse en JSON:
         # Valider que c'est du JSON valide
         try:
             enrichment_data = json.loads(response_content)
-            logger.info(f"✅ JSON parsé avec succès")
+            logger.debug(f"✅ JSON parsé avec succès")
         except json.JSONDecodeError as json_error:
             logger.error(f"❌ Erreur parsing JSON: {json_error}")
             logger.error(f"   📄 Contenu reçu: {response_content[:500]}...")
@@ -5587,8 +5587,8 @@ Génère une synthèse en JSON:
         # L'IA peut retourner un global_score, mais on l'ignore et on utilise le score algorithmique
         if "global_score" in enrichment_data:
             ia_score = enrichment_data["global_score"].get("score", "N/A")
-            logger.info(f"   ℹ️  Score IA reçu (ignoré) : {ia_score}/5")
-            logger.info(f"   ✅ Score algorithmique utilisé : {algorithmic_score}/5")
+            logger.debug(f"   ℹ️  Score IA reçu (ignoré) : {ia_score}/5")
+            logger.debug(f"   ✅ Score algorithmique utilisé : {algorithmic_score}/5")
 
         # Créer la description du score
         score_description = (
@@ -5611,15 +5611,15 @@ Génère une synthèse en JSON:
                     description=score_description
                 )
             )
-            logger.info(f"✅ Objet LogementAnalysisEnrichment créé avec succès")
-            logger.info(f"   🎯 Score final : {algorithmic_score}/5 ({algorithmic_label})")
+            logger.debug(f"✅ Objet LogementAnalysisEnrichment créé avec succès")
+            logger.debug(f"   🎯 Score final : {algorithmic_score}/5 ({algorithmic_label})")
         except Exception as validation_error:
             logger.error(f"❌ Erreur validation Pydantic: {validation_error}")
             raise ValueError(f"Données invalides: {validation_error}")
         
-        logger.info(f"✅ Synthèse globale générée: Note {enrichment.global_score.score}/5 ({enrichment.global_score.label})")
-        logger.info(f"   📋 {len(enrichment.recommendations)} recommandations formulées")
-        logger.info(f"🎉 FIN generate_logement_enrichment - SUCCÈS")
+        logger.debug(f"✅ Synthèse globale générée: Note {enrichment.global_score.score}/5 ({enrichment.global_score.label})")
+        logger.debug(f"   📋 {len(enrichment.recommendations)} recommandations formulées")
+        logger.debug(f"🎉 FIN generate_logement_enrichment - SUCCÈS")
         
         return enrichment
         
@@ -5649,7 +5649,7 @@ Génère une synthèse en JSON:
             )
         )
         logger.warning("⚠️ Utilisation de l'enrichissement par défaut")
-        logger.info(f"🎉 FIN generate_logement_enrichment - FALLBACK")
+        logger.debug(f"🎉 FIN generate_logement_enrichment - FALLBACK")
         return fallback_enrichment
 
 # ═══════════════════════════════════════════════════════════════
@@ -5679,39 +5679,39 @@ async def analyze_single_piece_async(piece: PieceWithEtapes, parcours_type: str 
         CombinedAnalysisResponse: Résultat de l'analyse combinée
     """
     try:
-        logger.info(f"🔍 [ASYNC] Analyse de la pièce {piece.piece_id}: {piece.nom} (parcours: {parcours_type})")
+        logger.debug(f"🔍 [ASYNC] Analyse de la pièce {piece.piece_id}: {piece.nom} (parcours: {parcours_type})")
 
         # Filtrer les images invalides avant l'analyse
         valid_checkin_pictures = []
         for pic in piece.checkin_pictures:
-            logger.info(f"🔍 Traitement image checkin - URL originale: '{pic.url}'")
+            logger.debug(f"🔍 Traitement image checkin - URL originale: '{pic.url}'")
             normalized_url = normalize_url(pic.url)
-            logger.info(f"🔍 Traitement image checkin - URL normalisée: '{normalized_url}'")
+            logger.debug(f"🔍 Traitement image checkin - URL normalisée: '{normalized_url}'")
 
             if is_valid_image_url(normalized_url):
                 from pydantic import BaseModel
                 normalized_pic = Picture(piece_id=pic.piece_id, url=normalized_url)
                 valid_checkin_pictures.append(normalized_pic)
-                logger.info(f"✅ Image checkin valide ajoutée: {normalized_url}")
+                logger.debug(f"✅ Image checkin valide ajoutée: {normalized_url}")
             else:
                 logger.warning(f"⚠️ Image checkin invalide ignorée - URL originale: {pic.url}")
                 logger.warning(f"⚠️ Image checkin invalide ignorée - URL normalisée: {normalized_url}")
 
         valid_checkout_pictures = []
         for pic in piece.checkout_pictures:
-            logger.info(f"🔍 Traitement image checkout - URL originale: '{pic.url}'")
+            logger.debug(f"🔍 Traitement image checkout - URL originale: '{pic.url}'")
             normalized_url = normalize_url(pic.url)
-            logger.info(f"🔍 Traitement image checkout - URL normalisée: '{normalized_url}'")
+            logger.debug(f"🔍 Traitement image checkout - URL normalisée: '{normalized_url}'")
 
             if is_valid_image_url(normalized_url):
                 normalized_pic = Picture(piece_id=pic.piece_id, url=normalized_url)
                 valid_checkout_pictures.append(normalized_pic)
-                logger.info(f"✅ Image checkout valide ajoutée: {normalized_url}")
+                logger.debug(f"✅ Image checkout valide ajoutée: {normalized_url}")
             else:
                 logger.warning(f"⚠️ Image checkout invalide ignorée - URL originale: {pic.url}")
                 logger.warning(f"⚠️ Image checkout invalide ignorée - URL normalisée: {normalized_url}")
 
-        logger.info(f"📷 Images valides pour pièce {piece.piece_id}: {len(valid_checkin_pictures)} checkin + {len(valid_checkout_pictures)} checkout")
+        logger.debug(f"📷 Images valides pour pièce {piece.piece_id}: {len(valid_checkin_pictures)} checkin + {len(valid_checkout_pictures)} checkout")
 
         # Convertir PieceWithEtapes en InputData pour l'analyse générale avec images filtrées
         input_data_piece = InputData(
@@ -5730,14 +5730,14 @@ async def analyze_single_piece_async(piece: PieceWithEtapes, parcours_type: str 
         # Note: analyze_with_auto_classification est synchrone, on l'appelle normalement
         piece_analysis = analyze_with_auto_classification(input_data_piece, parcours_type, request_id=request_id)
 
-        logger.info(f"✅ [ASYNC] Pièce {piece.piece_id} analysée: {len(piece_analysis.issues)} issues générales détectées")
+        logger.debug(f"✅ [ASYNC] Pièce {piece.piece_id} analysée: {len(piece_analysis.issues)} issues générales détectées")
 
         # ═══════════════════════════════════════════════════════════════
         # DOUBLE-PASS: Vérification renforcée des objets manquants
         # 🔴 DÉSACTIVÉ TEMPORAIREMENT (DOUBLE_PASS_ENABLED = False)
         # ═══════════════════════════════════════════════════════════════
         if DOUBLE_PASS_ENABLED and len(valid_checkin_pictures) > 0 and len(valid_checkout_pictures) > 0:
-            logger.info(f"📦 [ASYNC] DOUBLE-PASS: Vérification renforcée des objets manquants pour {piece.nom}")
+            logger.debug(f"📦 [ASYNC] DOUBLE-PASS: Vérification renforcée des objets manquants pour {piece.nom}")
 
             try:
                 # PHASE 1: Extraction de l'inventaire depuis les photos checkin
@@ -5748,7 +5748,7 @@ async def analyze_single_piece_async(piece: PieceWithEtapes, parcours_type: str 
                 )
 
                 if inventory.total_objects > 0:
-                    logger.info(f"📦 [ASYNC] PHASE 1 OK: {inventory.total_objects} objets inventoriés")
+                    logger.debug(f"📦 [ASYNC] PHASE 1 OK: {inventory.total_objects} objets inventoriés")
 
                     # PHASE 2: Vérification sur les photos checkout
                     verification = verify_inventory_on_checkout(
@@ -5757,7 +5757,7 @@ async def analyze_single_piece_async(piece: PieceWithEtapes, parcours_type: str 
                         checkout_pictures=valid_checkout_pictures
                     )
 
-                    logger.info(f"🔎 [ASYNC] PHASE 2 OK: {len(verification.missing_objects)} manquants, {len(verification.moved_objects)} déplacés")
+                    logger.debug(f"🔎 [ASYNC] PHASE 2 OK: {len(verification.missing_objects)} manquants, {len(verification.moved_objects)} déplacés")
 
                     # Convertir en issues et fusionner avec les issues existantes
                     inventory_issues = convert_inventory_to_issues(verification)
@@ -5777,21 +5777,21 @@ async def analyze_single_piece_async(piece: PieceWithEtapes, parcours_type: str 
 
                             if not is_duplicate:
                                 new_issues.append(inv_issue)
-                                logger.info(f"   ➕ [ASYNC] Nouvel objet manquant détecté: {inv_issue.description}")
+                                logger.debug(f"   ➕ [ASYNC] Nouvel objet manquant détecté: {inv_issue.description}")
 
                         # Ajouter les nouvelles issues
                         piece_analysis.issues.extend(new_issues)
-                        logger.info(f"✅ [ASYNC] DOUBLE-PASS: {len(new_issues)} issues ajoutées (total: {len(piece_analysis.issues)})")
+                        logger.debug(f"✅ [ASYNC] DOUBLE-PASS: {len(new_issues)} issues ajoutées (total: {len(piece_analysis.issues)})")
                 else:
-                    logger.info(f"📦 [ASYNC] PHASE 1: Aucun objet inventorié (pièce peut-être vide ou photos insuffisantes)")
+                    logger.debug(f"📦 [ASYNC] PHASE 1: Aucun objet inventorié (pièce peut-être vide ou photos insuffisantes)")
 
             except Exception as dp_error:
                 logger.warning(f"⚠️ [ASYNC] DOUBLE-PASS: Erreur non bloquante - {dp_error}")
                 # Le double-pass est optionnel, on continue sans lui en cas d'erreur
         elif not DOUBLE_PASS_ENABLED:
-            logger.info(f"📦 [ASYNC] DOUBLE-PASS: ⏸️ DÉSACTIVÉ (DOUBLE_PASS_ENABLED = False)")
+            logger.debug(f"📦 [ASYNC] DOUBLE-PASS: ⏸️ DÉSACTIVÉ (DOUBLE_PASS_ENABLED = False)")
         else:
-            logger.info(f"📦 [ASYNC] DOUBLE-PASS: Skippé (photos insuffisantes: {len(valid_checkin_pictures)} checkin, {len(valid_checkout_pictures)} checkout)")
+            logger.debug(f"📦 [ASYNC] DOUBLE-PASS: Skippé (photos insuffisantes: {len(valid_checkin_pictures)} checkin, {len(valid_checkout_pictures)} checkout)")
 
         return piece_analysis
 
@@ -5816,10 +5816,10 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
         # 🚫 RÈGLE: Exclure les tâches sans checkout_picture de l'analyse AI
         # Si checkout_picture est vide/null dans l'étape originale, ne pas analyser
         if not etape.checkout_picture or etape.checkout_picture.strip() == "":
-            logger.info(f"⏭️ [ASYNC] Étape {etape.etape_id} skippée: pas de checkout_picture requis (tâche sans photo)")
+            logger.debug(f"⏭️ [ASYNC] Étape {etape.etape_id} skippée: pas de checkout_picture requis (tâche sans photo)")
             return []
 
-        logger.info(f"🔍 [ASYNC] Analyse de l'étape {etape.etape_id}: {etape.task_name}")
+        logger.debug(f"🔍 [ASYNC] Analyse de l'étape {etape.etape_id}: {etape.task_name}")
 
         # Construire le prompt spécifique pour l'étape depuis la config JSON
         prompts_config = load_prompts_config(parcours_type)
@@ -5837,9 +5837,9 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
 
         # 🔍 LOG DÉTAILLÉ DU PROMPT POUR DEBUG
         logger.info(f"📋 PROMPT ANALYZE_ETAPES (premiers 500 caractères):")
-        logger.info(system_prompt[:500])
+        logger.debug(system_prompt[:500])
         logger.info(f"📋 PROMPT ANALYZE_ETAPES (derniers 500 caractères):")
-        logger.info(system_prompt[-500:])
+        logger.debug(system_prompt[-500:])
 
         # Message utilisateur
         user_message_config = prompts_config.get("user_messages", {}).get("analyze_etapes_user", {})
@@ -5862,14 +5862,14 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
                 "type": "image_url",
                 "image_url": {"url": etape_data["checking_picture_processed"]}
             })
-            logger.info(f"   📸 Photo AVANT ajoutée pour étape {etape.etape_id}")
+            logger.debug(f"   📸 Photo AVANT ajoutée pour étape {etape.etape_id}")
 
         if has_checkout:
             messages_content.append({
                 "type": "image_url",
                 "image_url": {"url": etape_data["checkout_picture_processed"]}
             })
-            logger.info(f"   📸 Photo APRÈS ajoutée pour étape {etape.etape_id}")
+            logger.debug(f"   📸 Photo APRÈS ajoutée pour étape {etape.etape_id}")
 
         # 📝 LOG DU PROMPT D'ÉTAPE
         if request_id:
@@ -5971,7 +5971,7 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
                 commentaire=commentaire
             ))
 
-        logger.info(f"✅ [ASYNC] Étape {etape.etape_id} analysée: validation_status={validation_status}, {len(issues)} issues")
+        logger.debug(f"✅ [ASYNC] Étape {etape.etape_id} analysée: validation_status={validation_status}, {len(issues)} issues")
         return issues
 
     except Exception as e:
@@ -5999,7 +5999,7 @@ async def process_single_etape_image_task(etape: dict, index: int, total: int) -
         checking_picture = etape.get('checking_picture')
         checkout_picture = etape.get('checkout_picture')
         
-        # logger.info(f"🔄 [ASYNC-IMG] Traitement images étape {index+1}/{total} - ID: {etape_id}")
+        # logger.debug(f"🔄 [ASYNC-IMG] Traitement images étape {index+1}/{total} - ID: {etape_id}")
 
         converted_checking = None
         converted_checkout = None
@@ -6060,7 +6060,7 @@ async def process_etapes_images_parallel(etapes_list: list) -> list:
         return []
         
     start_time = datetime.now()
-    logger.info(f"🚀 [ASYNC-IMG] Démarrage traitement parallèle de {len(etapes_list)} étapes")
+    logger.debug(f"🚀 [ASYNC-IMG] Démarrage traitement parallèle de {len(etapes_list)} étapes")
     
     tasks = []
     for i, etape in enumerate(etapes_list):
@@ -6070,7 +6070,7 @@ async def process_etapes_images_parallel(etapes_list: list) -> list:
     results = await asyncio.gather(*tasks)
     
     duration = (datetime.now() - start_time).total_seconds()
-    logger.info(f"✅ [ASYNC-IMG] Traitement terminé en {duration:.2f}s")
+    logger.debug(f"✅ [ASYNC-IMG] Traitement terminé en {duration:.2f}s")
     
     return list(results)
 
@@ -6085,7 +6085,7 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput, re
         # Récupérer le type de parcours depuis input_data
         parcours_type = input_data.type if hasattr(input_data, 'type') else "Voyageur"
 
-        logger.info(f"🚀 [PARALLEL] ANALYSE COMPLÈTE démarrée pour le logement {input_data.logement_id} (parcours: {parcours_type})")
+        logger.debug(f"🚀 [PARALLEL] ANALYSE COMPLÈTE démarrée pour le logement {input_data.logement_id} (parcours: {parcours_type})")
 
         if request_id:
             logs_manager.add_log(
@@ -6097,7 +6097,7 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput, re
         # ═══════════════════════════════════════════════════════════════
         # ÉTAPE 1: Analyse PARALLÈLE de toutes les pièces
         # ═══════════════════════════════════════════════════════════════
-        logger.info(f"📊 [PARALLEL] ÉTAPE 1 - Analyse parallèle de {len(input_data.pieces)} pièces")
+        logger.debug(f"📊 [PARALLEL] ÉTAPE 1 - Analyse parallèle de {len(input_data.pieces)} pièces")
 
         # Créer les tâches pour toutes les pièces avec le type de parcours
         piece_tasks = [analyze_single_piece_async(piece, parcours_type, request_id=request_id) for piece in input_data.pieces]
@@ -6114,19 +6114,19 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput, re
                 valid_pieces_analysis.append(result)
 
         pieces_analysis_results = valid_pieces_analysis
-        logger.info(f"✅ [PARALLEL] {len(pieces_analysis_results)} pièces analysées avec succès")
+        logger.debug(f"✅ [PARALLEL] {len(pieces_analysis_results)} pièces analysées avec succès")
 
         # 🔍 DEBUG: Logger les issues de chaque pièce
         for piece_result in pieces_analysis_results:
             logger.debug(f"🔍 DEBUG - Pièce {piece_result.piece_id}: {len(piece_result.issues)} issues détectées")
             if piece_result.issues:
                 for idx, issue in enumerate(piece_result.issues[:3]):  # Afficher max 3 issues
-                    logger.info(f"      [{idx+1}] {issue.description[:50]}...")
+                    logger.debug(f"      [{idx+1}] {issue.description[:50]}...")
 
         # ═══════════════════════════════════════════════════════════════
         # ÉTAPE 2: Analyse PARALLÈLE de toutes les étapes
         # ═══════════════════════════════════════════════════════════════
-        logger.info(f"🎯 [PARALLEL] ÉTAPE 2 - Analyse parallèle des étapes")
+        logger.debug(f"🎯 [PARALLEL] ÉTAPE 2 - Analyse parallèle des étapes")
 
         # Créer un mapping etape_id -> piece_id
         etape_to_piece_mapping = {}
@@ -6142,7 +6142,7 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput, re
                 # 🚫 RÈGLE: Exclure les tâches sans checkout_picture de l'analyse AI
                 # Si checkout_picture est vide/null dans l'étape originale, ne pas analyser
                 if not etape.checkout_picture or etape.checkout_picture.strip() == "":
-                    logger.info(f"⏭️ [PARALLEL] Étape {etape.etape_id} skippée: pas de checkout_picture requis (tâche sans photo)")
+                    logger.debug(f"⏭️ [PARALLEL] Étape {etape.etape_id} skippée: pas de checkout_picture requis (tâche sans photo)")
                     continue
 
                 etape_to_piece_mapping[etape.etape_id] = piece.piece_id
@@ -6163,14 +6163,14 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput, re
                 elif isinstance(result, list):
                     all_etape_issues.extend(result)
 
-            logger.info(f"✅ [PARALLEL] {len(all_etape_issues)} issues d'étapes détectées")
+            logger.debug(f"✅ [PARALLEL] {len(all_etape_issues)} issues d'étapes détectées")
         else:
             all_etape_issues = []
 
         # ═══════════════════════════════════════════════════════════════
         # ÉTAPE 3: Regroupement des résultats (identique à la version séquentielle)
         # ═══════════════════════════════════════════════════════════════
-        logger.info(f"🔄 [PARALLEL] ÉTAPE 3 - Regroupement des résultats")
+        logger.debug(f"🔄 [PARALLEL] ÉTAPE 3 - Regroupement des résultats")
 
         # Grouper les issues d'étapes par piece_id
         etapes_issues_by_piece = {}
@@ -6227,17 +6227,17 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput, re
         # Remplacer la liste originale par la liste mise à jour
         pieces_analysis_results = updated_pieces_analysis
 
-        logger.info(f"📊 [PARALLEL] Compteurs: {total_issues_count} total ({general_issues_count} générales + {etapes_issues_count} étapes)")
+        logger.debug(f"📊 [PARALLEL] Compteurs: {total_issues_count} total ({general_issues_count} générales + {etapes_issues_count} étapes)")
 
         # 🔍 DEBUG: Logger les issues après reconstruction
         logger.debug(f"🔍 DEBUG - Après reconstruction des objets (issues fusionnées):")
         for piece_result in pieces_analysis_results:
-            logger.info(f"   Pièce {piece_result.piece_id}: {len(piece_result.issues)} issues TOTALES (générales + étapes fusionnées)")
+            logger.debug(f"   Pièce {piece_result.piece_id}: {len(piece_result.issues)} issues TOTALES (générales + étapes fusionnées)")
 
         # ═══════════════════════════════════════════════════════════════
         # ÉTAPE 4: Génération de la synthèse globale
         # ═══════════════════════════════════════════════════════════════
-        logger.info(f"🧠 [PARALLEL] ÉTAPE 4 - Génération de la synthèse globale")
+        logger.debug(f"🧠 [PARALLEL] ÉTAPE 4 - Génération de la synthèse globale")
 
         analysis_enrichment = generate_logement_enrichment(
             logement_id=input_data.logement_id,
@@ -6259,8 +6259,8 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput, re
             analysis_enrichment=analysis_enrichment
         )
 
-        logger.info(f"🎉 [PARALLEL] ANALYSE COMPLÈTE terminée pour le logement {input_data.logement_id}")
-        logger.info(f"📊 RÉSUMÉ FINAL: {total_issues_count} issues totales")
+        logger.debug(f"🎉 [PARALLEL] ANALYSE COMPLÈTE terminée pour le logement {input_data.logement_id}")
+        logger.debug(f"📊 RÉSUMÉ FINAL: {total_issues_count} issues totales")
         logger.info(f"🏆 NOTE GLOBALE: {analysis_enrichment.global_score.score}/5 - {analysis_enrichment.global_score.label}")
 
         if request_id:
@@ -6296,9 +6296,9 @@ async def analyze_complete_logement_ultra_parallel(input_data: EtapesAnalysisInp
     try:
         parcours_type = input_data.type if hasattr(input_data, 'type') else "Voyageur"
 
-        logger.info(f"🚀🚀 [ULTRA-PARALLEL] ANALYSE COMPLÈTE pour logement {input_data.logement_id}")
-        logger.info(f"   📊 {len(input_data.pieces)} pièces à analyser")
-        logger.info(f"   ⚡ Mode: Ultra-parallélisation avec cache avancé")
+        logger.debug(f"🚀🚀 [ULTRA-PARALLEL] ANALYSE COMPLÈTE pour logement {input_data.logement_id}")
+        logger.debug(f"   📊 {len(input_data.pieces)} pièces à analyser")
+        logger.debug(f"   ⚡ Mode: Ultra-parallélisation avec cache avancé")
 
         if request_id:
             logs_manager.add_log(
@@ -6313,7 +6313,7 @@ async def analyze_complete_logement_ultra_parallel(input_data: EtapesAnalysisInp
         # ═══════════════════════════════════════════════════════════════
         # STAGE 1: Analyse ultra-parallèle de toutes les pièces
         # ═══════════════════════════════════════════════════════════════
-        logger.info(f"📊 [STAGE 1] Analyse ultra-parallèle de {len(input_data.pieces)} pièces")
+        logger.debug(f"📊 [STAGE 1] Analyse ultra-parallèle de {len(input_data.pieces)} pièces")
 
         pieces_analysis_results = await executor.analyze_pieces_parallel(
             pieces=input_data.pieces,
@@ -6322,12 +6322,12 @@ async def analyze_complete_logement_ultra_parallel(input_data: EtapesAnalysisInp
             request_id=request_id
         )
 
-        logger.info(f"✅ [STAGE 1] {len(pieces_analysis_results)} pièces analysées")
+        logger.debug(f"✅ [STAGE 1] {len(pieces_analysis_results)} pièces analysées")
 
         # ═══════════════════════════════════════════════════════════════
         # STAGE 2: Traitement et analyse ultra-parallèle des étapes
         # ═══════════════════════════════════════════════════════════════
-        logger.info(f"🎯 [STAGE 2] Traitement et analyse ultra-parallèle des étapes")
+        logger.debug(f"🎯 [STAGE 2] Traitement et analyse ultra-parallèle des étapes")
 
         # Préparer toutes les données d'étapes
         etape_to_piece_mapping = {}
@@ -6342,7 +6342,7 @@ async def analyze_complete_logement_ultra_parallel(input_data: EtapesAnalysisInp
 
                 # Skip étapes sans checkout_picture
                 if not etape.checkout_picture or etape.checkout_picture.strip() == "":
-                    logger.info(f"⏭️ Étape {etape.etape_id} skippée: pas de checkout_picture")
+                    logger.debug(f"⏭️ Étape {etape.etape_id} skippée: pas de checkout_picture")
                     continue
 
                 etape_to_piece_mapping[etape.etape_id] = piece.piece_id
@@ -6364,12 +6364,12 @@ async def analyze_complete_logement_ultra_parallel(input_data: EtapesAnalysisInp
         else:
             all_etape_issues = []
 
-        logger.info(f"✅ [STAGE 2] {len(all_etape_issues)} issues d'étapes détectées")
+        logger.debug(f"✅ [STAGE 2] {len(all_etape_issues)} issues d'étapes détectées")
 
         # ═══════════════════════════════════════════════════════════════
         # STAGE 3: Compilation des résultats (identique à version standard)
         # ═══════════════════════════════════════════════════════════════
-        logger.info(f"🔄 [STAGE 3] Compilation des résultats")
+        logger.debug(f"🔄 [STAGE 3] Compilation des résultats")
 
         # Grouper les issues d'étapes par piece_id
         etapes_issues_by_piece = {}
@@ -6423,17 +6423,17 @@ async def analyze_complete_logement_ultra_parallel(input_data: EtapesAnalysisInp
 
         pieces_analysis_results = updated_pieces_analysis
 
-        logger.info(f"📊 [PARALLEL] Compteurs: {total_issues_count} total ({general_issues_count} générales + {etapes_issues_count} étapes)")
+        logger.debug(f"📊 [PARALLEL] Compteurs: {total_issues_count} total ({general_issues_count} générales + {etapes_issues_count} étapes)")
 
         # 🔍 DEBUG: Logger les issues après reconstruction
         logger.debug(f"🔍 DEBUG - Après reconstruction des objets (issues fusionnées):")
         for piece_result in pieces_analysis_results:
-            logger.info(f"   Pièce {piece_result.piece_id}: {len(piece_result.issues)} issues TOTALES (générales + étapes fusionnées)")
+            logger.debug(f"   Pièce {piece_result.piece_id}: {len(piece_result.issues)} issues TOTALES (générales + étapes fusionnées)")
 
         # ═══════════════════════════════════════════════════════════════
         # ÉTAPE 4: Génération de la synthèse globale
         # ═══════════════════════════════════════════════════════════════
-        logger.info(f"🧠 [PARALLEL] ÉTAPE 4 - Génération de la synthèse globale")
+        logger.debug(f"🧠 [PARALLEL] ÉTAPE 4 - Génération de la synthèse globale")
 
         analysis_enrichment = generate_logement_enrichment(
             logement_id=input_data.logement_id,
@@ -6457,12 +6457,12 @@ async def analyze_complete_logement_ultra_parallel(input_data: EtapesAnalysisInp
 
         # Afficher les statistiques de performance
         perf_stats = executor.get_performance_stats()
-        logger.info(f"📊 [ULTRA-PARALLEL] Statistiques de performance:")
-        logger.info(f"   Cache: {perf_stats['cache_stats']}")
-        logger.info(f"   Workers: {perf_stats['config']['max_workers']}")
+        logger.debug(f"📊 [ULTRA-PARALLEL] Statistiques de performance:")
+        logger.debug(f"   Cache: {perf_stats['cache_stats']}")
+        logger.debug(f"   Workers: {perf_stats['config']['max_workers']}")
 
-        logger.info(f"🎉 [ULTRA-PARALLEL] ANALYSE COMPLÈTE terminée pour logement {input_data.logement_id}")
-        logger.info(f"📊 RÉSUMÉ: {total_issues_count} issues totales")
+        logger.debug(f"🎉 [ULTRA-PARALLEL] ANALYSE COMPLÈTE terminée pour logement {input_data.logement_id}")
+        logger.debug(f"📊 RÉSUMÉ: {total_issues_count} issues totales")
         logger.info(f"🏆 NOTE: {analysis_enrichment.global_score.score}/5 - {analysis_enrichment.global_score.label}")
 
         if request_id:
@@ -6498,33 +6498,33 @@ def analyze_complete_logement(input_data: EtapesAnalysisInput) -> CompleteAnalys
         # Récupérer le type de parcours depuis input_data
         parcours_type = input_data.type if hasattr(input_data, 'type') else "Voyageur"
 
-        logger.info(f"🚀 ANALYSE COMPLÈTE démarrée pour le logement {input_data.logement_id} (parcours: {parcours_type})")
+        logger.debug(f"🚀 ANALYSE COMPLÈTE démarrée pour le logement {input_data.logement_id} (parcours: {parcours_type})")
 
         pieces_analysis_results = []
 
         # ÉTAPE 1: Analyse avec classification pour chaque pièce
-        logger.info(f"📊 ÉTAPE 1 - Analyse avec classification pour {len(input_data.pieces)} pièces")
+        logger.debug(f"📊 ÉTAPE 1 - Analyse avec classification pour {len(input_data.pieces)} pièces")
 
         # Utiliser tqdm pour afficher la progression
         for piece in tqdm(input_data.pieces, desc="🏠 Analyse des pièces", unit="pièce", colour='green'):
-            logger.info(f"🔍 Analyse de la pièce {piece.piece_id}: {piece.nom}")
+            logger.debug(f"🔍 Analyse de la pièce {piece.piece_id}: {piece.nom}")
             
             # Filtrer les images invalides avant l'analyse
             valid_checkin_pictures = []
             for pic in piece.checkin_pictures:
                 # 🔍 DEBUG: Logger l'URL originale
-                logger.info(f"🔍 Traitement image checkin - URL originale: '{pic.url}'")
+                logger.debug(f"🔍 Traitement image checkin - URL originale: '{pic.url}'")
 
                 # Normaliser l'URL avant validation
                 normalized_url = normalize_url(pic.url)
-                logger.info(f"🔍 Traitement image checkin - URL normalisée: '{normalized_url}'")
+                logger.debug(f"🔍 Traitement image checkin - URL normalisée: '{normalized_url}'")
 
                 if is_valid_image_url(normalized_url):
                     # Créer un nouveau Picture avec l'URL normalisée
                     from pydantic import BaseModel
                     normalized_pic = Picture(piece_id=pic.piece_id, url=normalized_url)
                     valid_checkin_pictures.append(normalized_pic)
-                    logger.info(f"✅ Image checkin valide ajoutée: {normalized_url}")
+                    logger.debug(f"✅ Image checkin valide ajoutée: {normalized_url}")
                 else:
                     logger.warning(f"⚠️ Image checkin invalide ignorée - URL originale: {pic.url}")
                     logger.warning(f"⚠️ Image checkin invalide ignorée - URL normalisée: {normalized_url}")
@@ -6532,22 +6532,22 @@ def analyze_complete_logement(input_data: EtapesAnalysisInput) -> CompleteAnalys
             valid_checkout_pictures = []
             for pic in piece.checkout_pictures:
                 # 🔍 DEBUG: Logger l'URL originale
-                logger.info(f"🔍 Traitement image checkout - URL originale: '{pic.url}'")
+                logger.debug(f"🔍 Traitement image checkout - URL originale: '{pic.url}'")
 
                 # Normaliser l'URL avant validation
                 normalized_url = normalize_url(pic.url)
-                logger.info(f"🔍 Traitement image checkout - URL normalisée: '{normalized_url}'")
+                logger.debug(f"🔍 Traitement image checkout - URL normalisée: '{normalized_url}'")
 
                 if is_valid_image_url(normalized_url):
                     # Créer un nouveau Picture avec l'URL normalisée
                     normalized_pic = Picture(piece_id=pic.piece_id, url=normalized_url)
                     valid_checkout_pictures.append(normalized_pic)
-                    logger.info(f"✅ Image checkout valide ajoutée: {normalized_url}")
+                    logger.debug(f"✅ Image checkout valide ajoutée: {normalized_url}")
                 else:
                     logger.warning(f"⚠️ Image checkout invalide ignorée - URL originale: {pic.url}")
                     logger.warning(f"⚠️ Image checkout invalide ignorée - URL normalisée: {normalized_url}")
             
-            logger.info(f"📷 Images valides pour pièce {piece.piece_id}: {len(valid_checkin_pictures)} checkin + {len(valid_checkout_pictures)} checkout")
+            logger.debug(f"📷 Images valides pour pièce {piece.piece_id}: {len(valid_checkin_pictures)} checkin + {len(valid_checkout_pictures)} checkout")
             
             # Convertir PieceWithEtapes en InputData pour l'analyse générale avec images filtrées
             input_data_piece = InputData(
@@ -6566,10 +6566,10 @@ def analyze_complete_logement(input_data: EtapesAnalysisInput) -> CompleteAnalys
             piece_analysis = analyze_with_auto_classification(input_data_piece)
             pieces_analysis_results.append(piece_analysis)
             
-            logger.info(f"✅ Pièce {piece.piece_id} analysée: {len(piece_analysis.issues)} issues générales détectées")
+            logger.debug(f"✅ Pièce {piece.piece_id} analysée: {len(piece_analysis.issues)} issues générales détectées")
         
         # ÉTAPE 2: Analyser les étapes et créer un mapping etape_id -> piece_id
-        logger.info(f"🎯 ÉTAPE 2 - Analyse des étapes pour toutes les pièces")
+        logger.debug(f"🎯 ÉTAPE 2 - Analyse des étapes pour toutes les pièces")
         
         # Créer un mapping etape_id -> piece_id pour retrouver facilement la pièce correspondante
         etape_to_piece_mapping = {}
@@ -6598,10 +6598,10 @@ def analyze_complete_logement(input_data: EtapesAnalysisInput) -> CompleteAnalys
                 )
                 etapes_issues_by_piece[piece_id].append(probleme)
         
-        logger.info(f"✅ Analyse des étapes terminée: {len(etapes_analysis.preliminary_issues)} issues d'étapes détectées")
+        logger.debug(f"✅ Analyse des étapes terminée: {len(etapes_analysis.preliminary_issues)} issues d'étapes détectées")
         
         # ÉTAPE 3: Ajouter les issues d'étapes aux pièces correspondantes
-        logger.info(f"🔄 ÉTAPE 3 - Ajout des issues d'étapes aux pièces correspondantes")
+        logger.debug(f"🔄 ÉTAPE 3 - Ajout des issues d'étapes aux pièces correspondantes")
         
         # 🛡️ VÉRIFICATIONS SCRUPULEUSES AVANT CALCUL
         if not pieces_analysis_results:
@@ -6612,7 +6612,7 @@ def analyze_complete_logement(input_data: EtapesAnalysisInput) -> CompleteAnalys
             logger.error("❌ ERREUR CRITIQUE: etapes_analysis est None!")
             raise ValueError("Analyse des étapes manquante")
 
-        logger.info(f"✅ Vérifications préliminaires: {len(pieces_analysis_results)} pièces + {len(etapes_analysis.preliminary_issues)} issues d'étapes")
+        logger.debug(f"✅ Vérifications préliminaires: {len(pieces_analysis_results)} pièces + {len(etapes_analysis.preliminary_issues)} issues d'étapes")
         
         total_issues_count = 0
         general_issues_count = 0
@@ -6635,33 +6635,33 @@ def analyze_complete_logement(input_data: EtapesAnalysisInput) -> CompleteAnalys
             issues_avant_etapes = len(piece_analysis.issues)
             general_issues_count += issues_avant_etapes
             
-            logger.info(f"📊 Pièce {i+1}/{len(pieces_analysis_results)} ({piece_id}): {issues_avant_etapes} issues générales")
+            logger.debug(f"📊 Pièce {i+1}/{len(pieces_analysis_results)} ({piece_id}): {issues_avant_etapes} issues générales")
             
             # Ajouter les issues d'étapes à cette pièce si elle en a
             if piece_id in etapes_issues_by_piece:
                 issues_etapes_ajoutees = len(etapes_issues_by_piece[piece_id])
                 piece_analysis.issues.extend(etapes_issues_by_piece[piece_id])
-                logger.info(f"   🔗 Ajouté {issues_etapes_ajoutees} issues d'étapes à la pièce {piece_id}")
+                logger.debug(f"   🔗 Ajouté {issues_etapes_ajoutees} issues d'étapes à la pièce {piece_id}")
             else:
-                logger.info(f"   ℹ️ Aucune issue d'étape pour la pièce {piece_id}")
+                logger.debug(f"   ℹ️ Aucune issue d'étape pour la pièce {piece_id}")
             
             # Compter le total des issues APRÈS ajout des étapes
             issues_apres_etapes = len(piece_analysis.issues)
             total_issues_count += issues_apres_etapes
             
-            logger.info(f"   📈 Total final pour pièce {piece_id}: {issues_apres_etapes} issues")
+            logger.debug(f"   📈 Total final pour pièce {piece_id}: {issues_apres_etapes} issues")
 
         # 🛡️ VÉRIFICATIONS FINALES AVANT TRANSMISSION
-        logger.info(f"📊 ÉTAPE 4 - Compilation et vérifications des résultats finaux")
+        logger.debug(f"📊 ÉTAPE 4 - Compilation et vérifications des résultats finaux")
         
         # Calculs de vérification
         verification_total = general_issues_count + etapes_issues_count
         
-        logger.info(f"🔍 VÉRIFICATIONS COMPTEURS:")
-        logger.info(f"   📋 Issues générales: {general_issues_count}")
-        logger.info(f"   🎯 Issues d'étapes: {etapes_issues_count}")
-        logger.info(f"   📊 Total calculé: {total_issues_count}")
-        logger.info(f"   🧮 Vérification: {general_issues_count} + {etapes_issues_count} = {verification_total}")
+        logger.debug(f"🔍 VÉRIFICATIONS COMPTEURS:")
+        logger.debug(f"   📋 Issues générales: {general_issues_count}")
+        logger.debug(f"   🎯 Issues d'étapes: {etapes_issues_count}")
+        logger.debug(f"   📊 Total calculé: {total_issues_count}")
+        logger.debug(f"   🧮 Vérification: {general_issues_count} + {etapes_issues_count} = {verification_total}")
         
         # ⚠️ ALERTE si les compteurs ne correspondent pas
         if total_issues_count != verification_total:
@@ -6690,7 +6690,7 @@ def analyze_complete_logement(input_data: EtapesAnalysisInput) -> CompleteAnalys
                 logger.info("✅ Confirmation: Aucune issue réelle détectée")
 
         # 🛡️ VALIDATION DES DONNÉES AVANT TRANSMISSION À L'IA
-        logger.info(f"🧠 ÉTAPE 5 - Génération de la synthèse globale via IA")
+        logger.debug(f"🧠 ÉTAPE 5 - Génération de la synthèse globale via IA")
         
         # Vérifier que nous avons des données valides
         if not pieces_analysis_results:
@@ -6703,12 +6703,12 @@ def analyze_complete_logement(input_data: EtapesAnalysisInput) -> CompleteAnalys
             raise ValueError("logement_id manquant pour la synthèse")
         
         # 📊 LOG FINAL AVANT TRANSMISSION
-        logger.info(f"🚀 TRANSMISSION À L'IA DE SYNTHÈSE:")
-        logger.info(f"   🏠 Logement ID: {input_data.logement_id}")
-        logger.info(f"   🏘️ Nombre de pièces: {len(pieces_analysis_results)}")
-        logger.info(f"   📊 Total issues: {total_issues_count}")
-        logger.info(f"   📋 Issues générales: {general_issues_count}")
-        logger.info(f"   🎯 Issues étapes: {etapes_issues_count}")
+        logger.debug(f"🚀 TRANSMISSION À L'IA DE SYNTHÈSE:")
+        logger.debug(f"   🏠 Logement ID: {input_data.logement_id}")
+        logger.debug(f"   🏘️ Nombre de pièces: {len(pieces_analysis_results)}")
+        logger.debug(f"   📊 Total issues: {total_issues_count}")
+        logger.debug(f"   📋 Issues générales: {general_issues_count}")
+        logger.debug(f"   🎯 Issues étapes: {etapes_issues_count}")
         
         # ✅ APPEL SÉCURISÉ À L'IA DE SYNTHÈSE
         try:
@@ -6733,10 +6733,10 @@ def analyze_complete_logement(input_data: EtapesAnalysisInput) -> CompleteAnalys
             
             # ✅ ACCEPTATION DU SCORE DE L'IA BASÉ SUR SON RESSENTI GÉNÉRAL
             note_finale = analysis_enrichment.global_score.score
-            logger.info(f"🎯 Score basé sur le ressenti de l'IA: {note_finale}/5 ({analysis_enrichment.global_score.label})")
+            logger.debug(f"🎯 Score basé sur le ressenti de l'IA: {note_finale}/5 ({analysis_enrichment.global_score.label})")
             
-            logger.info(f"✅ Enrichissement généré avec succès")
-            logger.info(f"   🏆 Note finale: {analysis_enrichment.global_score.score}/5 - {analysis_enrichment.global_score.label}")
+            logger.debug(f"✅ Enrichissement généré avec succès")
+            logger.debug(f"   🏆 Note finale: {analysis_enrichment.global_score.score}/5 - {analysis_enrichment.global_score.label}")
             
         except Exception as enrichment_error:
             logger.error(f"❌ ERREUR LORS DE L'ENRICHISSEMENT: {enrichment_error}")
@@ -6753,8 +6753,8 @@ def analyze_complete_logement(input_data: EtapesAnalysisInput) -> CompleteAnalys
             analysis_enrichment=analysis_enrichment
         )
         
-        logger.info(f"🎉 ANALYSE COMPLÈTE terminée pour le logement {input_data.logement_id}")
-        logger.info(f"📊 RÉSUMÉ FINAL: {total_issues_count} issues totales ({general_issues_count} générales + {etapes_issues_count} étapes)")
+        logger.debug(f"🎉 ANALYSE COMPLÈTE terminée pour le logement {input_data.logement_id}")
+        logger.debug(f"📊 RÉSUMÉ FINAL: {total_issues_count} issues totales ({general_issues_count} générales + {etapes_issues_count} étapes)")
         logger.info(f"🏆 NOTE GLOBALE VALIDÉE: {analysis_enrichment.global_score.score}/5 - {analysis_enrichment.global_score.label}")
         
         return complete_result
@@ -6899,7 +6899,7 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
         message=f"🚀 Analyse complète démarrée pour le logement {input_data.logement_id}"
     )
 
-    logger.info(f"🚀 Analyse complète démarrée pour le logement {input_data.logement_id}")
+    logger.debug(f"🚀 Analyse complète démarrée pour le logement {input_data.logement_id}")
 
     try:
         # 1. Effectuer l'analyse complète PARALLÉLISÉE ⚡
@@ -6917,7 +6917,7 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
                 level="INFO",
                 message=f"🚀 Utilisation de la version ULTRA-PARALLÉLISÉE avec cache avancé"
             )
-            logger.info(f"🚀 Utilisation de la version ULTRA-PARALLÉLISÉE avec cache avancé")
+            logger.debug(f"🚀 Utilisation de la version ULTRA-PARALLÉLISÉE avec cache avancé")
             result = await analyze_complete_logement_ultra_parallel(input_data, request_id=request_id)
         else:
             logs_manager.add_log(
@@ -6925,7 +6925,7 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
                 level="INFO",
                 message=f"⚡ Utilisation de la version PARALLÉLISÉE standard"
             )
-            logger.info(f"⚡ Utilisation de la version PARALLÉLISÉE standard")
+            logger.debug(f"⚡ Utilisation de la version PARALLÉLISÉE standard")
             result = await analyze_complete_logement_parallel(input_data, request_id=request_id)
 
         logs_manager.complete_step(
@@ -6944,13 +6944,13 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
             message=f"🎯 Analyse complète terminée: {result.total_issues_count} issues totales"
         )
 
-        logger.info(f"🎯 Analyse complète terminée pour le logement {input_data.logement_id}")
-        logger.info(f"📊 Total: {result.total_issues_count} issues ({result.general_issues_count} générales + {result.etapes_issues_count} étapes)")
+        logger.debug(f"🎯 Analyse complète terminée pour le logement {input_data.logement_id}")
+        logger.debug(f"📊 Total: {result.total_issues_count} issues ({result.general_issues_count} générales + {result.etapes_issues_count} étapes)")
 
         # 1.5. Transformer vers le format individual-report-data-model.json (AVANT les webhooks)
-        logger.info(f"🔄 Transformation vers format individual-report pour logement {input_data.logement_id}")
+        logger.debug(f"🔄 Transformation vers format individual-report pour logement {input_data.logement_id}")
         webhook_payload_individual = transform_to_individual_report(result, input_data)
-        logger.info(f"✅ Transformation terminée - Payload individual-report généré")
+        logger.debug(f"✅ Transformation terminée - Payload individual-report généré")
 
         # 2. Envoyer les DEUX webhooks de manière asynchrone (ne fait pas échouer la réponse)
         step_webhook = logs_manager.add_step(
@@ -6970,9 +6970,9 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
             webhook_payload_current = result.model_dump()
 
             # Envoyer les deux webhooks EN PARALLÈLE pour optimiser les performances
-            logger.info(f"🔗 Envoi de 2 webhooks pour logement {input_data.logement_id} vers {environment}")
-            logger.info(f"   📤 Webhook 1 (actuel): {webhook_url_current}")
-            logger.info(f"   📤 Webhook 2 (individual-report): {webhook_url_individual}")
+            logger.debug(f"🔗 Envoi de 2 webhooks pour logement {input_data.logement_id} vers {environment}")
+            logger.debug(f"   📤 Webhook 1 (actuel): {webhook_url_current}")
+            logger.debug(f"   📤 Webhook 2 (individual-report): {webhook_url_individual}")
 
             # Utiliser asyncio.gather pour envoyer les deux webhooks simultanément
             webhook_results = await asyncio.gather(
@@ -6987,14 +6987,14 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
 
             # Logger les résultats
             if webhook_current_success:
-                logger.info(f"✅ Webhook actuel envoyé avec succès pour logement {input_data.logement_id}")
+                logger.debug(f"✅ Webhook actuel envoyé avec succès pour logement {input_data.logement_id}")
             else:
                 logger.warning(f"⚠️ Échec webhook actuel pour logement {input_data.logement_id}")
                 if isinstance(webhook_results[0], Exception):
                     logger.error(f"   Erreur: {webhook_results[0]}")
 
             if webhook_individual_success:
-                logger.info(f"✅ Webhook individual-report envoyé avec succès pour logement {input_data.logement_id}")
+                logger.debug(f"✅ Webhook individual-report envoyé avec succès pour logement {input_data.logement_id}")
             else:
                 logger.warning(f"⚠️ Échec webhook individual-report pour logement {input_data.logement_id}")
                 if isinstance(webhook_results[1], Exception):
@@ -7002,7 +7002,7 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
 
             # Résumé
             success_count = sum([webhook_current_success, webhook_individual_success])
-            logger.info(f"📊 Résumé webhooks: {success_count}/2 envoyés avec succès")
+            logger.debug(f"📊 Résumé webhooks: {success_count}/2 envoyés avec succès")
 
             logs_manager.add_log(
                 request_id=request_id,
@@ -7152,7 +7152,7 @@ async def websocket_logs(websocket: WebSocket):
     """WebSocket pour diffuser les logs en temps réel"""
     try:
         await websocket.accept()
-        logger.info(f"✅ WebSocket accepté depuis {websocket.client}")
+        logger.debug(f"✅ WebSocket accepté depuis {websocket.client}")
         await logs_manager.register_client(websocket)
 
         try:
@@ -7312,7 +7312,7 @@ def save_room_templates(templates_data, parcours_type: str = "Voyageur"):
         with open(target_path, 'w', encoding='utf-8') as f:
             json.dump(templates_data, f, indent=2, ensure_ascii=False)
 
-        logger.info(f"✅ Templates {parcours_type} sauvegardés dans le fichier: {target_path}")
+        logger.debug(f"✅ Templates {parcours_type} sauvegardés dans le fichier: {target_path}")
         success_local = True
 
     except Exception as e:
@@ -7326,7 +7326,7 @@ def save_room_templates(templates_data, parcours_type: str = "Voyageur"):
         # Pour une vraie persistence, il faudrait utiliser l'API Railway ou une DB
         os.environ[env_var_name] = templates_json
 
-        logger.info(f"✅ Templates {parcours_type} mis à jour dans les variables d'environnement ({env_var_name})")
+        logger.debug(f"✅ Templates {parcours_type} mis à jour dans les variables d'environnement ({env_var_name})")
         success_env = True
 
         # 🔥 IMPORTANT: Informer l'utilisateur pour Railway
@@ -7339,12 +7339,12 @@ def save_room_templates(templates_data, parcours_type: str = "Voyageur"):
 
     # Logs de vérification
     if success_local or success_env:
-        logger.info(f"🔥 Templates {parcours_type} mis à jour - Modifications IMMÉDIATEMENT effectives!")
+        logger.debug(f"🔥 Templates {parcours_type} mis à jour - Modifications IMMÉDIATEMENT effectives!")
 
         if "room_types" in templates_data:
             for room_key, room_info in templates_data["room_types"].items():
                 points_ignorables = room_info.get("verifications", {}).get("points_ignorables", [])
-                logger.info(f"   📝 {room_key}: {len(points_ignorables)} points ignorables en mémoire")
+                logger.debug(f"   📝 {room_key}: {len(points_ignorables)} points ignorables en mémoire")
 
     # Succès si au moins une méthode a fonctionné
     return success_local or success_env
@@ -7560,7 +7560,7 @@ async def reload_room_templates():
         for room_key, room_info in ROOM_TEMPLATES.get("room_types", {}).items():
             points_ignorables = room_info.get("verifications", {}).get("points_ignorables", [])
             total_ignorables += len(points_ignorables)
-            logger.info(f"   📝 {room_key}: {len(points_ignorables)} points ignorables")
+            logger.debug(f"   📝 {room_key}: {len(points_ignorables)} points ignorables")
         
         return {
             "success": True,
@@ -7672,52 +7672,52 @@ def load_prompts_config(parcours_type: str = "Voyageur"):
         prompts_config_env = os.environ.get(env_var_name)
         if prompts_config_env:
             try:
-                logger.info(f"📡 Chargement de la config prompts depuis la variable d'environnement {env_var_name}")
+                logger.debug(f"📡 Chargement de la config prompts depuis la variable d'environnement {env_var_name}")
                 config = json.loads(prompts_config_env)
-                logger.info(f"✅ Config prompts {parcours_type} chargée depuis variable d'environnement")
+                logger.debug(f"✅ Config prompts {parcours_type} chargée depuis variable d'environnement")
                 
                 # 🔴🔴🔴 DEBUG PROMPTS LOADING FROM ENV - TRÈS VISIBLE 🔴🔴🔴
-                logger.info("")
-                logger.info("=" * 100)
-                logger.info("🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣")
-                logger.info("🟡🟡🟡  DEBUG CHARGEMENT PROMPTS DEPUIS RAILWAY ENV  🟡🟡🟡")
-                logger.info("🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣")
-                logger.info("=" * 100)
-                logger.info(f"📂 SOURCE: VARIABLE D'ENVIRONNEMENT RAILWAY")
-                logger.info(f"🔑 VARIABLE: {env_var_name}")
-                logger.info(f"🧳 TYPE PARCOURS: {parcours_type}")
+                logger.debug("")
+                logger.debug("=" * 100)
+                logger.debug("🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣")
+                logger.debug("🟡🟡🟡  DEBUG CHARGEMENT PROMPTS DEPUIS RAILWAY ENV  🟡🟡🟡")
+                logger.debug("🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣")
+                logger.debug("=" * 100)
+                logger.debug(f"📂 SOURCE: VARIABLE D'ENVIRONNEMENT RAILWAY")
+                logger.debug(f"🔑 VARIABLE: {env_var_name}")
+                logger.debug(f"🧳 TYPE PARCOURS: {parcours_type}")
                 logger.info(f"📅 VERSION: {config.get('version', 'N/A')}")
                 logger.info(f"📅 DERNIÈRE MAJ: {config.get('last_updated', 'N/A')}")
                 logger.info(f"📝 DESCRIPTION: {config.get('description', 'N/A')}")
-                logger.info("-" * 100)
+                logger.debug("-" * 100)
                 
                 # Afficher le contenu du prompt analyze_main
                 analyze_main = config.get('prompts', {}).get('analyze_main', {})
                 if analyze_main:
-                    logger.info("🎯 PROMPT PRINCIPAL (analyze_main):")
-                    logger.info(f"   📌 Nom: {analyze_main.get('name', 'N/A')}")
-                    logger.info(f"   📌 Endpoint: {analyze_main.get('endpoint', 'N/A')}")
-                    logger.info(f"   📌 Variables: {analyze_main.get('variables', [])}")
-                    logger.info("-" * 100)
-                    logger.info("📜 CONTENU DES SECTIONS:")
+                    logger.debug("🎯 PROMPT PRINCIPAL (analyze_main):")
+                    logger.debug(f"   📌 Nom: {analyze_main.get('name', 'N/A')}")
+                    logger.debug(f"   📌 Endpoint: {analyze_main.get('endpoint', 'N/A')}")
+                    logger.debug(f"   📌 Variables: {analyze_main.get('variables', [])}")
+                    logger.debug("-" * 100)
+                    logger.debug("📜 CONTENU DES SECTIONS:")
                     
                     sections = analyze_main.get('sections', {})
                     for section_name, section_content in sections.items():
                         if section_content and len(str(section_content)) > 10:
-                            logger.info(f"")
-                            logger.info(f"   🔶 SECTION [{section_name}]:")
-                            logger.info(f"   {'─' * 80}")
+                            logger.debug(f"")
+                            logger.debug(f"   🔶 SECTION [{section_name}]:")
+                            logger.debug(f"   {'─' * 80}")
                             content_lines = str(section_content).split('\n')
                             for i, line in enumerate(content_lines[:100]):
-                                logger.info(f"   {i+1:3d} | {line}")
+                                logger.debug(f"   {i+1:3d} | {line}")
                             if len(content_lines) > 100:
-                                logger.info(f"   ... [{len(content_lines) - 100} lignes supplémentaires tronquées]")
-                            logger.info(f"   {'─' * 80}")
+                                logger.debug(f"   ... [{len(content_lines) - 100} lignes supplémentaires tronquées]")
+                            logger.debug(f"   {'─' * 80}")
                 
-                logger.info("=" * 100)
-                logger.info("🟣🟣🟣  FIN DEBUG CHARGEMENT PROMPTS RAILWAY ENV  🟣🟣🟣")
-                logger.info("=" * 100)
-                logger.info("")
+                logger.debug("=" * 100)
+                logger.debug("🟣🟣🟣  FIN DEBUG CHARGEMENT PROMPTS RAILWAY ENV  🟣🟣🟣")
+                logger.debug("=" * 100)
+                logger.debug("")
                 # 🔴🔴🔴 FIN DEBUG 🔴🔴🔴
                 
                 return config
@@ -7733,54 +7733,54 @@ def load_prompts_config(parcours_type: str = "Voyageur"):
 
         for path in possible_paths:
             if os.path.exists(path):
-                logger.info(f"📁 Chargement de la config prompts depuis le fichier: {path}")
+                logger.debug(f"📁 Chargement de la config prompts depuis le fichier: {path}")
                 with open(path, 'r', encoding='utf-8') as f:
                     config = json.load(f)
-                logger.info(f"✅ Config prompts {parcours_type} chargée depuis fichier: {config.get('description', 'N/A')}")
+                logger.debug(f"✅ Config prompts {parcours_type} chargée depuis fichier: {config.get('description', 'N/A')}")
                 
                 # 🔴🔴🔴 DEBUG PROMPTS LOADING - TRÈS VISIBLE 🔴🔴🔴
-                logger.info("")
-                logger.info("=" * 100)
-                logger.info("🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
-                logger.info("🟡🟡🟡  DEBUG CHARGEMENT PROMPTS - CONTENU COMPLET  🟡🟡🟡")
-                logger.info("🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
-                logger.info("=" * 100)
-                logger.info(f"📂 SOURCE: FICHIER LOCAL")
-                logger.info(f"📁 CHEMIN: {path}")
-                logger.info(f"🧳 TYPE PARCOURS: {parcours_type}")
+                logger.debug("")
+                logger.debug("=" * 100)
+                logger.debug("🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
+                logger.debug("🟡🟡🟡  DEBUG CHARGEMENT PROMPTS - CONTENU COMPLET  🟡🟡🟡")
+                logger.debug("🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
+                logger.debug("=" * 100)
+                logger.debug(f"📂 SOURCE: FICHIER LOCAL")
+                logger.debug(f"📁 CHEMIN: {path}")
+                logger.debug(f"🧳 TYPE PARCOURS: {parcours_type}")
                 logger.info(f"📅 VERSION: {config.get('version', 'N/A')}")
                 logger.info(f"📅 DERNIÈRE MAJ: {config.get('last_updated', 'N/A')}")
                 logger.info(f"📝 DESCRIPTION: {config.get('description', 'N/A')}")
-                logger.info("-" * 100)
+                logger.debug("-" * 100)
                 
                 # Afficher le contenu du prompt analyze_main (le plus important)
                 analyze_main = config.get('prompts', {}).get('analyze_main', {})
                 if analyze_main:
-                    logger.info("🎯 PROMPT PRINCIPAL (analyze_main):")
-                    logger.info(f"   📌 Nom: {analyze_main.get('name', 'N/A')}")
-                    logger.info(f"   📌 Endpoint: {analyze_main.get('endpoint', 'N/A')}")
-                    logger.info(f"   📌 Variables: {analyze_main.get('variables', [])}")
-                    logger.info("-" * 100)
-                    logger.info("📜 CONTENU DES SECTIONS:")
+                    logger.debug("🎯 PROMPT PRINCIPAL (analyze_main):")
+                    logger.debug(f"   📌 Nom: {analyze_main.get('name', 'N/A')}")
+                    logger.debug(f"   📌 Endpoint: {analyze_main.get('endpoint', 'N/A')}")
+                    logger.debug(f"   📌 Variables: {analyze_main.get('variables', [])}")
+                    logger.debug("-" * 100)
+                    logger.debug("📜 CONTENU DES SECTIONS:")
                     
                     sections = analyze_main.get('sections', {})
                     for section_name, section_content in sections.items():
                         if section_content and len(str(section_content)) > 10:  # Ignorer les sections vides
-                            logger.info(f"")
-                            logger.info(f"   🔶 SECTION [{section_name}]:")
-                            logger.info(f"   {'─' * 80}")
+                            logger.debug(f"")
+                            logger.debug(f"   🔶 SECTION [{section_name}]:")
+                            logger.debug(f"   {'─' * 80}")
                             # Afficher le contenu ligne par ligne pour la lisibilité
                             content_lines = str(section_content).split('\n')
                             for i, line in enumerate(content_lines[:100]):  # Limiter à 100 lignes par section
-                                logger.info(f"   {i+1:3d} | {line}")
+                                logger.debug(f"   {i+1:3d} | {line}")
                             if len(content_lines) > 100:
-                                logger.info(f"   ... [{len(content_lines) - 100} lignes supplémentaires tronquées]")
-                            logger.info(f"   {'─' * 80}")
+                                logger.debug(f"   ... [{len(content_lines) - 100} lignes supplémentaires tronquées]")
+                            logger.debug(f"   {'─' * 80}")
                 
-                logger.info("=" * 100)
-                logger.info("🔴🔴🔴  FIN DEBUG CHARGEMENT PROMPTS  🔴🔴🔴")
-                logger.info("=" * 100)
-                logger.info("")
+                logger.debug("=" * 100)
+                logger.debug("🔴🔴🔴  FIN DEBUG CHARGEMENT PROMPTS  🔴🔴🔴")
+                logger.debug("=" * 100)
+                logger.debug("")
                 # 🔴🔴🔴 FIN DEBUG 🔴🔴🔴
                 
                 return config
@@ -7966,7 +7966,7 @@ def save_prompts_config(config_data, parcours_type: str = "Voyageur"):
         with open(target_path, 'w', encoding='utf-8') as f:
             json.dump(config_data, f, indent=2, ensure_ascii=False)
 
-        logger.info(f"✅ Config prompts {parcours_type} sauvegardée dans le fichier: {target_path}")
+        logger.debug(f"✅ Config prompts {parcours_type} sauvegardée dans le fichier: {target_path}")
         success_local = True
 
     except Exception as e:
@@ -7979,7 +7979,7 @@ def save_prompts_config(config_data, parcours_type: str = "Voyageur"):
         # Note: En production Railway, cette mise à jour nécessitera un redémarrage
         os.environ[env_var_name] = config_json
 
-        logger.info(f"✅ Config prompts {parcours_type} mise à jour dans les variables d'environnement ({env_var_name})")
+        logger.debug(f"✅ Config prompts {parcours_type} mise à jour dans les variables d'environnement ({env_var_name})")
         success_env = True
 
         # 🔥 IMPORTANT: Informer l'utilisateur pour Railway
@@ -8154,7 +8154,7 @@ def build_full_prompt_from_config(prompt_config: dict, variables: dict) -> str:
 
     sections = prompt_config.get("sections", {})
 
-    logger.info(f"🏗️ Sections disponibles: {list(sections.keys())}")
+    logger.debug(f"🏗️ Sections disponibles: {list(sections.keys())}")
 
     for section_key, content in sections.items():
         # 🔥 CORRECTION CRITIQUE: Remplacer les variables dans TOUTES les sections
@@ -8163,7 +8163,7 @@ def build_full_prompt_from_config(prompt_config: dict, variables: dict) -> str:
 
         # Log pour vérifier si instructions_finales est bien incluse
         if section_key == "instructions_finales" and content:
-            logger.info(f"✅ Section instructions_finales trouvée: {len(content)} caractères")
+            logger.debug(f"✅ Section instructions_finales trouvée: {len(content)} caractères")
             logger.info(f"📝 Contenu: {content[:200]}...")
 
         full_prompt += section_content + "\n\n"
@@ -8181,14 +8181,15 @@ def build_full_prompt_from_config(prompt_config: dict, variables: dict) -> str:
             full_prompt = replace_variables_in_template(config_str, variables)
     
     final_prompt = full_prompt.strip()
-    
-    # Vérification finale des variables non remplacées
+
+    # Vérification finale des variables non remplacées (seulement les vraies variables template)
     import re
-    variables_restantes = re.findall(r'\{[^}]+\}', final_prompt)
-    if variables_restantes:
-        logger.error(f"🏗️ Variables non remplacées: {variables_restantes}")
-    
-    logger.info(f"🏗️ Prompt construit: {len(final_prompt)} caractères, {len(sections)} sections")
+    # Pattern pour les vraies variables template: {VARIABLE_NAME} en majuscules avec underscores
+    vraies_variables = re.findall(r'\{[A-Z][A-Z0-9_]+\}', final_prompt)
+    if vraies_variables:
+        logger.warning(f"🏗️ Variables template non remplacées: {vraies_variables}")
+
+    logger.debug(f"🏗️ Prompt construit: {len(final_prompt)} caractères, {len(sections)} sections")
     
     return final_prompt
 
@@ -8277,14 +8278,14 @@ async def save_scoring_config_endpoint(request: Request, type: str = "Voyageur")
         backup_path = f"front/scoring-config{file_suffix}.backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         if os.path.exists(config_path):
             shutil.copy(config_path, backup_path)
-            logger.info(f"✅ Backup créé : {backup_path}")
+            logger.debug(f"✅ Backup créé : {backup_path}")
 
         # Sauvegarder la nouvelle configuration
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(new_config, f, indent=2, ensure_ascii=False)
 
-        logger.info(f"✅ Configuration du scoring {type} sauvegardée avec succès dans {config_path}")
-        logger.info(f"📊 Dernière mise à jour : {new_config.get('last_updated', 'N/A')}")
+        logger.debug(f"✅ Configuration du scoring {type} sauvegardée avec succès dans {config_path}")
+        logger.debug(f"📊 Dernière mise à jour : {new_config.get('last_updated', 'N/A')}")
 
         return {"success": True, "message": "Configuration sauvegardée avec succès"}
     except Exception as e:
@@ -8377,13 +8378,13 @@ async def reset_scoring_config_endpoint(type: str = "Voyageur"):
         backup_path = f"front/scoring-config{file_suffix}.backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         if os.path.exists(config_path):
             shutil.copy(config_path, backup_path)
-            logger.info(f"✅ Backup créé avant réinitialisation : {backup_path}")
+            logger.debug(f"✅ Backup créé avant réinitialisation : {backup_path}")
 
         # Sauvegarder la configuration par défaut
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(default_config, f, indent=2, ensure_ascii=False)
 
-        logger.info(f"✅ Configuration du scoring {type} réinitialisée aux valeurs par défaut dans {config_path}")
+        logger.debug(f"✅ Configuration du scoring {type} réinitialisée aux valeurs par défaut dans {config_path}")
 
         return {"success": True, "message": "Configuration réinitialisée", "config": default_config}
     except Exception as e:
@@ -8488,7 +8489,7 @@ def load_scoring_config(parcours_type: str = "Voyageur") -> dict:
         with open(config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
 
-        logger.info(f"✅ Configuration scoring {parcours_type} chargée depuis {config_path}")
+        logger.debug(f"✅ Configuration scoring {parcours_type} chargée depuis {config_path}")
         return config
 
     except Exception as e:
@@ -8607,17 +8608,17 @@ def map_room_type_to_valid(detected_type: str) -> str:
     # Chercher d'abord une correspondance exacte
     if normalized in mapping:
         mapped_type = mapping[normalized]
-        logger.info(f"🗺️ Type mappé: '{detected_type}' → '{mapped_type}'")
+        logger.debug(f"🗺️ Type mappé: '{detected_type}' → '{mapped_type}'")
         return mapped_type
     
     # Si pas de mapping direct, chercher des mots-clés
     for variant, valid_type in mapping.items():
         if variant in normalized or normalized in variant:
-            logger.info(f"🗺️ Type mappé par mots-clés: '{detected_type}' → '{valid_type}'")
+            logger.debug(f"🗺️ Type mappé par mots-clés: '{detected_type}' → '{valid_type}'")
             return valid_type
     
     # Si aucun mapping trouvé, retourner le type original
-    logger.info(f"🗺️ Aucun mapping trouvé pour '{detected_type}', utilisation directe")
+    logger.debug(f"🗺️ Aucun mapping trouvé pour '{detected_type}', utilisation directe")
     return normalized
 
 if __name__ == "__main__":

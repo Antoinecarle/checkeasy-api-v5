@@ -353,6 +353,21 @@
           "trace sur le sol"
         ]
       }
+    },
+    "boite_a_cle": {
+      "name": "Boite à clé",
+      "icon": "🔑",
+      "verifications": {
+        "elements_critiques": [
+          "La clé"
+        ],
+        "points_ignorables": [
+          "Position de la clé dans la boite à clé"
+        ],
+        "defauts_frequents": [
+          "Manque la clé"
+        ]
+      }
     }
   }
 }

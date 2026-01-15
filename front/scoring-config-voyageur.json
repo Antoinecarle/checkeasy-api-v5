@@ -17,7 +17,7 @@
       "positioning": 0.5,
       "added_item": 0.4,
       "image_quality": 0.2,
-      "wrong_room": 2
+      "wrong_room": 10
     },
     "room_importance_weight": {
       "description": "Poids d'importance par type de pièce (pour la moyenne pondérée)",
@@ -38,60 +38,129 @@
       "value": 0.6
     },
     "grade_thresholds": {
-      "description": "Seuils de conversion du score moyen pondéré en note /5",
+      "description": "Seuils de conversion du score moyen pondéré en note /5 - MODE VOYAGEUR: STRICT MAIS TOLÉRANT (seuils réduits ~÷2.5)",
       "thresholds": [
         {
           "grade": 5,
           "label": "EXCELLENT",
           "max_score": 0,
-          "description": "Aucune issue détectée"
+          "description": "Aucune issue détectée - État impeccable"
         },
         {
           "grade": 4.8,
           "label": "EXCELLENT",
-          "max_score": 5.8,
+          "max_score": 2,
+          "description": "1 détail très mineur (ex: positioning/low) - Quasi parfait"
+        },
+        {
+          "grade": 4.5,
+          "label": "TRÈS BON",
+          "max_score": 5,
+          "description": "1-2 détails mineurs - Très bon état"
+        },
+        {
+          "grade": 4,
+          "label": "BON",
+          "max_score": 10,
+          "description": "Quelques problèmes mineurs - Bon état"
+        },
+        {
+          "grade": 3.5,
+          "label": "CORRECT",
+          "max_score": 15,
+          "description": "Plusieurs problèmes - État correct"
+        },
+        {
+          "grade": 3,
+          "label": "MOYEN",
+          "max_score": 22,
+          "description": "Nombreux problèmes - État moyen"
+        },
+        {
+          "grade": 2.5,
+          "label": "PASSABLE",
+          "max_score": 35,
+          "description": "Problèmes importants - État passable"
+        },
+        {
+          "grade": 2,
+          "label": "INSUFFISANT",
+          "max_score": 50,
+          "description": "Problèmes graves - État insuffisant"
+        },
+        {
+          "grade": 1.5,
+          "label": "MAUVAIS",
+          "max_score": 70,
+          "description": "Problèmes très graves - Mauvais état"
+        },
+        {
+          "grade": 1,
+          "label": "CRITIQUE",
+          "max_score": 999999,
+          "description": "Problèmes critiques généralisés - État critique"
+        }
+      ]
+    },
+    "confidence_threshold": {
+      "description": "Seuil de confiance minimum pour qu'une issue soit prise en compte dans le calcul",
+      "value": 90
+    },
+    "category_grade_thresholds": {
+      "description": "Seuils de conversion pour les sous-notes (score moyen par pièce concernée). Ces seuils sont ajustés car les sous-notes sont calculées par catégorie et normalisées par le nombre de pièces affectées.",
+      "thresholds": [
+        {
+          "grade": 5,
+          "label": "EXCELLENT",
+          "max_score": 0,
+          "description": "Aucune issue détectée dans cette catégorie"
+        },
+        {
+          "grade": 4.8,
+          "label": "EXCELLENT",
+          "max_score": 2,
           "description": "Quelques détails très mineurs"
         },
         {
           "grade": 4.5,
           "label": "TRÈS BON",
-          "max_score": 10,
-          "description": "Quelques détails mineurs par pièce"
+          "max_score": 4,
+          "description": "Quelques détails mineurs"
         },
         {
           "grade": 4,
           "label": "BON",
-          "max_score": 20,
-          "description": "Quelques problèmes par pièce"
+          "max_score": 8,
+          "description": "Quelques problèmes"
         },
         {
           "grade": 3.5,
           "label": "CORRECT",
-          "max_score": 25,
-          "description": "Plusieurs problèmes par pièce"
+          "max_score": 12,
+          "description": "Plusieurs problèmes"
         },
         {
           "grade": 3,
           "label": "MOYEN",
-          "max_score": 40,
-          "description": "Nombreux problèmes par pièce"
+          "max_score": 18,
+          "description": "Nombreux problèmes"
         },
         {
           "grade": 2.5,
           "label": "PASSABLE",
-          "max_score": 55,
+          "max_score": 25,
           "description": "Problèmes importants"
         },
         {
           "grade": 2,
           "label": "INSUFFISANT",
-          "max_score": 70,
+          "max_score": 35,
           "description": "Problèmes graves"
         },
         {
           "grade": 1.5,
           "label": "MAUVAIS",
-          "max_score": 100,
+          "max_score": 50,
           "description": "Problèmes très graves"
         },
         {
@@ -101,10 +170,6 @@
           "description": "Problèmes critiques généralisés"
         }
       ]
-    },
-    "confidence_threshold": {
-      "description": "Seuil de confiance minimum pour qu'une issue soit prise en compte dans le calcul",
-      "value": 90
     }
   },
   "metadata": {
