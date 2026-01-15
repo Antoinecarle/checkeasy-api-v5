@@ -20,6 +20,19 @@ class LogsManager:
         self.websocket_clients: List = []  # Liste des clients WebSocket connectés
         self.logger = logging.getLogger(__name__)
 
+    def _safe_broadcast(self, message: dict):
+        """
+        Broadcast un message de manière safe (gère le cas où il n'y a pas d'event loop)
+        Utilisé pour la compatibilité avec les thread pools
+        """
+        try:
+            loop = asyncio.get_running_loop()
+            asyncio.create_task(self._broadcast(message))
+        except RuntimeError:
+            # Pas d'event loop running (appelé depuis un thread pool)
+            # Skip silencieusement - les logs sont quand même enregistrés en mémoire
+            pass
+
     def start_request(self, request_id: str, endpoint: str, data: dict):
         """Démarre le tracking d'une nouvelle requête"""
         self.active_requests[request_id] = {
@@ -35,11 +48,11 @@ class LogsManager:
 
         self.logger.info(f"✅ Requête démarrée: {request_id} ({endpoint})")
 
-        # Notifier les clients WebSocket
-        asyncio.create_task(self._broadcast({
+        # Notifier les clients WebSocket (safe pour thread pools)
+        self._safe_broadcast({
             "type": "request_started",
             "data": self.active_requests[request_id]
-        }))
+        })
 
     def add_step(self, request_id: str, step_name: str, step_type: str, metadata: dict = None):
         """Ajoute une étape au workflow de la requête"""
@@ -60,12 +73,12 @@ class LogsManager:
         self.active_requests[request_id]["steps"].append(step)
         self.active_requests[request_id]["current_step"] = step["step_id"]
 
-        # Notifier les clients
-        asyncio.create_task(self._broadcast({
+        # Notifier les clients (safe pour thread pools)
+        self._safe_broadcast({
             "type": "step_started",
             "request_id": request_id,
             "data": step
-        }))
+        })
 
         return step["step_id"]
 
@@ -92,12 +105,12 @@ class LogsManager:
                     step["logs"].append(log_entry)
                     break
 
-        # Notifier les clients
-        asyncio.create_task(self._broadcast({
+        # Notifier les clients (safe pour thread pools)
+        self._safe_broadcast({
             "type": "log_added",
             "request_id": request_id,
             "data": log_entry
-        }))
+        })
 
     def add_prompt_log(self, request_id: str, prompt_type: str, prompt_content: str, model: str = None, metadata: dict = None):
         """Ajoute un log de prompt (système ou utilisateur)"""
@@ -131,12 +144,12 @@ class LogsManager:
                     step["logs"].append(log_entry)
                     break
 
-        # Notifier les clients
-        asyncio.create_task(self._broadcast({
+        # Notifier les clients (safe pour thread pools)
+        self._safe_broadcast({
             "type": "log_added",
             "request_id": request_id,
             "data": log_entry
-        }))
+        })
 
     def add_response_log(self, request_id: str, response_type: str, response_content: str, model: str = None, tokens_used: dict = None, metadata: dict = None):
         """Ajoute un log de réponse de l'IA"""
@@ -171,12 +184,12 @@ class LogsManager:
                     step["logs"].append(log_entry)
                     break
 
-        # Notifier les clients
-        asyncio.create_task(self._broadcast({
+        # Notifier les clients (safe pour thread pools)
+        self._safe_broadcast({
             "type": "log_added",
             "request_id": request_id,
             "data": log_entry
-        }))
+        })
 
     def complete_step(self, request_id: str, step_id: str, status: str = "success", result: dict = None):
         """Marque une étape comme terminée"""
@@ -191,13 +204,13 @@ class LogsManager:
                     step["result"] = result
                 break
 
-        # Notifier les clients
-        asyncio.create_task(self._broadcast({
+        # Notifier les clients (safe pour thread pools)
+        self._safe_broadcast({
             "type": "step_completed",
             "request_id": request_id,
             "step_id": step_id,
             "status": status
-        }))
+        })
 
     def complete_request(self, request_id: str, status: str = "success", result: dict = None):
         """Marque une requête comme terminée"""
@@ -218,13 +231,13 @@ class LogsManager:
         # Garder aussi dans active_requests pour le polling (ne pas supprimer)
         # Les requêtes seront conservées en mémoire
 
-        # Notifier les clients
-        asyncio.create_task(self._broadcast({
+        # Notifier les clients (safe pour thread pools)
+        self._safe_broadcast({
             "type": "request_completed",
             "request_id": request_id,
             "status": status,
             "data": self.active_requests[request_id]
-        }))
+        })
 
     async def register_client(self, websocket):
         """Enregistre un nouveau client WebSocket"""
