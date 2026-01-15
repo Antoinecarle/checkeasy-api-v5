@@ -2835,6 +2835,171 @@ async def analyze_room(input_data: InputData):
 
         raise HTTPException(status_code=500, detail=str(e))
 
+def verify_checkin_checkout_coherence(
+    checkin_pictures: List[Picture],
+    checkout_pictures: List[Picture],
+    piece_id: str,
+    parcours_type: str = "Voyageur"
+) -> dict:
+    """
+    Vérifie la cohérence entre les photos checkin et checkout.
+    Détecte si les photos montrent des pièces différentes.
+
+    Args:
+        checkin_pictures: Photos AVANT (état de référence)
+        checkout_pictures: Photos APRÈS (état final)
+        piece_id: ID de la pièce
+        parcours_type: Type de parcours ("Voyageur" ou "Ménage")
+
+    Returns:
+        dict: {
+            "is_coherent": bool,  # True si les photos montrent la même pièce
+            "checkin_room_type": str,  # Type détecté pour checkin
+            "checkout_room_type": str,  # Type détecté pour checkout
+            "message": str  # Message explicatif
+        }
+    """
+    try:
+        # Si pas de checkout_pictures, considérer comme cohérent
+        if not checkout_pictures or len(checkout_pictures) == 0:
+            logger.debug(f"🔍 [COHERENCE] Pas de checkout_pictures → Cohérence OK (pas de comparaison possible)")
+            return {
+                "is_coherent": True,
+                "checkin_room_type": "unknown",
+                "checkout_room_type": "none",
+                "message": "Pas de photos checkout à comparer"
+            }
+
+        # Si pas de checkin_pictures, considérer comme cohérent
+        if not checkin_pictures or len(checkin_pictures) == 0:
+            logger.debug(f"🔍 [COHERENCE] Pas de checkin_pictures → Cohérence OK (pas de comparaison possible)")
+            return {
+                "is_coherent": True,
+                "checkin_room_type": "none",
+                "checkout_room_type": "unknown",
+                "message": "Pas de photos checkin à comparer"
+            }
+
+        logger.info(f"🔍 [COHERENCE] Vérification cohérence checkin/checkout pour pièce {piece_id}")
+
+        # Charger les templates selon le type de parcours
+        room_templates = load_room_templates(parcours_type)
+
+        # Créer le prompt de classification
+        prompts_config = load_prompts_config(parcours_type)
+        classify_room_config = prompts_config.get("prompts", {}).get("classify_room", {})
+
+        room_types_list = list(room_templates["room_types"].keys())
+        room_descriptions = []
+        for room_key, room_info in room_templates["room_types"].items():
+            room_descriptions.append(f"- {room_key}: {room_info['name']} {room_info['icon']}")
+
+        variables = {
+            "room_types_list": ', '.join(room_types_list),
+            "room_descriptions_list": '\n'.join(room_descriptions)
+        }
+
+        classification_prompt = build_full_prompt_from_config(classify_room_config, variables)
+
+        # 1️⃣ CLASSIFIER LES CHECKIN PICTURES
+        logger.debug(f"🔍 [COHERENCE] Étape 1/2 - Classification des CHECKIN pictures...")
+        checkin_pictures_raw = [pic.dict() for pic in checkin_pictures]
+        checkin_processed = process_pictures_list(checkin_pictures_raw)
+
+        checkin_user_message = {
+            "role": "user",
+            "content": [{"type": "text", "text": classification_prompt}]
+        }
+
+        for photo in checkin_processed:
+            normalized_url = normalize_url(photo['url'])
+            if is_valid_image_url(normalized_url) and not normalized_url.startswith('data:image/gif;base64,R0lGOD'):
+                checkin_user_message["content"].append({
+                    "type": "image_url",
+                    "image_url": {"url": normalized_url, "detail": "high"}
+                })
+
+        # Appel OpenAI pour checkin
+        checkin_response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[checkin_user_message],
+            response_format={"type": "json_object"},
+            temperature=0.3,
+            max_tokens=500
+        )
+
+        checkin_result = json.loads(checkin_response.choices[0].message.content)
+        checkin_room_type = checkin_result.get("room_type", "autre")
+        logger.debug(f"✅ [COHERENCE] Checkin classifié comme: {checkin_room_type}")
+
+        # 2️⃣ CLASSIFIER LES CHECKOUT PICTURES
+        logger.debug(f"🔍 [COHERENCE] Étape 2/2 - Classification des CHECKOUT pictures...")
+        checkout_pictures_raw = [pic.dict() for pic in checkout_pictures]
+        checkout_processed = process_pictures_list(checkout_pictures_raw)
+
+        checkout_user_message = {
+            "role": "user",
+            "content": [{"type": "text", "text": classification_prompt}]
+        }
+
+        for photo in checkout_processed:
+            normalized_url = normalize_url(photo['url'])
+            if is_valid_image_url(normalized_url) and not normalized_url.startswith('data:image/gif;base64,R0lGOD'):
+                checkout_user_message["content"].append({
+                    "type": "image_url",
+                    "image_url": {"url": normalized_url, "detail": "high"}
+                })
+
+        # Appel OpenAI pour checkout
+        checkout_response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[checkout_user_message],
+            response_format={"type": "json_object"},
+            temperature=0.3,
+            max_tokens=500
+        )
+
+        checkout_result = json.loads(checkout_response.choices[0].message.content)
+        checkout_room_type = checkout_result.get("room_type", "autre")
+        logger.debug(f"✅ [COHERENCE] Checkout classifié comme: {checkout_room_type}")
+
+        # 3️⃣ COMPARER LES DEUX CLASSIFICATIONS
+        # Considérer comme incohérent si les types sont différents ET ne sont pas "autre"
+        is_coherent = True
+        message = "Photos cohérentes"
+
+        if checkin_room_type != checkout_room_type:
+            # Si l'un des deux est "autre", tolérer (classification incertaine)
+            if checkin_room_type != "autre" and checkout_room_type != "autre":
+                is_coherent = False
+                message = f"Incohérence détectée: checkin={checkin_room_type}, checkout={checkout_room_type}"
+                logger.warning(f"⚠️ [COHERENCE] ═══════════════════════════════════════")
+                logger.warning(f"⚠️ [COHERENCE] INCOHÉRENCE DÉTECTÉE!")
+                logger.warning(f"⚠️ [COHERENCE] Pièce ID: {piece_id}")
+                logger.warning(f"⚠️ [COHERENCE] Checkin photos → {checkin_room_type}")
+                logger.warning(f"⚠️ [COHERENCE] Checkout photos → {checkout_room_type}")
+                logger.warning(f"⚠️ [COHERENCE] Les photos ne montrent PAS la même pièce!")
+                logger.warning(f"⚠️ [COHERENCE] ═══════════════════════════════════════")
+            else:
+                logger.debug(f"🔍 [COHERENCE] Types différents mais l'un est 'autre' → Toléré (checkin={checkin_room_type}, checkout={checkout_room_type})")
+
+        return {
+            "is_coherent": is_coherent,
+            "checkin_room_type": checkin_room_type,
+            "checkout_room_type": checkout_room_type,
+            "message": message
+        }
+
+    except Exception as e:
+        logger.error(f"❌ [COHERENCE] Erreur lors de la vérification: {e}")
+        # En cas d'erreur, considérer comme cohérent pour ne pas bloquer
+        return {
+            "is_coherent": True,
+            "checkin_room_type": "error",
+            "checkout_room_type": "error",
+            "message": f"Erreur lors de la vérification: {str(e)}"
+        }
+
 def classify_room_type(input_data: RoomClassificationInput, parcours_type: str = "Voyageur", request_id: str = None) -> RoomClassificationResponse:
     """
     Classifier le type de pièce à partir des images et retourner les critères de vérification
@@ -2902,6 +3067,40 @@ RÉPONDS EN JSON:
         all_pictures_processed = process_pictures_list(checkin_pictures_raw)
 
         logger.debug(f"✅ Traitement terminé: {len(all_pictures_processed)} images checkin pour classification")
+
+        # 🔍 VÉRIFICATION DE COHÉRENCE CHECKIN/CHECKOUT
+        # Vérifier si les photos checkin et checkout montrent la même pièce
+        coherence_check = verify_checkin_checkout_coherence(
+            checkin_pictures=input_data.checkin_pictures,
+            checkout_pictures=input_data.checkout_pictures,
+            piece_id=input_data.piece_id,
+            parcours_type=parcours_type
+        )
+
+        # Si incohérence détectée, retourner immédiatement une erreur wrong_room
+        if not coherence_check["is_coherent"]:
+            logger.error(f"🚫 INCOHÉRENCE DÉTECTÉE entre checkin et checkout!")
+            logger.error(f"   📸 Checkin classifié comme: {coherence_check['checkin_room_type']}")
+            logger.error(f"   📸 Checkout classifié comme: {coherence_check['checkout_room_type']}")
+            logger.error(f"   ⚠️ Les photos ne montrent pas la même pièce!")
+
+            # Retourner une réponse wrong_room
+            return RoomClassificationResponse(
+                piece_id=input_data.piece_id,
+                room_type="wrong_room",
+                room_name="Photos incohérentes",
+                room_icon="⚠️",
+                confidence=95,
+                is_valid_room=False,
+                validation_message=f"Les photos checkin et checkout montrent des pièces différentes: {coherence_check['checkin_room_type']} vs {coherence_check['checkout_room_type']}",
+                verifications=RoomVerifications(
+                    elements_critiques=["Vérifier que les photos correspondent à la même pièce"],
+                    points_ignorables=[],
+                    defauts_frequents=["Photos de pièces différentes"]
+                )
+            )
+        else:
+            logger.debug(f"✅ [COHERENCE] Photos checkin/checkout cohérentes: {coherence_check['message']}")
 
         # Préparer le message avec les images valides uniquement
         user_message = {
