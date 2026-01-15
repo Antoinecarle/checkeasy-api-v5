@@ -6189,11 +6189,39 @@ Les deux photos montrent-elles le MÊME ÉTAT (équivalent) ou un état DIFFÉRE
 - same_state = true → Les deux photos montrent le même état (équivalent)
 - same_state = false → Les deux photos montrent un état différent"""
 
-            # Préparer le message avec les deux images
+            # 🚀 CONVERTIR les URLs en Data URI pour éviter les timeouts OpenAI
+            checking_url_final = checking_picture_url
+            checkout_url_final = checkout_picture_url
+
+            if not checking_picture_url.startswith("data:"):
+                with _data_uri_cache_lock:
+                    if checking_picture_url in _data_uri_cache:
+                        checking_url_final = _data_uri_cache[checking_picture_url]
+                        logger.debug(f"🖼️ [2-STEP SYNC] checking_picture: cache hit")
+                    else:
+                        data_uri = convert_url_to_data_uri(checking_picture_url)
+                        if data_uri:
+                            _data_uri_cache[checking_picture_url] = data_uri
+                            checking_url_final = data_uri
+                            logger.debug(f"🖼️ [2-STEP SYNC] checking_picture: converti en Data URI")
+
+            if not checkout_picture_url.startswith("data:"):
+                with _data_uri_cache_lock:
+                    if checkout_picture_url in _data_uri_cache:
+                        checkout_url_final = _data_uri_cache[checkout_picture_url]
+                        logger.debug(f"🖼️ [2-STEP SYNC] checkout_picture: cache hit")
+                    else:
+                        data_uri = convert_url_to_data_uri(checkout_picture_url)
+                        if data_uri:
+                            _data_uri_cache[checkout_picture_url] = data_uri
+                            checkout_url_final = data_uri
+                            logger.debug(f"🖼️ [2-STEP SYNC] checkout_picture: converti en Data URI")
+
+            # Préparer le message avec les deux images (URLs converties en Data URI)
             comparison_content = [
                 {"type": "text", "text": "Compare ces deux photos et détermine si elles montrent le même état :"},
-                {"type": "image_url", "image_url": {"url": checking_picture_url, "detail": "high"}},
-                {"type": "image_url", "image_url": {"url": checkout_picture_url, "detail": "high"}}
+                {"type": "image_url", "image_url": {"url": checking_url_final, "detail": "high"}},
+                {"type": "image_url", "image_url": {"url": checkout_url_final, "detail": "high"}}
             ]
 
             comparison_messages = [
@@ -6362,11 +6390,39 @@ Les deux photos montrent-elles le MÊME ÉTAT (équivalent) ou un état DIFFÉRE
 - same_state = true → Les deux photos montrent le même état (équivalent)
 - same_state = false → Les deux photos montrent un état différent"""
 
-            # Préparer le message avec les deux images
+            # 🚀 CONVERTIR les URLs en Data URI pour éviter les timeouts OpenAI
+            checking_url_final = checking_picture_url
+            checkout_url_final = checkout_picture_url
+
+            if not checking_picture_url.startswith("data:"):
+                with _data_uri_cache_lock:
+                    if checking_picture_url in _data_uri_cache:
+                        checking_url_final = _data_uri_cache[checking_picture_url]
+                        logger.debug(f"🖼️ [2-STEP ASYNC] checking_picture: cache hit")
+                    else:
+                        data_uri = convert_url_to_data_uri(checking_picture_url)
+                        if data_uri:
+                            _data_uri_cache[checking_picture_url] = data_uri
+                            checking_url_final = data_uri
+                            logger.debug(f"🖼️ [2-STEP ASYNC] checking_picture: converti en Data URI")
+
+            if not checkout_picture_url.startswith("data:"):
+                with _data_uri_cache_lock:
+                    if checkout_picture_url in _data_uri_cache:
+                        checkout_url_final = _data_uri_cache[checkout_picture_url]
+                        logger.debug(f"🖼️ [2-STEP ASYNC] checkout_picture: cache hit")
+                    else:
+                        data_uri = convert_url_to_data_uri(checkout_picture_url)
+                        if data_uri:
+                            _data_uri_cache[checkout_picture_url] = data_uri
+                            checkout_url_final = data_uri
+                            logger.debug(f"🖼️ [2-STEP ASYNC] checkout_picture: converti en Data URI")
+
+            # Préparer le message avec les deux images (URLs converties en Data URI)
             comparison_content = [
                 {"type": "text", "text": "Compare ces deux photos et détermine si elles montrent le même état :"},
-                {"type": "image_url", "image_url": {"url": checking_picture_url, "detail": "high"}},
-                {"type": "image_url", "image_url": {"url": checkout_picture_url, "detail": "high"}}
+                {"type": "image_url", "image_url": {"url": checking_url_final, "detail": "high"}},
+                {"type": "image_url", "image_url": {"url": checkout_url_final, "detail": "high"}}
             ]
 
             comparison_messages = [
