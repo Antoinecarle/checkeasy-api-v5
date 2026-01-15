@@ -4456,13 +4456,18 @@ Compare les photos avant/après et réponds en JSON:
                 else:
                     # 🆕 Si pas d'issues mais validation_status existe, créer une entrée de suivi
                     if validation_status:
+                        # Récupérer confidence de manière sécurisée
+                        confidence_value = 100
+                        if isinstance(etape_result, dict):
+                            confidence_value = etape_result.get("confidence", 100)
+
                         # Pour VALIDÉ ou INCERTAIN sans issues, on crée quand même une entrée de tracking
                         all_issues.append(EtapeIssue(
                             etape_id=etape.etape_id,
                             description=commentaire if commentaire else f"Étape {validation_status.lower()}",
                             category="cleanliness",  # Catégorie par défaut
                             severity="low",
-                            confidence=etape_result.get("confidence", 100),
+                            confidence=confidence_value,
                             validation_status=validation_status,
                             commentaire=commentaire
                         ))
@@ -6697,12 +6702,17 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
 
         # 🆕 Si pas d'issues mais validation_status existe, créer une entrée de suivi
         if not issues and validation_status:
+            # Récupérer confidence de manière sécurisée
+            confidence_value = 100
+            if isinstance(response_data, dict):
+                confidence_value = response_data.get("confidence", 100)
+
             issues.append(EtapeIssue(
                 etape_id=etape.etape_id,
                 description=commentaire if commentaire else f"Étape {validation_status.lower()}",
                 category="cleanliness",
                 severity="low",
-                confidence=response_data.get("confidence", 100),
+                confidence=confidence_value,
                 validation_status=validation_status,
                 commentaire=commentaire
             ))
