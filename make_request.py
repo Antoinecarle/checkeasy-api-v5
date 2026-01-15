@@ -4483,6 +4483,45 @@ def transform_to_individual_report(
         }
         return mapping.get(api_severity, "faible")
 
+    # Helper: Récupérer l'URL de la photo pour un problème
+    def get_photo_url_for_issue(issue, piece_input: PieceWithEtapes) -> Optional[str]:
+        """
+        Récupère l'URL de la photo associée à un problème.
+
+        Logique:
+        - Si le problème a un etapeId: utiliser la photo checkout de l'étape
+        - Sinon: utiliser la première photo de sortie de la pièce
+
+        Args:
+            issue: L'issue/problème détecté
+            piece_input: Les données d'entrée de la pièce
+
+        Returns:
+            str ou None: URL de la photo ou None si aucune photo disponible
+        """
+        # CAS 1: Problème lié à une étape spécifique
+        if hasattr(issue, 'etape_id') and issue.etape_id:
+            # Chercher l'étape correspondante
+            for etape in piece_input.etapes:
+                if etape.etape_id == issue.etape_id:
+                    # Priorité 1: checkout_picture (photo de vérification)
+                    if etape.checkout_picture:
+                        return etape.checkout_picture
+                    # Priorité 2: checking_picture (photo de référence) en fallback
+                    if etape.checking_picture:
+                        return etape.checking_picture
+                    break
+            # Si l'étape n'a pas de photo, retourner None
+            return None
+
+        # CAS 2: Problème général (pas d'etapeId)
+        # Utiliser la première photo de sortie de la pièce
+        if piece_input.checkout_pictures and len(piece_input.checkout_pictures) > 0:
+            return piece_input.checkout_pictures[0].url
+
+        # Aucune photo disponible
+        return None
+
     # Helper: Mapper category API -> titre UI
     def map_category_to_title(category: str) -> str:
         mapping = {
@@ -4766,18 +4805,57 @@ def transform_to_individual_report(
             "photosNonConformes": piece_input.check_sortie_photos_non_conformes or []
         }
 
-        # Tâches validées
+        # ═══════════════════════════════════════════════════════════════
+        # 🆕 ÉTAPE 1: Créer un mapping etape_id → validation_status depuis les issues IA
+        # ═══════════════════════════════════════════════════════════════
+        etape_validation_status_map = {}
+        for issue in piece_analysis.issues:
+            if hasattr(issue, 'etape_id') and issue.etape_id and hasattr(issue, 'validation_status') and issue.validation_status:
+                # Garder le statut le plus restrictif si plusieurs issues pour la même étape
+                current_status = etape_validation_status_map.get(issue.etape_id)
+                if current_status is None:
+                    etape_validation_status_map[issue.etape_id] = issue.validation_status
+                elif current_status == "VALIDÉ" and issue.validation_status in ["NON_VALIDÉ", "INCERTAIN"]:
+                    etape_validation_status_map[issue.etape_id] = issue.validation_status
+                elif current_status == "INCERTAIN" and issue.validation_status == "NON_VALIDÉ":
+                    etape_validation_status_map[issue.etape_id] = issue.validation_status
+
+        # ═══════════════════════════════════════════════════════════════
+        # 🆕 ÉTAPE 2: Construire tachesValidees avec estApprouve basé sur validation_status IA
+        # ═══════════════════════════════════════════════════════════════
         taches_validees = []
         for etape in piece_input.etapes:
+            # Récupérer le validation_status de l'IA pour cette étape
+            ia_validation_status = etape_validation_status_map.get(etape.etape_id)
+
+            # Déterminer estApprouve selon la logique suivante :
+            # 1. Si PAS d'analyse IA (ia_validation_status absent) → utiliser tache_approuvee tel quel (ou True par défaut)
+            # 2. Si analyse IA disponible → utiliser le statut IA (sauf si surcharge manuelle explicite)
+
+            if ia_validation_status is None:
+                # Pas d'analyse IA → respecter la valeur manuelle ou True par défaut
+                est_approuve = etape.tache_approuvee if etape.tache_approuvee is not None else True
+            else:
+                # Analyse IA disponible
+                if etape.tache_approuvee is not None:
+                    # Surcharge manuelle explicite → prioritaire
+                    est_approuve = etape.tache_approuvee
+                else:
+                    # Utiliser le statut IA
+                    est_approuve = (ia_validation_status == "VALIDÉ")
+
             taches_validees.append({
                 "etapeId": etape.etape_id,
                 "nom": etape.task_name,
-                "estApprouve": etape.tache_approuvee if etape.tache_approuvee is not None else True,
+                "estApprouve": est_approuve,
                 "dateHeureValidation": etape.tache_date_validation or "",
-                "commentaire": etape.tache_commentaire
+                "commentaire": etape.tache_commentaire,
+                "validationStatusIA": ia_validation_status  # 🆕 Ajouter le statut IA pour référence
             })
 
-        # Problèmes détectés par l'IA
+        # ═══════════════════════════════════════════════════════════════
+        # ÉTAPE 3: Construire la liste des problèmes détectés par l'IA
+        # ═══════════════════════════════════════════════════════════════
         problemes = []
         for idx, issue in enumerate(piece_analysis.issues):
             category_title = map_category_to_title(issue.category)
@@ -4803,6 +4881,10 @@ def transform_to_individual_report(
             if hasattr(issue, 'commentaire') and issue.commentaire:
                 probleme_dict["commentaireIA"] = issue.commentaire
 
+            # 📸 NOUVEAU: Ajouter photoUrl pour chaque problème
+            photo_url = get_photo_url_for_issue(issue, piece_input)
+            probleme_dict["photoUrl"] = photo_url
+
             problemes.append(probleme_dict)
 
         # Consignes IA (extraites du commentaire global)
@@ -4825,14 +4907,10 @@ def transform_to_individual_report(
         # 🆕 MALUS POUR TÂCHES/ÉTAPES NON VALIDÉES (Barème strict)
         # ═══════════════════════════════════════════════════════════════
 
-        # Compter les tâches manuellement non approuvées
-        taches_non_approuvees = sum(1 for etape in piece_input.etapes if etape.tache_approuvee == False)
-
-        # Compter les étapes avec validation_status NON_VALIDÉ (issues IA)
-        etapes_non_validees = sum(1 for p in problemes if p.get("validationStatus") == "NON_VALIDÉ")
-
-        # Compter les étapes INCERTAIN (malus léger)
-        etapes_incertaines = sum(1 for p in problemes if p.get("validationStatus") == "INCERTAIN")
+        # 🆕 Compter les étapes NON_VALIDÉ et INCERTAIN depuis le mapping IA
+        # (Plus besoin de compter taches_non_approuvees car estApprouve est maintenant dérivé du statut IA)
+        etapes_non_validees = sum(1 for status in etape_validation_status_map.values() if status == "NON_VALIDÉ")
+        etapes_incertaines = sum(1 for status in etape_validation_status_map.values() if status == "INCERTAIN")
 
         # 🆕 Compter les signalements utilisateurs pour cette pièce
         signalements_piece = 0
@@ -4840,7 +4918,8 @@ def transform_to_individual_report(
             signalements_piece = sum(1 for s in input_data.signalements_utilisateur if s.piece_id == piece_input.piece_id)
 
         # Total des non-conformités (pondéré)
-        total_non_conformites = taches_non_approuvees + etapes_non_validees + (etapes_incertaines * 0.5)
+        # NON_VALIDÉ = 1 point, INCERTAIN = 0.5 point
+        total_non_conformites = etapes_non_validees + (etapes_incertaines * 0.5)
 
         # Barème de malus STRICT pour non-conformités
         if total_non_conformites >= 5:
@@ -5132,6 +5211,11 @@ def calculate_weighted_severity_score(
         if hasattr(piece, 'issues') and piece.issues:
             for issue in piece.issues:
                 if issue.confidence >= CONFIDENCE_THRESHOLD:
+                    # 🆕 FILTRE : Ignorer les étapes VALIDÉES (ne doivent pas impacter la note)
+                    if hasattr(issue, 'validation_status') and issue.validation_status == "VALIDÉ":
+                        logger.debug(f"   ⏭️  Étape VALIDÉE ignorée dans le calcul de score: {issue.description[:50]}")
+                        continue  # Ne pas compter cette issue dans le score
+
                     base_score = SEVERITY_BASE_SCORE.get(issue.severity, 1)
                     category_mult = CATEGORY_MULTIPLIER.get(issue.category, 1.0)
 
@@ -5296,6 +5380,11 @@ def calculate_room_algorithmic_score(
 
     for issue in issues:
         if issue.confidence >= CONFIDENCE_THRESHOLD:
+            # 🆕 FILTRE : Ignorer les étapes VALIDÉES (ne doivent pas impacter la note)
+            if hasattr(issue, 'validation_status') and issue.validation_status == "VALIDÉ":
+                logger.debug(f"   ⏭️  Étape VALIDÉE ignorée dans le calcul de score: {issue.description[:50]}")
+                continue  # Ne pas compter cette issue dans le score
+
             base_score = SEVERITY_BASE_SCORE.get(issue.severity, 1)
             category_mult = CATEGORY_MULTIPLIER.get(issue.category, 1.0)
 
@@ -5889,27 +5978,95 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
         ]
         input_content = convert_chat_messages_to_responses_input(messages)
 
-        if 'async_client' in globals() and async_client:
-            response = await async_client.responses.create(
-                model=OPENAI_MODEL,
-                input=input_content,
-                text={"format": {"type": "json_object"}},
-                max_output_tokens=1000,
-                temperature=0.2
-            )
-        else:
-            logger.warning("⚠️ async_client non disponible, utilisation du client synchrone (lent)")
-            response = client.responses.create(
-                model=OPENAI_MODEL,
-                input=input_content,
-                text={"format": {"type": "json_object"}},
-                max_output_tokens=1000,
-                temperature=0.2
-            )
+        try:
+            if 'async_client' in globals() and async_client:
+                response = await async_client.responses.create(
+                    model=OPENAI_MODEL,
+                    input=input_content,
+                    text={"format": {"type": "json_object"}},
+                    max_output_tokens=1000,
+                    temperature=0.2
+                )
+            else:
+                logger.warning("⚠️ async_client non disponible, utilisation du client synchrone (lent)")
+                response = client.responses.create(
+                    model=OPENAI_MODEL,
+                    input=input_content,
+                    text={"format": {"type": "json_object"}},
+                    max_output_tokens=1000,
+                    temperature=0.2
+                )
 
-        # Parser la réponse
-        # 🚀 MIGRATION: Extraction depuis Responses API
-        response_text = response.output_text if hasattr(response, 'output_text') else str(response.output[0].content[0].text)
+            # Parser la réponse
+            # 🚀 MIGRATION: Extraction depuis Responses API
+            response_text = response.output_text if hasattr(response, 'output_text') else str(response.output[0].content[0].text)
+
+        except Exception as openai_error:
+            error_str = str(openai_error)
+            logger.error(f"❌ [ASYNC] Erreur OpenAI lors de l'analyse de l'étape {etape.etape_id}: {error_str}")
+
+            # 🔍 DEBUG: Vérifier le contenu de error_str
+            error_str_lower = error_str.lower()
+            logger.debug(f"🔍 DEBUG - error_str_lower contient 'timeout while downloading': {'timeout while downloading' in error_str_lower}")
+            logger.debug(f"🔍 DEBUG - error_str_lower contient 'error while downloading': {'error while downloading' in error_str_lower}")
+            logger.debug(f"🔍 DEBUG - error_str_lower contient 'invalid_image_url': {'invalid_image_url' in error_str_lower}")
+
+            # 🔄 FALLBACK 1: Erreurs de téléchargement d'URL → Convertir en Data URI
+            if any(keyword in error_str_lower for keyword in [
+                "error while downloading",
+                "timeout while downloading",
+                "invalid_image_url",
+                "failed to download"
+            ]):
+                logger.warning(f"⚠️ [ASYNC] Erreur de téléchargement d'image détectée pour l'étape {etape.etape_id}, tentative avec Data URIs PARALLÈLES")
+
+                try:
+                    # 🚀 Convertir toutes les URLs en data URIs EN PARALLÈLE (beaucoup plus rapide)
+                    user_message_dict = {"role": "user", "content": messages_content}
+                    user_message_with_data_uris = await convert_message_urls_to_data_uris_parallel(user_message_dict.copy())
+
+                    # Compter les images converties
+                    data_uri_count = sum(
+                        1 for c in user_message_with_data_uris.get("content", [])
+                        if c.get("type") == "image_url" and c["image_url"]["url"].startswith("data:")
+                    )
+
+                    logger.debug(f"🔄 [ASYNC] Retry étape {etape.etape_id} avec {data_uri_count} images en Data URI")
+
+                    # Réessayer avec les data URIs
+                    messages_retry = [
+                        {"role": "system", "content": system_prompt},
+                        user_message_with_data_uris
+                    ]
+                    input_content_retry = convert_chat_messages_to_responses_input(messages_retry)
+
+                    if 'async_client' in globals() and async_client:
+                        response = await async_client.responses.create(
+                            model=OPENAI_MODEL,
+                            input=input_content_retry,
+                            text={"format": {"type": "json_object"}},
+                            max_output_tokens=1000,
+                            temperature=0.2
+                        )
+                    else:
+                        response = client.responses.create(
+                            model=OPENAI_MODEL,
+                            input=input_content_retry,
+                            text={"format": {"type": "json_object"}},
+                            max_output_tokens=1000,
+                            temperature=0.2
+                        )
+
+                    # Parser la réponse
+                    response_text = response.output_text if hasattr(response, 'output_text') else str(response.output[0].content[0].text)
+                    logger.info(f"✅ [ASYNC] Retry réussi avec Data URIs pour l'étape {etape.etape_id}")
+
+                except Exception as retry_error:
+                    logger.error(f"❌ [ASYNC] Échec du retry avec Data URIs pour l'étape {etape.etape_id}: {str(retry_error)}")
+                    raise  # Re-raise pour être catchée par le except principal
+            else:
+                # Autre type d'erreur, re-raise
+                raise
 
         # 📝 LOG DE LA RÉPONSE D'ÉTAPE
         if request_id:

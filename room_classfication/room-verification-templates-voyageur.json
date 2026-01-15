@@ -359,13 +359,45 @@
       "icon": "🔑",
       "verifications": {
         "elements_critiques": [
-          "La clé"
+          "La clé",
+          "Boîtier de la boîte à clé",
+          "Code ou mécanisme de fermeture"
         ],
         "points_ignorables": [
-          "Position de la clé dans la boite à clé"
+          "Position de la clé dans la boite à clé",
+          "Légères traces d'usure sur le boîtier",
+          "Petites rayures superficielles"
         ],
         "defauts_frequents": [
-          "Manque la clé"
+          "Clé manquante",
+          "Boîtier cassé ou endommagé",
+          "Code incorrect ou mécanisme bloqué",
+          "Boîte à clé mal fixée ou tombée"
+        ]
+      }
+    },
+    "autre": {
+      "name": "Autre",
+      "icon": "📦",
+      "verifications": {
+        "elements_critiques": [
+          "État général des surfaces",
+          "Propreté générale",
+          "Absence de dégâts visibles",
+          "Éléments structurels (murs, sols, plafonds)"
+        ],
+        "points_ignorables": [
+          "Petites traces d'usage normal",
+          "Variations de couleur naturelles",
+          "Légères marques superficielles",
+          "Poussière légère"
+        ],
+        "defauts_frequents": [
+          "Traces diverses non identifiées",
+          "Poussière accumulée",
+          "Petites rayures ou éraflures",
+          "Désordre général",
+          "Objets déplacés ou manquants"
         ]
       }
     }
