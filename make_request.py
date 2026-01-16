@@ -5209,59 +5209,77 @@ def transform_to_individual_report(
         note_base = piece_analysis.analyse_globale.score if piece_analysis.analyse_globale else 3
 
         # ═══════════════════════════════════════════════════════════════
-        # 🆕 MALUS POUR TÂCHES/ÉTAPES NON VALIDÉES (Barème strict)
+        # 🆕 CALCUL DU MALUS BASÉ SUR LES ISSUES D'ÉTAPES (plus juste)
         # ═══════════════════════════════════════════════════════════════
 
-        # 🆕 Compter les étapes NON_VALIDÉ et INCERTAIN depuis le mapping IA
-        # (Plus besoin de compter taches_non_approuvees car estApprouve est maintenant dérivé du statut IA)
+        # Récupérer les issues d'étapes pour cette pièce depuis piece_analysis
+        issues_etapes_piece = []
+        if hasattr(piece_analysis, 'issues') and piece_analysis.issues:
+            for issue in piece_analysis.issues:
+                # Les issues d'étapes ont un etape_id ou commencent par "[ÉTAPE]"
+                if hasattr(issue, 'etape_id') and issue.etape_id:
+                    issues_etapes_piece.append(issue)
+                elif hasattr(issue, 'validation_status') and issue.validation_status:
+                    issues_etapes_piece.append(issue)
+
+        # Calculer le malus basé sur la sévérité des issues d'étapes
+        # NON_VALIDÉ ou issues avec severity high/medium impactent la note
+        malus_issues_etapes = 0.0
+        issues_high = 0
+        issues_medium = 0
+        issues_low = 0
+
+        for issue in issues_etapes_piece:
+            # Ignorer les étapes VALIDÉES (ne doivent pas impacter la note)
+            if hasattr(issue, 'validation_status') and issue.validation_status == "VALIDÉ":
+                continue
+
+            severity = issue.severity if hasattr(issue, 'severity') else "low"
+            if severity == "high":
+                malus_issues_etapes += 0.8  # Issue grave = -0.8 point
+                issues_high += 1
+            elif severity == "medium":
+                malus_issues_etapes += 0.4  # Issue modérée = -0.4 point
+                issues_medium += 1
+            else:  # low (INCERTAIN)
+                malus_issues_etapes += 0.15  # Issue légère = -0.15 point
+                issues_low += 1
+
+        # Compter aussi les étapes NON_VALIDÉ/INCERTAIN depuis le mapping IA
         etapes_non_validees = sum(1 for status in etape_validation_status_map.values() if status == "NON_VALIDÉ")
         etapes_incertaines = sum(1 for status in etape_validation_status_map.values() if status == "INCERTAIN")
 
-        # 🆕 Compter les signalements utilisateurs pour cette pièce
+        # Malus additionnel pour le nombre brut de non-conformités (si pas déjà compté via issues)
+        if etapes_non_validees > 0 and issues_high == 0 and issues_medium == 0:
+            # Si pas d'issues détaillées mais des étapes NON_VALIDÉ, appliquer un malus
+            malus_issues_etapes += etapes_non_validees * 0.5
+
+        # Compter les signalements utilisateurs pour cette pièce
         signalements_piece = 0
         if input_data.signalements_utilisateur:
             signalements_piece = sum(1 for s in input_data.signalements_utilisateur if s.piece_id == piece_input.piece_id)
 
-        # Total des non-conformités (pondéré)
-        # NON_VALIDÉ = 1 point, INCERTAIN = 0.5 point
-        total_non_conformites = etapes_non_validees + (etapes_incertaines * 0.5)
+        # Malus pour signalements utilisateurs
+        malus_signalements = min(signalements_piece * 0.3, 1.0)  # Max -1 point
 
-        # Barème de malus STRICT pour non-conformités
-        if total_non_conformites >= 5:
-            malus_conformites = 2.0  # Très sévère : -2 points
-        elif total_non_conformites >= 3:
-            malus_conformites = 1.5  # Sévère : -1.5 points
-        elif total_non_conformites >= 2:
-            malus_conformites = 1.0  # Modéré : -1 point
-        elif total_non_conformites >= 1:
-            malus_conformites = 0.5  # Léger : -0.5 point
-        else:
-            malus_conformites = 0.0
+        # Malus total (plafonné à 3 points max pour ne pas trop pénaliser)
+        malus_total = min(malus_issues_etapes + malus_signalements, 3.0)
 
-        # 🆕 Barème de malus MODÉRÉ pour signalements utilisateurs
-        if signalements_piece >= 4:
-            malus_signalements = 1.0  # Beaucoup de signalements : -1 point
-        elif signalements_piece >= 2:
-            malus_signalements = 0.5  # Quelques signalements : -0.5 point
-        elif signalements_piece >= 1:
-            malus_signalements = 0.3  # Un signalement : -0.3 point
-        else:
-            malus_signalements = 0.0
+        # Appliquer le malus (minimum 1.0 pour garder une note)
+        note = max(1.0, note_base - malus_total)
 
-        # Malus total (cumul des deux)
-        malus_total = malus_conformites + malus_signalements
-
-        # Appliquer le malus (minimum 0)
-        note = max(0, note_base - malus_total)
-
-        # Log si malus appliqué
+        # Log détaillé si malus appliqué
         if malus_total > 0:
             details = []
-            if malus_conformites > 0:
-                details.append(f"{int(total_non_conformites)} non-conformités=-{malus_conformites}")
-            if malus_signalements > 0:
-                details.append(f"{signalements_piece} signalement(s)=-{malus_signalements}")
-            logger.debug(f"📉 Pièce {piece_name}: Note {note_base} → {note} ({', '.join(details)})")
+            if issues_high > 0:
+                details.append(f"{issues_high} issue(s) grave(s)")
+            if issues_medium > 0:
+                details.append(f"{issues_medium} issue(s) modérée(s)")
+            if issues_low > 0:
+                details.append(f"{issues_low} issue(s) légère(s)")
+            if signalements_piece > 0:
+                details.append(f"{signalements_piece} signalement(s)")
+            logger.info(f"📉 Pièce {piece_name}: Note {note_base:.1f} → {note:.1f} (malus -{malus_total:.1f}: {', '.join(details)})")
 
         detail_par_piece_section.append({
             "id": piece_input.piece_id,
