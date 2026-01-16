@@ -5209,21 +5209,42 @@ def transform_to_individual_report(
         note_base = piece_analysis.analyse_globale.score if piece_analysis.analyse_globale else 3
 
         # ═══════════════════════════════════════════════════════════════
-        # 🆕 CALCUL DU MALUS BASÉ SUR LES ISSUES D'ÉTAPES (plus juste)
+        # 🆕 CALCUL DU MALUS BASÉ SUR LES ISSUES D'ÉTAPES
         # ═══════════════════════════════════════════════════════════════
+
+        # Déterminer si c'est un parcours Ménage (plus sévère) ou Voyageur
+        parcours_type = input_data.type if hasattr(input_data, 'type') else "Voyageur"
+        is_menage = parcours_type.lower() == "ménage" or parcours_type.lower() == "menage"
+
+        # Barème différencié : Ménage = +50% plus sévère
+        if is_menage:
+            # Ménage : travail professionnel attendu, on est strict
+            MALUS_HIGH = 1.2       # Issue grave = -1.2 point
+            MALUS_MEDIUM = 0.6     # Issue modérée = -0.6 point
+            MALUS_LOW = 0.25       # Issue légère = -0.25 point
+            MALUS_NON_VALIDE = 0.8 # Étape non validée sans détail = -0.8
+            MALUS_SIGNALEMENT = 0.4  # Par signalement
+            MALUS_MAX = 3.5        # Plafond plus haut
+        else:
+            # Voyageur : plus tolérant
+            MALUS_HIGH = 0.8       # Issue grave = -0.8 point
+            MALUS_MEDIUM = 0.4     # Issue modérée = -0.4 point
+            MALUS_LOW = 0.15       # Issue légère = -0.15 point
+            MALUS_NON_VALIDE = 0.5 # Étape non validée sans détail = -0.5
+            MALUS_SIGNALEMENT = 0.3  # Par signalement
+            MALUS_MAX = 3.0        # Plafond
 
         # Récupérer les issues d'étapes pour cette pièce depuis piece_analysis
         issues_etapes_piece = []
         if hasattr(piece_analysis, 'issues') and piece_analysis.issues:
             for issue in piece_analysis.issues:
-                # Les issues d'étapes ont un etape_id ou commencent par "[ÉTAPE]"
+                # Les issues d'étapes ont un etape_id ou validation_status
                 if hasattr(issue, 'etape_id') and issue.etape_id:
                     issues_etapes_piece.append(issue)
                 elif hasattr(issue, 'validation_status') and issue.validation_status:
                     issues_etapes_piece.append(issue)
 
         # Calculer le malus basé sur la sévérité des issues d'étapes
-        # NON_VALIDÉ ou issues avec severity high/medium impactent la note
         malus_issues_etapes = 0.0
         issues_high = 0
         issues_medium = 0
@@ -5236,34 +5257,32 @@ def transform_to_individual_report(
 
             severity = issue.severity if hasattr(issue, 'severity') else "low"
             if severity == "high":
-                malus_issues_etapes += 0.8  # Issue grave = -0.8 point
+                malus_issues_etapes += MALUS_HIGH
                 issues_high += 1
             elif severity == "medium":
-                malus_issues_etapes += 0.4  # Issue modérée = -0.4 point
+                malus_issues_etapes += MALUS_MEDIUM
                 issues_medium += 1
             else:  # low (INCERTAIN)
-                malus_issues_etapes += 0.15  # Issue légère = -0.15 point
+                malus_issues_etapes += MALUS_LOW
                 issues_low += 1
 
-        # Compter aussi les étapes NON_VALIDÉ/INCERTAIN depuis le mapping IA
+        # Compter les étapes NON_VALIDÉ/INCERTAIN depuis le mapping IA
         etapes_non_validees = sum(1 for status in etape_validation_status_map.values() if status == "NON_VALIDÉ")
-        etapes_incertaines = sum(1 for status in etape_validation_status_map.values() if status == "INCERTAIN")
 
-        # Malus additionnel pour le nombre brut de non-conformités (si pas déjà compté via issues)
+        # Malus additionnel si des étapes NON_VALIDÉ sans issues détaillées
         if etapes_non_validees > 0 and issues_high == 0 and issues_medium == 0:
-            # Si pas d'issues détaillées mais des étapes NON_VALIDÉ, appliquer un malus
-            malus_issues_etapes += etapes_non_validees * 0.5
+            malus_issues_etapes += etapes_non_validees * MALUS_NON_VALIDE
 
         # Compter les signalements utilisateurs pour cette pièce
         signalements_piece = 0
         if input_data.signalements_utilisateur:
             signalements_piece = sum(1 for s in input_data.signalements_utilisateur if s.piece_id == piece_input.piece_id)
 
-        # Malus pour signalements utilisateurs
-        malus_signalements = min(signalements_piece * 0.3, 1.0)  # Max -1 point
+        # Malus pour signalements (plafonné à 1.5 point max)
+        malus_signalements = min(signalements_piece * MALUS_SIGNALEMENT, 1.5)
 
-        # Malus total (plafonné à 3 points max pour ne pas trop pénaliser)
-        malus_total = min(malus_issues_etapes + malus_signalements, 3.0)
+        # Malus total (plafonné selon le parcours)
+        malus_total = min(malus_issues_etapes + malus_signalements, MALUS_MAX)
 
         # Appliquer le malus (minimum 1.0 pour garder une note)
         note = max(1.0, note_base - malus_total)
@@ -5272,14 +5291,15 @@ def transform_to_individual_report(
         if malus_total > 0:
             details = []
             if issues_high > 0:
-                details.append(f"{issues_high} issue(s) grave(s)")
+                details.append(f"{issues_high} grave(s)")
             if issues_medium > 0:
-                details.append(f"{issues_medium} issue(s) modérée(s)")
+                details.append(f"{issues_medium} modérée(s)")
             if issues_low > 0:
-                details.append(f"{issues_low} issue(s) légère(s)")
+                details.append(f"{issues_low} légère(s)")
             if signalements_piece > 0:
                 details.append(f"{signalements_piece} signalement(s)")
-            logger.info(f"📉 Pièce {piece_name}: Note {note_base:.1f} → {note:.1f} (malus -{malus_total:.1f}: {', '.join(details)})")
+            mode = "MÉNAGE" if is_menage else "VOYAGEUR"
+            logger.info(f"📉 [{mode}] Pièce {piece_name}: {note_base:.1f} → {note:.1f} (-{malus_total:.1f}: {', '.join(details)})")
 
         detail_par_piece_section.append({
             "id": piece_input.piece_id,
