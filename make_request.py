@@ -1302,8 +1302,8 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
             raise HTTPException(status_code=503, detail="Service OpenAI non disponible - Client non initialisé")
 
         # 🔄 TRAITEMENT DES IMAGES
-        processed_checkin = process_pictures_list([pic.dict() for pic in input_data.checkin_pictures])
-        processed_checkout = process_pictures_list([pic.dict() for pic in input_data.checkout_pictures])
+        processed_checkin = process_pictures_list([pic.model_dump() for pic in input_data.checkin_pictures])
+        processed_checkout = process_pictures_list([pic.model_dump() for pic in input_data.checkout_pictures])
 
         # Préparer le message avec les images valides uniquement
         user_message = {
@@ -2362,7 +2362,7 @@ def extract_inventory_from_images(piece_id: str, nom_piece: str, checkin_picture
 
     # 🔄 CONVERSION DES IMAGES - Utiliser le système de conversion existant
     logger.debug(f"   [ÉTAPE 1.1] 🔄 Conversion des images checkin pour compatibilité...")
-    processed_pictures = process_pictures_list([pic.dict() for pic in checkin_pictures])
+    processed_pictures = process_pictures_list([pic.model_dump() for pic in checkin_pictures])
     logger.debug(f"   [ÉTAPE 1.1] ✅ {len(processed_pictures)}/{len(checkin_pictures)} images converties avec succès")
 
     if not processed_pictures:
@@ -2509,7 +2509,7 @@ def verify_inventory_on_checkout(
 
     # 🔄 CONVERSION DES IMAGES - Utiliser le système de conversion existant
     logger.debug(f"   🔄 Conversion des images checkout pour compatibilité...")
-    processed_pictures = process_pictures_list([pic.dict() for pic in checkout_pictures])
+    processed_pictures = process_pictures_list([pic.model_dump() for pic in checkout_pictures])
     logger.debug(f"   ✅ {len(processed_pictures)} images converties avec succès")
 
     if not processed_pictures:
@@ -2953,7 +2953,7 @@ def verify_checkin_checkout_coherence(
 
         # 1️⃣ CLASSIFIER LES CHECKIN PICTURES
         logger.debug(f"🔍 [COHERENCE] Étape 1/2 - Classification des CHECKIN pictures...")
-        checkin_pictures_raw = [pic.dict() for pic in checkin_pictures]
+        checkin_pictures_raw = [pic.model_dump() for pic in checkin_pictures]
         checkin_processed = process_pictures_list(checkin_pictures_raw)
 
         checkin_user_message = {
@@ -2984,7 +2984,7 @@ def verify_checkin_checkout_coherence(
 
         # 2️⃣ CLASSIFIER LES CHECKOUT PICTURES
         logger.debug(f"🔍 [COHERENCE] Étape 2/2 - Classification des CHECKOUT pictures...")
-        checkout_pictures_raw = [pic.dict() for pic in checkout_pictures]
+        checkout_pictures_raw = [pic.model_dump() for pic in checkout_pictures]
         checkout_processed = process_pictures_list(checkout_pictures_raw)
 
         checkout_user_message = {
@@ -3113,7 +3113,7 @@ RÉPONDS EN JSON:
         # 🎯 IMPORTANT: Utiliser UNIQUEMENT les checkin_pictures (photos AVANT) pour la classification
         # Les photos AVANT représentent l'état de référence de la pièce, sans désordre ou objets manquants
         logger.debug(f"📸 Classification basée UNIQUEMENT sur les checkin_pictures (photos AVANT)")
-        checkin_pictures_raw = [pic.dict() for pic in input_data.checkin_pictures]
+        checkin_pictures_raw = [pic.model_dump() for pic in input_data.checkin_pictures]
         all_pictures_processed = process_pictures_list(checkin_pictures_raw)
 
         logger.debug(f"✅ Traitement terminé: {len(all_pictures_processed)} images checkin pour classification")
@@ -4087,7 +4087,7 @@ class EtapeIssue(BaseModel):
 class EtapesAnalysisResponse(BaseModel):
     preliminary_issues: List[EtapeIssue]
 
-def analyze_etapes(input_data: EtapesAnalysisInput) -> EtapesAnalysisResponse:
+def analyze_etapes(input_data: EtapesAnalysisInput, request_id: str = None) -> EtapesAnalysisResponse:
     """
     Analyser toutes les étapes du logement en comparant les images selon leurs consignes
     """
@@ -4101,7 +4101,7 @@ def analyze_etapes(input_data: EtapesAnalysisInput) -> EtapesAnalysisResponse:
         for piece in input_data.pieces:
             # 🔄 TRAITEMENT DES IMAGES DES ÉTAPES pour cette pièce
             logger.debug(f"🖼️ Traitement des images des étapes pour la pièce {piece.piece_id}")
-            processed_etapes = process_etapes_images([etape.dict() for etape in piece.etapes])
+            processed_etapes = process_etapes_images([etape.model_dump() for etape in piece.etapes])
             logger.debug(f"✅ {len(processed_etapes)} étapes traitées pour la pièce {piece.piece_id}")
             
             for i, etape_data in enumerate(processed_etapes):
@@ -4519,18 +4519,19 @@ Compare les photos avant/après et réponds en JSON:
                     logger.debug(f"   🔗 {len(temp_issues)} issues fusionnées en 1 pour l'étape {etape.etape_id}")
                 else:
                     # 🆕 Si pas d'issues mais validation_status existe, créer une entrée de suivi
-                    if validation_status:
+                    # ⚠️ SEULEMENT pour NON_VALIDÉ ou INCERTAIN (pas pour VALIDÉ qui ne doit pas impacter la note)
+                    if validation_status and validation_status != "VALIDÉ":
                         # Récupérer confidence de manière sécurisée
                         confidence_value = 100
                         if isinstance(etape_result, dict):
                             confidence_value = etape_result.get("confidence", 100)
 
-                        # Pour VALIDÉ ou INCERTAIN sans issues, on crée quand même une entrée de tracking
+                        # Pour NON_VALIDÉ ou INCERTAIN sans issues détaillées
                         all_issues.append(EtapeIssue(
                             etape_id=etape.etape_id,
                             description=commentaire if commentaire else f"Étape {validation_status.lower()}",
                             category="etape_non_validee",
-                            severity="low",
+                            severity="low" if validation_status == "INCERTAIN" else "medium",
                             confidence=confidence_value,
                             validation_status=validation_status,
                             commentaire=commentaire
@@ -4941,6 +4942,8 @@ def transform_to_individual_report(
         "heureCheckinFin": input_data.heure_checkin_fin or "",
         "heureCheckoutFin": input_data.heure_checkout_fin or "",
         "noteGenerale": analysis_response.analysis_enrichment.global_score.score,
+        "scoreLabel": analysis_response.analysis_enrichment.global_score.label,
+        "scoreExplanation": analysis_response.analysis_enrichment.global_score.score_explanation or "",
         "sousNotes": {
             # Scores calculés par catégorie basés sur les issues détectées
             "presenceObjets": category_scores["presenceObjets"],
@@ -5146,10 +5149,13 @@ def transform_to_individual_report(
             taches_validees.append({
                 "etapeId": etape.etape_id,
                 "nom": etape.task_name,
+                "consigne": etape.consigne,  # ✅ Consigne/instruction de la tâche
+                "checkingPicture": etape.checking_picture,  # ✅ Photo de référence (checkin)
+                "checkoutPicture": etape.checkout_picture,  # ✅ Photo de validation (checkout)
                 "estApprouve": est_approuve,
                 "dateHeureValidation": etape.tache_date_validation or "",
                 "commentaire": etape.tache_commentaire,
-                "validationStatusIA": ia_validation_status  # 🆕 Ajouter le statut IA pour référence
+                "validationStatusIA": ia_validation_status  # Statut IA pour référence
             })
 
         # ═══════════════════════════════════════════════════════════════
@@ -6161,7 +6167,6 @@ async def analyze_single_piece_async(piece: PieceWithEtapes, parcours_type: str 
             logger.debug(f"🔍 Traitement image checkin - URL normalisée: '{normalized_url}'")
 
             if is_valid_image_url(normalized_url):
-                from pydantic import BaseModel
                 normalized_pic = Picture(piece_id=pic.piece_id, url=normalized_url)
                 valid_checkin_pictures.append(normalized_pic)
                 logger.debug(f"✅ Image checkin valide ajoutée: {normalized_url}")
@@ -6929,7 +6934,8 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
             logger.debug(f"   🔗 [ASYNC] {len(temp_issues)} issues fusionnées en 1 pour l'étape {etape.etape_id}")
         else:
             # 🆕 Si pas d'issues mais validation_status existe, créer une entrée de suivi
-            if validation_status:
+            # ⚠️ SEULEMENT pour NON_VALIDÉ ou INCERTAIN (pas pour VALIDÉ qui ne doit pas impacter la note)
+            if validation_status and validation_status != "VALIDÉ":
                 # Récupérer confidence de manière sécurisée
                 confidence_value = 100
                 if isinstance(response_data, dict):
@@ -6939,7 +6945,7 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
                     etape_id=etape.etape_id,
                     description=commentaire if commentaire else f"Étape {validation_status.lower()}",
                     category="etape_non_validee",
-                    severity="low",
+                    severity="low" if validation_status == "INCERTAIN" else "medium",
                     confidence=confidence_value,
                     validation_status=validation_status,
                     commentaire=commentaire
@@ -7108,7 +7114,7 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput, re
 
         for piece in input_data.pieces:
             # Traiter les images des étapes (ASYNC PARALLEL)
-            processed_etapes = await process_etapes_images_parallel([etape.dict() for etape in piece.etapes])
+            processed_etapes = await process_etapes_images_parallel([etape.model_dump() for etape in piece.etapes])
 
             for i, etape_data in enumerate(processed_etapes):
                 etape = piece.etapes[i]
@@ -7310,7 +7316,7 @@ async def analyze_complete_logement_ultra_parallel(input_data: EtapesAnalysisInp
 
         for piece in input_data.pieces:
             # Traiter les images des étapes (parallèle)
-            processed_etapes = await process_etapes_images_parallel([etape.dict() for etape in piece.etapes])
+            processed_etapes = await process_etapes_images_parallel([etape.model_dump() for etape in piece.etapes])
 
             for i, etape_data in enumerate(processed_etapes):
                 etape = piece.etapes[i]
@@ -7465,7 +7471,7 @@ async def analyze_complete_logement_ultra_parallel(input_data: EtapesAnalysisInp
 # 📌 VERSION ORIGINALE (SÉQUENTIELLE) - CONSERVÉE POUR COMPATIBILITÉ
 # ═══════════════════════════════════════════════════════════════
 
-def analyze_complete_logement(input_data: EtapesAnalysisInput) -> CompleteAnalysisResponse:
+def analyze_complete_logement(input_data: EtapesAnalysisInput, request_id: str = None) -> CompleteAnalysisResponse:
     """
     Analyse complète d'un logement : classification + analyse générale + analyse des étapes
     VERSION SÉQUENTIELLE (originale)
@@ -7497,7 +7503,6 @@ def analyze_complete_logement(input_data: EtapesAnalysisInput) -> CompleteAnalys
 
                 if is_valid_image_url(normalized_url):
                     # Créer un nouveau Picture avec l'URL normalisée
-                    from pydantic import BaseModel
                     normalized_pic = Picture(piece_id=pic.piece_id, url=normalized_url)
                     valid_checkin_pictures.append(normalized_pic)
                     logger.debug(f"✅ Image checkin valide ajoutée: {normalized_url}")
@@ -8437,7 +8442,7 @@ async def create_room_template(room_data: RoomTypeCreate, type: str = "Voyageur"
         room_templates["room_types"][room_data.room_type_key] = {
             "name": room_data.name,
             "icon": room_data.icon,
-            "verifications": room_data.verifications.dict()
+            "verifications": room_data.verifications.model_dump()
         }
 
         # Sauvegarder dans le fichier
@@ -8476,7 +8481,7 @@ async def update_room_template(room_type_key: str, room_data: RoomTypeUpdate, ty
             room_types[room_type_key]["icon"] = room_data.icon
 
         if room_data.verifications is not None:
-            room_types[room_type_key]["verifications"] = room_data.verifications.dict()
+            room_types[room_type_key]["verifications"] = room_data.verifications.model_dump()
 
         # Sauvegarder dans le fichier
         if save_room_templates(room_templates, type):
@@ -9001,7 +9006,7 @@ async def update_prompts_config(config: PromptsConfig, type: str = "Voyageur"):
     """Sauvegarder la configuration complète des prompts selon le type de parcours"""
     try:
         # Ajouter le timestamp de mise à jour
-        config_dict = config.dict()
+        config_dict = config.model_dump()
         config_dict["last_updated"] = datetime.now().strftime("%Y-%m-%d")
 
         if save_prompts_config(config_dict, type):
