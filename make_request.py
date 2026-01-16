@@ -4652,6 +4652,7 @@ class LogementAnalysisEnrichment(BaseModel):
 
 class CompleteAnalysisResponse(BaseModel):
     logement_id: str
+    logement_name: Optional[str] = None  # Nom du logement (ajouté pour identification)
     rapport_id: str
     pieces_analysis: List[CombinedAnalysisResponse]  # Résultats de l'analyse avec classification pour chaque pièce
     total_issues_count: int
@@ -4874,6 +4875,7 @@ def transform_to_individual_report(
     report_metadata = {
         "id": input_data.rapport_id,
         "logement": input_data.logement_adresse or "Adresse non renseignée",
+        "logementName": input_data.logement_name or "",  # Nom du logement
         "dateDebut": input_data.date_debut or "",
         "dateFin": input_data.date_fin or "",
         "statut": "Terminé",
@@ -7605,6 +7607,7 @@ def analyze_complete_logement(input_data: EtapesAnalysisInput) -> CompleteAnalys
         
         complete_result = CompleteAnalysisResponse(
             logement_id=input_data.logement_id,
+            logement_name=input_data.logement_name,  # Nom du logement
             rapport_id=input_data.rapport_id,
             pieces_analysis=pieces_analysis_results,
             total_issues_count=total_issues_count,
