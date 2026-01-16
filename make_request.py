@@ -265,7 +265,7 @@ class AnalyseGlobale(BaseModel):
 
 class Probleme(BaseModel):
     description: str
-    category: Literal["missing_item", "damage", "cleanliness", "positioning", "added_item", "image_quality", "wrong_room"]
+    category: Literal["missing_item", "damage", "cleanliness", "positioning", "added_item", "image_quality", "wrong_room", "etape_non_validee"]
     severity: Literal["low", "medium", "high"]
     confidence: int = Field(ge=0, le=100)
     etape_id: Optional[str] = None  # ID de l'étape si l'issue provient d'une étape
@@ -4078,7 +4078,7 @@ class EtapesAnalysisInput(BaseModel):
 class EtapeIssue(BaseModel):
     etape_id: str
     description: str
-    category: Literal["missing_item", "damage", "cleanliness", "positioning", "added_item", "image_quality", "wrong_room"]
+    category: Literal["missing_item", "damage", "cleanliness", "positioning", "added_item", "image_quality", "wrong_room", "etape_non_validee"]
     severity: Literal["low", "medium", "high"]
     confidence: int = Field(ge=0, le=100)
     validation_status: Optional[Literal["VALIDÉ", "NON_VALIDÉ", "INCERTAIN"]] = None  # 🆕 Statut de validation de l'étape
@@ -4493,18 +4493,30 @@ Compare les photos avant/après et réponds en JSON:
                     commentaire=commentaire
                 )
 
-                # Ajouter les issues finales avec l'etape_id + validation_status
+                # 🆕 FUSION DES ISSUES : Une seule issue par étape avec catégorie "etape_non_validee"
                 if temp_issues:
-                    for issue in temp_issues:
-                        all_issues.append(EtapeIssue(
-                            etape_id=etape.etape_id,
-                            description=issue["description"],
-                            category=issue["category"],
-                            severity=issue["severity"],
-                            confidence=issue["confidence"],
-                            validation_status=validation_status,
-                            commentaire=commentaire
-                        ))
+                    # Fusionner toutes les descriptions en une seule
+                    merged_descriptions = [issue["description"] for issue in temp_issues]
+                    merged_description = ", ".join(merged_descriptions)
+
+                    # Prendre la sévérité la plus haute
+                    severity_order = {"high": 3, "medium": 2, "low": 1}
+                    max_severity = max(temp_issues, key=lambda x: severity_order.get(x["severity"], 1))["severity"]
+
+                    # Prendre la confiance moyenne
+                    avg_confidence = sum(issue["confidence"] for issue in temp_issues) // len(temp_issues)
+
+                    # Créer UNE SEULE issue fusionnée avec la catégorie "etape_non_validee"
+                    all_issues.append(EtapeIssue(
+                        etape_id=etape.etape_id,
+                        description=merged_description,
+                        category="etape_non_validee",
+                        severity=max_severity,
+                        confidence=avg_confidence,
+                        validation_status=validation_status,
+                        commentaire=commentaire
+                    ))
+                    logger.debug(f"   🔗 {len(temp_issues)} issues fusionnées en 1 pour l'étape {etape.etape_id}")
                 else:
                     # 🆕 Si pas d'issues mais validation_status existe, créer une entrée de suivi
                     if validation_status:
@@ -4517,7 +4529,7 @@ Compare les photos avant/après et réponds en JSON:
                         all_issues.append(EtapeIssue(
                             etape_id=etape.etape_id,
                             description=commentaire if commentaire else f"Étape {validation_status.lower()}",
-                            category="cleanliness",  # Catégorie par défaut
+                            category="etape_non_validee",
                             severity="low",
                             confidence=confidence_value,
                             validation_status=validation_status,
@@ -6866,28 +6878,22 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
 
         logger.info(f"📋 [ASYNC] Étape {etape.etape_id} - validation_status IA: {validation_status}")
 
-        # Extraire les issues
-        issues = []
+        # Extraire les issues temporaires (pour fusion ultérieure)
+        temp_issues = []
         for issue_data in response_data.get("issues", []):
-            # ✅ CORRECTION: Retourner TOUTES les issues (comme analyze_etapes séquentielle)
-            # Pas de filtre de confidence pour être cohérent avec la version séquentielle
-            issue = EtapeIssue(
-                etape_id=etape.etape_id,
-                description=issue_data.get("description", ""),
-                category=issue_data.get("category", "cleanliness"),
-                severity=issue_data.get("severity", "medium"),
-                confidence=issue_data.get("confidence", 70),
-                validation_status=validation_status,
-                commentaire=commentaire
-            )
-            issues.append(issue)
+            temp_issues.append({
+                "description": issue_data.get("description", ""),
+                "category": issue_data.get("category", "cleanliness"),
+                "severity": issue_data.get("severity", "medium"),
+                "confidence": issue_data.get("confidence", 70)
+            })
 
         # ═══════════════════════════════════════════════════════════════
         # 🔄 APPLIQUER LA LOGIQUE EN 2 ÉTAPES (POST-TRAITEMENT)
         # ═══════════════════════════════════════════════════════════════
-        validation_status, issues, commentaire = await apply_two_step_validation_logic(
+        validation_status, temp_issues, commentaire = await apply_two_step_validation_logic(
             validation_status=validation_status,
-            issues=issues,
+            issues=temp_issues,
             has_checking=has_checking,
             checking_picture_url=etape_data.get("checking_picture_processed", "") if has_checking else "",
             checkout_picture_url=etape_data.get("checkout_picture_processed", "") if has_checkout else "",
@@ -6896,29 +6902,50 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
             commentaire=commentaire
         )
 
-        # Mettre à jour le validation_status et commentaire dans les issues
-        for issue in issues:
-            issue.validation_status = validation_status
-            issue.commentaire = commentaire
+        # 🆕 FUSION DES ISSUES : Une seule issue par étape avec catégorie "etape_non_validee"
+        issues = []
+        if temp_issues:
+            # Fusionner toutes les descriptions en une seule
+            merged_descriptions = [issue["description"] for issue in temp_issues]
+            merged_description = ", ".join(merged_descriptions)
 
-        # 🆕 Si pas d'issues mais validation_status existe, créer une entrée de suivi
-        if not issues and validation_status:
-            # Récupérer confidence de manière sécurisée
-            confidence_value = 100
-            if isinstance(response_data, dict):
-                confidence_value = response_data.get("confidence", 100)
+            # Prendre la sévérité la plus haute
+            severity_order = {"high": 3, "medium": 2, "low": 1}
+            max_severity = max(temp_issues, key=lambda x: severity_order.get(x["severity"], 1))["severity"]
 
+            # Prendre la confiance moyenne
+            avg_confidence = sum(issue["confidence"] for issue in temp_issues) // len(temp_issues)
+
+            # Créer UNE SEULE issue fusionnée avec la catégorie "etape_non_validee"
             issues.append(EtapeIssue(
                 etape_id=etape.etape_id,
-                description=commentaire if commentaire else f"Étape {validation_status.lower()}",
-                category="cleanliness",
-                severity="low",
-                confidence=confidence_value,
+                description=merged_description,
+                category="etape_non_validee",
+                severity=max_severity,
+                confidence=avg_confidence,
                 validation_status=validation_status,
                 commentaire=commentaire
             ))
+            logger.debug(f"   🔗 [ASYNC] {len(temp_issues)} issues fusionnées en 1 pour l'étape {etape.etape_id}")
+        else:
+            # 🆕 Si pas d'issues mais validation_status existe, créer une entrée de suivi
+            if validation_status:
+                # Récupérer confidence de manière sécurisée
+                confidence_value = 100
+                if isinstance(response_data, dict):
+                    confidence_value = response_data.get("confidence", 100)
 
-        logger.info(f"✅ [ASYNC] Étape {etape.etape_id} analysée: validation_status FINAL={validation_status}, {len(issues)} issues")
+                issues.append(EtapeIssue(
+                    etape_id=etape.etape_id,
+                    description=commentaire if commentaire else f"Étape {validation_status.lower()}",
+                    category="etape_non_validee",
+                    severity="low",
+                    confidence=confidence_value,
+                    validation_status=validation_status,
+                    commentaire=commentaire
+                ))
+
+        logger.info(f"✅ [ASYNC] Étape {etape.etape_id} analysée: validation_status FINAL={validation_status}, {len(issues)} issue(s)")
         return issues
 
     except Exception as e:
@@ -7198,6 +7225,7 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput, re
 
         complete_result = CompleteAnalysisResponse(
             logement_id=input_data.logement_id,
+            logement_name=input_data.logement_name,  # Nom du logement
             rapport_id=input_data.rapport_id,
             pieces_analysis=pieces_analysis_results,
             total_issues_count=total_issues_count,
@@ -7394,6 +7422,7 @@ async def analyze_complete_logement_ultra_parallel(input_data: EtapesAnalysisInp
 
         complete_result = CompleteAnalysisResponse(
             logement_id=input_data.logement_id,
+            logement_name=input_data.logement_name,  # Nom du logement
             rapport_id=input_data.rapport_id,
             pieces_analysis=pieces_analysis_results,
             total_issues_count=total_issues_count,
