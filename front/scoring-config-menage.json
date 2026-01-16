@@ -38,67 +38,67 @@
       "value": 0.6
     },
     "grade_thresholds": {
-      "description": "Seuils de conversion du score moyen pondéré en note /5 - MODE MÉNAGE: TRÈS STRICT (seuils réduits ~÷3)",
+      "description": "Seuils de conversion du score moyen pondéré en note /5 - MODE MÉNAGE: STRICT mais raisonnable",
       "thresholds": [
         {
           "grade": 5,
           "label": "EXCELLENT",
-          "max_score": 0,
-          "description": "Aucune issue détectée - État impeccable"
+          "max_score": 1,
+          "description": "État impeccable - Travail exemplaire"
         },
         {
           "grade": 4.8,
           "label": "EXCELLENT",
-          "max_score": 1.5,
-          "description": "1 seul détail très mineur (ex: positioning/low) - Quasi parfait"
+          "max_score": 3,
+          "description": "Quasi parfait - 1 détail très mineur"
         },
         {
           "grade": 4.5,
           "label": "TRÈS BON",
-          "max_score": 3,
-          "description": "1-2 détails mineurs - Très bon état général"
+          "max_score": 7,
+          "description": "Très bon état - Quelques détails mineurs"
         },
         {
           "grade": 4,
           "label": "BON",
-          "max_score": 6,
-          "description": "Quelques problèmes mineurs - Bon état"
+          "max_score": 12,
+          "description": "Bon état - Quelques problèmes mineurs"
         },
         {
           "grade": 3.5,
           "label": "CORRECT",
-          "max_score": 10,
-          "description": "Plusieurs problèmes - État correct mais améliorable"
+          "max_score": 20,
+          "description": "État correct - Plusieurs problèmes à signaler"
         },
         {
           "grade": 3,
           "label": "MOYEN",
-          "max_score": 15,
-          "description": "Nombreux problèmes - État moyen nécessitant intervention"
+          "max_score": 30,
+          "description": "État moyen - Nombreux problèmes détectés"
         },
         {
           "grade": 2.5,
           "label": "PASSABLE",
-          "max_score": 25,
-          "description": "Problèmes importants - État passable"
+          "max_score": 45,
+          "description": "État passable - Problèmes importants"
         },
         {
           "grade": 2,
           "label": "INSUFFISANT",
-          "max_score": 40,
-          "description": "Problèmes graves - État insuffisant"
+          "max_score": 65,
+          "description": "État insuffisant - Problèmes graves"
         },
         {
           "grade": 1.5,
           "label": "MAUVAIS",
-          "max_score": 60,
-          "description": "Problèmes très graves - Mauvais état"
+          "max_score": 90,
+          "description": "Mauvais état - Problèmes très graves"
         },
         {
           "grade": 1,
           "label": "CRITIQUE",
           "max_score": 999999,
-          "description": "Problèmes critiques généralisés - État critique"
+          "description": "État critique - Intervention urgente requise"
         }
       ]
     },

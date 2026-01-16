@@ -4628,6 +4628,7 @@ class GlobalScore(BaseModel):
     score: float = Field(ge=1, le=5, description="Note globale de 1 à 5 (décimales autorisées)")
     label: str = Field(description="Label textuel (EXCELLENT, TRÈS BON, BON, MOYEN, MÉDIOCRE)")
     description: str = Field(description="Description détaillée de l'état général")
+    score_explanation: Optional[str] = Field(default=None, description="Explication claire et compréhensible du calcul de la note")
     
     @field_validator('score', mode='before')
     @classmethod
@@ -5605,6 +5606,8 @@ def convert_weighted_average_to_grade(weighted_average_score: float, config: dic
     """
     Convertit le score moyen pondéré en note /5 selon les seuils configurés
 
+    ⚠️ UTILISÉ POUR LE SCORE GLOBAL DU LOGEMENT (seuils plus souples)
+
     Args:
         weighted_average_score: Score moyen pondéré calculé
         config: Configuration du scoring
@@ -5626,6 +5629,44 @@ def convert_weighted_average_to_grade(weighted_average_score: float, config: dic
     return (1.0, "CRITIQUE")
 
 
+def convert_room_score_to_grade(room_score: float, config: dict) -> tuple:
+    """
+    Convertit le score d'une pièce en note /5 selon les seuils SPÉCIFIQUES aux pièces
+
+    🏠 UTILISÉ POUR LE SCORE INDIVIDUEL D'UNE PIÈCE (seuils plus stricts)
+
+    Les pièces utilisent category_grade_thresholds car :
+    - Une pièce est une unité plus petite qu'un logement
+    - 2 issues dans 1 pièce = plus grave que 2 issues dans 5 pièces
+    - Les seuils sont donc plus stricts pour être justes
+
+    Args:
+        room_score: Score brut de la pièce (points de pénalité)
+        config: Configuration du scoring
+
+    Returns:
+        tuple: (grade, label)
+    """
+    # Utiliser les seuils spécifiques aux pièces/catégories (plus stricts)
+    thresholds = config.get("scoring_system", {}).get("category_grade_thresholds", {}).get("thresholds", [])
+
+    # Fallback sur les seuils globaux si category_grade_thresholds n'existe pas
+    if not thresholds:
+        logger.warning("⚠️ category_grade_thresholds non trouvé, fallback sur grade_thresholds")
+        thresholds = config.get("scoring_system", {}).get("grade_thresholds", {}).get("thresholds", [])
+
+    # Trier les seuils par max_score croissant
+    sorted_thresholds = sorted(thresholds, key=lambda x: x["max_score"])
+
+    # Trouver le seuil correspondant
+    for threshold in sorted_thresholds:
+        if room_score <= threshold["max_score"]:
+            return (threshold["grade"], threshold["label"])
+
+    # Par défaut, retourner la note la plus basse
+    return (1.0, "CRITIQUE")
+
+
 def calculate_room_algorithmic_score(
     issues: List[Probleme],
     parcours_type: str = "Voyageur"
@@ -5633,8 +5674,12 @@ def calculate_room_algorithmic_score(
     """
     Calcule le score algorithmique d'une pièce basé sur ses issues
 
-    Cette fonction utilise la même logique que calculate_weighted_severity_score()
-    mais pour une seule pièce, garantissant la cohérence avec le score global.
+    🏠 UTILISE DES SEUILS SPÉCIFIQUES POUR LES PIÈCES (plus stricts que le logement global)
+
+    Une pièce avec 2 issues sera notée plus sévèrement qu'un logement avec 2 issues
+    réparties sur plusieurs pièces. C'est plus juste car :
+    - 2 problèmes dans 1 pièce = concentration de défauts
+    - 2 problèmes dans 5 pièces = défauts isolés
 
     Args:
         issues: Liste des issues détectées dans la pièce
@@ -5690,10 +5735,11 @@ def calculate_room_algorithmic_score(
                 "is_etape": is_etape_issue
             })
 
-    # Convertir le score brut en note /5 en utilisant les mêmes seuils que le score global
-    grade, label = convert_weighted_average_to_grade(piece_score, config)
+    # 🆕 Convertir le score brut en note /5 avec les SEUILS SPÉCIFIQUES AUX PIÈCES
+    # (category_grade_thresholds = plus stricts que grade_thresholds)
+    grade, label = convert_room_score_to_grade(piece_score, config)
 
-    logger.debug(f"   🧮 Score algorithmique calculé: {piece_score:.2f} points → {grade}/5 ({label})")
+    logger.debug(f"   🧮 Score pièce calculé: {piece_score:.2f} pts → {grade}/5 ({label}) [seuils pièce]")
 
     return {
         "score_brut": round(piece_score, 2),
@@ -5965,7 +6011,7 @@ Génère une synthèse en JSON:
             logger.debug(f"   ℹ️  Score IA reçu (ignoré) : {ia_score}/5")
             logger.debug(f"   ✅ Score algorithmique utilisé : {algorithmic_score}/5")
 
-        # Créer la description du score
+        # Créer la description technique du score (pour les logs/debug)
         score_description = (
             f"Score calculé algorithmiquement : {weighted_average:.2f} points "
             f"(moyenne pondérée sur {score_result['summary']['num_pieces']} pièces). "
@@ -5975,6 +6021,44 @@ Génère une synthèse en JSON:
             f"L:{score_result['summary']['severity_breakdown']['low']})."
         )
 
+        # ═══════════════════════════════════════════════════════════
+        # 🆕 GÉNÉRATION DE L'EXPLICATION COMPRÉHENSIBLE
+        # ═══════════════════════════════════════════════════════════
+        severity_breakdown = score_result['summary']['severity_breakdown']
+        num_pieces = score_result['summary']['num_pieces']
+        total_issues = score_result['summary']['total_issues_analyzed']
+
+        # Construire une explication en langage naturel
+        if total_issues == 0:
+            score_explanation = f"Aucun problème détecté sur les {num_pieces} pièces analysées. État impeccable !"
+        else:
+            # Décrire les issues par sévérité
+            issues_parts = []
+            if severity_breakdown['high'] > 0:
+                issues_parts.append(f"{severity_breakdown['high']} problème{'s' if severity_breakdown['high'] > 1 else ''} important{'s' if severity_breakdown['high'] > 1 else ''}")
+            if severity_breakdown['medium'] > 0:
+                issues_parts.append(f"{severity_breakdown['medium']} problème{'s' if severity_breakdown['medium'] > 1 else ''} modéré{'s' if severity_breakdown['medium'] > 1 else ''}")
+            if severity_breakdown['low'] > 0:
+                issues_parts.append(f"{severity_breakdown['low']} détail{'s' if severity_breakdown['low'] > 1 else ''} mineur{'s' if severity_breakdown['low'] > 1 else ''}")
+
+            issues_text = ", ".join(issues_parts) if issues_parts else "quelques observations"
+
+            # Phrase d'introduction selon la note
+            if algorithmic_score >= 4.5:
+                intro = "Très bon état global."
+            elif algorithmic_score >= 4.0:
+                intro = "Bon état général avec quelques points à noter."
+            elif algorithmic_score >= 3.5:
+                intro = "État correct, plusieurs éléments à améliorer."
+            elif algorithmic_score >= 3.0:
+                intro = "État moyen, des améliorations sont nécessaires."
+            else:
+                intro = "État insuffisant, intervention requise."
+
+            score_explanation = f"{intro} Sur {num_pieces} pièce{'s' if num_pieces > 1 else ''} analysée{'s' if num_pieces > 1 else ''}, nous avons relevé {issues_text}. La note reflète l'importance relative des pièces (cuisine et salle de bain comptent davantage)."
+
+        logger.debug(f"   📝 Explication générée: {score_explanation[:100]}...")
+
         # Valider et créer l'objet LogementAnalysisEnrichment avec le score algorithmique
         try:
             enrichment = LogementAnalysisEnrichment(
@@ -5983,7 +6067,8 @@ Génère une synthèse en JSON:
                 global_score=GlobalScore(
                     score=algorithmic_score,
                     label=algorithmic_label,
-                    description=score_description
+                    description=score_description,
+                    score_explanation=score_explanation
                 )
             )
             logger.debug(f"✅ Objet LogementAnalysisEnrichment créé avec succès")
