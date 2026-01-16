@@ -475,16 +475,14 @@ class ImageConverter:
                     img = img.convert('RGB')
                     logger.info(f"✅ Conversion {img.mode}→RGB")
                 
-                # ÉTAPE 2: Correction d'orientation EXIF moderne et robuste
+                # ÉTAPE 2: Correction d'orientation EXIF
+                # Tag EXIF 274 = Orientation (standard EXIF)
+                EXIF_ORIENTATION_TAG = 274
                 try:
-                    from PIL.ExifTags import ORIENTATION
-                    
-                    # Utiliser la méthode moderne getexif() au lieu de _getexif()
                     exif = img.getexif()
                     if exif:
-                        # Rechercher le tag d'orientation
-                        orientation = exif.get(ORIENTATION)
-                        if orientation:
+                        orientation = exif.get(EXIF_ORIENTATION_TAG)
+                        if orientation and orientation != 1:
                             # Appliquer les rotations selon les standards EXIF
                             if orientation == 2:
                                 img = img.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
@@ -500,26 +498,10 @@ class ImageConverter:
                                 img = img.rotate(90, expand=True).transpose(Image.Transpose.FLIP_LEFT_RIGHT)
                             elif orientation == 8:
                                 img = img.rotate(90, expand=True)
-                            
-                            if orientation != 1:
-                                logger.info(f"✅ Orientation EXIF corrigée: {orientation}")
-                
-                except (ImportError, AttributeError, KeyError, TypeError) as exif_error:
-                    logger.warning(f"⚠️ Impossible de traiter les métadonnées EXIF: {exif_error}")
-                    # Fallback avec l'ancienne méthode si disponible
-                    try:
-                        exif = img._getexif()
-                        if exif is not None:
-                            orientation = exif.get(274)  # Tag 274 = Orientation
-                            if orientation == 3:
-                                img = img.rotate(180, expand=True)
-                            elif orientation == 6:
-                                img = img.rotate(270, expand=True)
-                            elif orientation == 8:
-                                img = img.rotate(90, expand=True)
-                            logger.info(f"✅ Orientation EXIF corrigée (fallback): {orientation}")
-                    except:
-                        logger.info("ℹ️ Pas de métadonnées EXIF exploitables")
+                            logger.debug(f"✅ Orientation EXIF corrigée: {orientation}")
+
+                except (AttributeError, KeyError, TypeError) as exif_error:
+                    logger.debug(f"ℹ️ Pas de métadonnées EXIF: {exif_error}")
                 
                 # ÉTAPE 3: Redimensionnement intelligent pour l'IA
                 # OpenAI Vision peut traiter des images jusqu'à 20MB, donc on peut être plus généreux
@@ -1382,13 +1364,7 @@ def upscale_image_for_ai(img, min_size=(512, 512), logger=None):
 
 def convert_heic_with_modern_libraries(image_bytes, max_size=(4096, 4096), quality=98, min_size=(512, 512)):
     """
-    🔥 CONVERSION HEIC MODERNE 2025 - Alternatives robustes
-
-    Ordre de priorité:
-    1. Heiya (2025) - Spécialisé photographes
-    2. pyheif (2024) - Simple et fiable
-    3. pillow-heif v1.0.0 (juin 2025) - Version améliorée
-    4. Fallback subprocess (en dernier recours)
+    Conversion HEIC/HEIF vers JPEG avec pillow-heif
 
     Args:
         image_bytes: Données binaires de l'image HEIC
@@ -1403,118 +1379,19 @@ def convert_heic_with_modern_libraries(image_bytes, max_size=(4096, 4096), quali
     import logging
     from PIL import Image
 
-    # Utiliser le logger existant
     logger = logging.getLogger(__name__)
-    
-    # === MÉTHODE 1: HEIYA (2025) - Moderne et optimisé ===
+
     try:
-        logger.info("🚀 Tentative de conversion avec Heiya (2025)...")
-        import heiya.from_hei
-        
-        # Sauvegarder temporairement le fichier HEIC
-        import tempfile
-        import os
-        with tempfile.NamedTemporaryFile(suffix='.heic', delete=False) as temp_heic:
-            temp_heic.write(image_bytes)
-            temp_heic_path = temp_heic.name
-        
-        try:
-            # Conversion HEIC → JPEG avec Heiya
-            temp_jpg_path = temp_heic_path.replace('.heic', '.jpg')
-            
-            # Utiliser Heiya pour la conversion
-            heiya.from_hei.convert_single_image_from_hei_to_jpg(
-                temp_heic_path, 
-                temp_jpg_path,
-                quality=quality
-            )
-            
-            # Lire le résultat
-            if os.path.exists(temp_jpg_path):
-                with open(temp_jpg_path, 'rb') as f:
-                    converted_bytes = f.read()
-
-                # Post-traitement avec PIL pour redimensionnement
-                img = Image.open(io.BytesIO(converted_bytes))
-
-                # Upscaling si image trop petite (NOUVEAU)
-                img = upscale_image_for_ai(img, min_size=min_size, logger=logger)
-
-                # Downscaling si image trop grande
-                if img.size[0] > max_size[0] or img.size[1] > max_size[1]:
-                    img.thumbnail(max_size, Image.Resampling.LANCZOS)
-
-                output = io.BytesIO()
-                img.save(output, format='JPEG', quality=quality, optimize=True)
-                output.seek(0)
-
-                logger.info("✅ Conversion Heiya réussie")
-                return True, output
-            
-        finally:
-            # Nettoyage
-            for path in [temp_heic_path, temp_jpg_path]:
-                if os.path.exists(path):
-                    os.unlink(path)
-                    
-    except ImportError:
-        logger.info("⚠️ Heiya non disponible, installation: pip install heiya")
-    except Exception as e:
-        logger.warning(f"⚠️ Échec Heiya: {e}")
-    
-    # === MÉTHODE 2: PYHEIF (2024) - Simple et fiable ===
-    try:
-        logger.info("🔄 Tentative de conversion avec pyheif (2024)...")
-        import pyheif
-        
-        # Lire avec pyheif
-        heif_file = pyheif.read(image_bytes)
-        
-        # Convertir en image PIL
-        img = Image.frombytes(
-            heif_file.mode,
-            heif_file.size,
-            heif_file.data,
-            "raw",
-            heif_file.mode,
-            heif_file.stride,
-        )
-
-        # Upscaling si image trop petite (NOUVEAU)
-        img = upscale_image_for_ai(img, min_size=min_size, logger=logger)
-
-        # Redimensionnement si nécessaire (downscaling)
-        if img.size[0] > max_size[0] or img.size[1] > max_size[1]:
-            img.thumbnail(max_size, Image.Resampling.LANCZOS)
-
-        # Conversion en JPEG
-        output = io.BytesIO()
-        img.save(output, format='JPEG', quality=quality, optimize=True)
-        output.seek(0)
-
-        logger.info("✅ Conversion pyheif réussie")
-        return True, output
-        
-    except ImportError:
-        logger.info("⚠️ pyheif non disponible, installation: pip install pyheif")
-    except Exception as e:
-        logger.warning(f"⚠️ Échec pyheif: {e}")
-    
-    # === MÉTHODE 3: PILLOW-HEIF v1.0.0 (juin 2025) - Version améliorée ===
-    try:
-        logger.info("🔄 Tentative avec pillow-heif v1.0.0 (juin 2025)...")
         import pillow_heif
-
-        # Méthode moderne pillow-heif
         pillow_heif.register_heif_opener()
 
-        # Ouvrir directement avec PIL
+        # Ouvrir directement avec PIL (pillow-heif enregistre le handler)
         img = Image.open(io.BytesIO(image_bytes))
 
-        # Upscaling si image trop petite (NOUVEAU)
+        # Upscaling si image trop petite
         img = upscale_image_for_ai(img, min_size=min_size, logger=logger)
 
-        # Redimensionnement si nécessaire (downscaling)
+        # Downscaling si image trop grande
         if img.size[0] > max_size[0] or img.size[1] > max_size[1]:
             img.thumbnail(max_size, Image.Resampling.LANCZOS)
 
@@ -1523,79 +1400,17 @@ def convert_heic_with_modern_libraries(image_bytes, max_size=(4096, 4096), quali
         img.save(output, format='JPEG', quality=quality, optimize=True)
         output.seek(0)
 
-        logger.info("✅ Conversion pillow-heif v1.0.0 réussie")
+        logger.debug("✅ Conversion HEIC → JPEG réussie (pillow-heif)")
         return True, output
-        
+
     except ImportError:
-        logger.info("⚠️ pillow-heif non disponible, installation: pip install pillow-heif")
+        error_msg = "❌ pillow-heif non installé. Installer avec: pip install pillow-heif"
+        logger.error(error_msg)
+        return False, error_msg
     except Exception as e:
-        logger.warning(f"⚠️ Échec pillow-heif: {e}")
-    
-    # === MÉTHODE 4: FALLBACK SUBPROCESS (dernier recours) ===
-    try:
-        logger.info("🔄 Tentative de conversion avec subprocess (fallback)...")
-        import subprocess
-        import tempfile
-        import os
-        
-        # Sauvegarder temporairement
-        with tempfile.NamedTemporaryFile(suffix='.heic', delete=False) as temp_heic:
-            temp_heic.write(image_bytes)
-            temp_heic_path = temp_heic.name
-        
-        temp_jpg_path = temp_heic_path.replace('.heic', '.jpg')
-        
-        try:
-            # Essayer avec ImageMagick
-            result = subprocess.run([
-                'convert', 
-                temp_heic_path, 
-                '-quality', str(quality),
-                '-resize', f"{max_size[0]}x{max_size[1]}>",
-                temp_jpg_path
-            ], capture_output=True, text=True, timeout=30)
-            
-            if result.returncode == 0 and os.path.exists(temp_jpg_path):
-                with open(temp_jpg_path, 'rb') as f:
-                    converted_bytes = f.read()
-
-                # Post-traitement avec PIL pour upscaling si nécessaire
-                img = Image.open(io.BytesIO(converted_bytes))
-                img = upscale_image_for_ai(img, min_size=min_size, logger=logger)
-
-                output = io.BytesIO()
-                img.save(output, format='JPEG', quality=quality, optimize=True)
-                output.seek(0)
-
-                logger.info("✅ Conversion subprocess réussie")
-                return True, output
-            
-        except (subprocess.SubprocessError, FileNotFoundError) as e:
-            logger.warning(f"⚠️ Subprocess échec: {e}")
-        
-        finally:
-            # Nettoyage
-            for path in [temp_heic_path, temp_jpg_path]:
-                if os.path.exists(path):
-                    os.unlink(path)
-    
-    except Exception as e:
-        logger.warning(f"⚠️ Fallback subprocess échec: {e}")
-    
-    # === ÉCHEC TOTAL ===
-    error_msg = """
-❌ ÉCHEC TOTAL DE CONVERSION HEIC
-    
-Solutions à installer:
-1. pip install heiya (recommandé pour 2025)
-2. pip install pyheif (simple et fiable)
-3. pip install pillow-heif (version 1.0.0+)
-4. sudo apt-get install imagemagick (fallback)
-
-Vérifiez aussi vos dépendances système (libheif, libde265).
-"""
-    logger.error(error_msg)
-    return False, error_msg
+        error_msg = f"❌ Échec conversion HEIC: {e}"
+        logger.error(error_msg)
+        return False, error_msg
 
 
 def convert_image_to_jpeg_for_ai(image_url, max_size=(4096, 4096), quality=98, min_size=(512, 512)):
