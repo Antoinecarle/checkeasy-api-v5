@@ -3052,12 +3052,19 @@ def verify_checkin_checkout_coherence(
         # 3️⃣ COMPARER LES DEUX CLASSIFICATIONS
         # Définir les groupes de pièces compatibles (ex: salon/cuisine ouverte = même pièce)
         COMPATIBLE_ROOMS = {
+            # Pièces de vie ouvertes
             "salon": ["cuisine", "salon_cuisine", "sejour"],
             "cuisine": ["salon", "salon_cuisine", "sejour"],
             "salon_cuisine": ["salon", "cuisine", "sejour"],
             "sejour": ["salon", "cuisine", "salon_cuisine"],
+            # Chambres / Bureaux
             "chambre": ["bureau"],
             "bureau": ["chambre"],
+            # Salles de bain / Salles d'eau (toutes compatibles entre elles - angle de vue peut masquer WC)
+            "salle_de_bain": ["salle_d_eau", "salle_de_bain_et_toilettes", "salle_d_eau_et_wc"],
+            "salle_d_eau": ["salle_de_bain", "salle_de_bain_et_toilettes", "salle_d_eau_et_wc"],
+            "salle_de_bain_et_toilettes": ["salle_de_bain", "salle_d_eau", "salle_d_eau_et_wc"],
+            "salle_d_eau_et_wc": ["salle_de_bain", "salle_d_eau", "salle_de_bain_et_toilettes"],
         }
 
         # Considérer comme incohérent si les types sont différents ET ne sont pas "autre" ET pas compatibles
