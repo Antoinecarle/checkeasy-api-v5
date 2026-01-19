@@ -1,0 +1,9 @@
+# Configuration Nixpacks pour Railway
+# Installe les dépendances système nécessaires pour le traitement d'images
+
+[phases.setup]
+nixPkgs = ["libaom", "libheif", "libavif"]
+
+[phases.install]
+cmds = ["pip install -r requirements.txt"]
+

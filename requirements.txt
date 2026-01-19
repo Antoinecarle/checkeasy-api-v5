@@ -11,6 +11,7 @@ nest-asyncio==1.6.0
 # Image processing
 Pillow==10.3.0
 pillow-heif==0.16.0  # Support HEIC + AVIF (via libheif) - SEULE lib nécessaire
+pillow-avif-plugin>=1.4.0  # Plugin AVIF pour Pillow
 imageio>=2.31.0      # Fallback pour formats exotiques
 
 # Système d'analyse des logs
