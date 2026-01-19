@@ -158,8 +158,15 @@ logs/
 
 # Temporary files
 tmp/
-temp/ 
+temp/
 
 # Configuration des prompts (éviter d'écraser les modifications en production)
 front/prompts-config.json
-prompts-config.json 
+prompts-config.json
+
+# Node.js
+node_modules/
+package-lock.json
+
+# Fichiers de backup
+*.backup.*
