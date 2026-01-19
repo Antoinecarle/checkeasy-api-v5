@@ -3905,7 +3905,7 @@ def analyze_with_auto_classification(input_data: InputData, parcours_type: str =
         analysis_result.analyse_globale.score = algorithmic_score_result["note_sur_5"]
 
         logger.debug(f"✅ Score algorithmique appliqué: {algorithmic_score_result['note_sur_5']}/5 ({algorithmic_score_result['label']})")
-        logger.debug(f"   📊 Détails: {algorithmic_score_result['issues_count']} issues, {algorithmic_score_result['score_brut']} points bruts")
+        logger.debug(f"   📊 Détails: {algorithmic_score_result['issues_count']} issues, {algorithmic_score_result['total_penalty']} pénalités")
 
         # ÉTAPE 4: Combinaison des résultats
         logger.debug(f"🔄 ÉTAPE 4 - Combinaison des résultats de classification et d'analyse")
