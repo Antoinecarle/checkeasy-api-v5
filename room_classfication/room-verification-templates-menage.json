@@ -26,7 +26,11 @@
           "variation de couleur ou de modèle d'électroménager (frigo, four, micro-ondes, etc.)",
           "papier toilette",
           "bouteille d'eau",
-          "contenu du vase / fleurs / bouquet"
+          "contenu du vase / fleurs / bouquet",
+          "ombres naturelles causées par l'éclairage ou l'angle de prise de vue",
+          "zones sombres dues au manque de lumière (ne pas confondre avec saleté)",
+          "reflets sur surfaces brillantes (inox, carrelage, plan de travail)",
+          "variations de teinte normales du sol ou des murs"
         ],
         "defauts_frequents": [
           "trace grasse crédence",
@@ -62,7 +66,10 @@
         "points_ignorables": [
           "Position de la serviettes",
           "Couleur Tapis de bain",
-          "légère eau résiduelle"
+          "légère eau résiduelle",
+          "ombres naturelles causées par l'éclairage",
+          "reflets sur carrelage, miroir ou surfaces brillantes",
+          "zones sombres dues à l'angle de prise de vue"
         ],
         "defauts_frequents": [
           "calcaire épais robinet",
@@ -93,7 +100,10 @@
         ],
         "points_ignorables": [
           "COULEUR DES DRAPS ET DE LA COUETTE",
-          "état d'éclairage (lumière allumée ou éteinte)"
+          "état d'éclairage (lumière allumée ou éteinte)",
+          "ombres naturelles sur le sol, murs ou lit",
+          "reflets sur surfaces brillantes (parquet, meubles vernis)",
+          "zones sombres dues à l'éclairage ou angle de photo"
         ],
         "defauts_frequents": [
           "lampe chevet absente",
@@ -125,7 +135,10 @@
           "Couleur des cousins",
           "état d'éclairage (lumière allumée ou éteinte)",
           "état d'éclairage des lampes ou guirlandes (allumées, éteintes, mode clignotant)",
-          "torchon / torchons"
+          "torchon / torchons",
+          "ombres naturelles sur sol, murs ou meubles",
+          "reflets sur table basse, TV ou surfaces brillantes",
+          "zones sombres dues à l'éclairage ambiant"
         ],
         "defauts_frequents": [
           "coussin manquant",
@@ -156,7 +169,10 @@
         ],
         "points_ignorables": [
           "Nombre exact de rouleau papier",
-          "Légère eau résiduelle laissée sur les surfaces suite au ménage"
+          "Légère eau résiduelle laissée sur les surfaces suite au ménage",
+          "ombres naturelles causées par l'éclairage",
+          "reflets sur carrelage ou surfaces brillantes",
+          "zones sombres dues à l'angle de prise de vue"
         ],
         "defauts_frequents": [
           "abattant cassé",
@@ -181,7 +197,10 @@
         "points_ignorables": [
           "plantes privées hors pot (par exemple : arbre voisin)",
           "variation d’état naturel des plantes (floraison / flétrissure légères)",
-          "traces de pluie récentes ou gouttes d’arrosage"
+          "traces de pluie récentes ou gouttes d’arrosage",
+          "ombres naturelles causées par le soleil ou l'éclairage",
+          "zones sombres dues à l'heure de la journée",
+          "reflets sur mobilier extérieur ou surfaces brillantes"
         ],
         "defauts_frequents": [
           "dalle fissurée",
@@ -214,7 +233,10 @@
         "points_ignorables": [
           "Position de la serviettes",
           "Couleur tapis de bain",
-          "légère eau résiduelle"
+          "légère eau résiduelle",
+          "ombres naturelles causées par l'éclairage",
+          "reflets sur carrelage, miroir ou surfaces brillantes",
+          "zones sombres dues à l'angle de prise de vue"
         ],
         "defauts_frequents": [
           "joint silicone noirci"
@@ -241,7 +263,10 @@
           "Position exacte du tapis (s’il n’entrave pas l’usage)",
           "Couleur ou motif des serviettes / gants",
           "Légères éclaboussures d’eau fraîche",
-          "Flacons de shampoing / gel douche laissés par l’occupant"
+          "Flacons de shampoing / gel douche laissés par l’occupant",
+          "ombres naturelles causées par l'éclairage",
+          "reflets sur carrelage, miroir ou surfaces brillantes",
+          "zones sombres dues à l'angle de prise de vue"
         ],
         "defauts_frequents": [
           "Joints noircits",
@@ -299,7 +324,10 @@
           "chaise"
         ],
         "points_ignorables": [
-          "position exact des classeurs"
+          "position exact des classeurs",
+          "ombres naturelles causées par l'éclairage",
+          "reflets sur carrelage, miroir ou surfaces brillantes",
+          "zones sombres dues à l'angle de prise de vue"
         ],
         "defauts_frequents": [
           "bureau sale"
@@ -315,7 +343,12 @@
           "paillasson",
           "meuble d'entrée"
         ],
-        "points_ignorables": [],
+        "points_ignorables": [
+          "ombres naturelles causées par l'éclairage ou l'angle de prise de vue",
+          "zones sombres dues au manque de lumière (ne pas confondre avec saleté)",
+          "reflets sur surfaces brillantes",
+          "variations de teinte normales du sol ou des murs"
+        ],
         "defauts_frequents": [
           "trace sur le sol"
         ]
@@ -333,7 +366,11 @@
         "points_ignorables": [
           "Position de la clé dans la boite à clé",
           "Légères traces d'usure sur le boîtier",
-          "Petites rayures superficielles"
+          "Petites rayures superficielles",
+          "ombres naturelles causées par l'éclairage ou l'angle de prise de vue",
+          "zones sombres dues au manque de lumière (ne pas confondre avec saleté)",
+          "reflets sur surfaces brillantes",
+          "variations de teinte normales du sol ou des murs"
         ],
         "defauts_frequents": [
           "Clé manquante",
@@ -357,7 +394,11 @@
           "Petites traces d'usage normal",
           "Variations de couleur naturelles",
           "Légères marques superficielles",
-          "Poussière légère"
+          "Poussière légère",
+          "ombres naturelles causées par l'éclairage ou l'angle de prise de vue",
+          "zones sombres dues au manque de lumière (ne pas confondre avec saleté)",
+          "reflets sur surfaces brillantes",
+          "variations de teinte normales du sol ou des murs"
         ],
         "defauts_frequents": [
           "Traces diverses non identifiées",
