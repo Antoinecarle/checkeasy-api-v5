@@ -5790,6 +5790,13 @@ def calculate_room_algorithmic_score(
         "positioning": 0.5, "added_item": 0.4, "image_quality": 0.3, "wrong_room": 2.0, "other": 1.0
     })
     CONFIDENCE_THRESHOLD = scoring_config.get("confidence_threshold", {}).get("value", 90)
+
+    # 🔍 DEBUG: Afficher les valeurs chargées
+    logger.debug(f"🔧 calculate_room_algorithmic_score - Config chargée pour '{parcours_type}':")
+    logger.debug(f"   SEVERITY_PENALTY: {SEVERITY_PENALTY}")
+    logger.debug(f"   CATEGORY_MULTIPLIER: {CATEGORY_MULTIPLIER}")
+    logger.debug(f"   CONFIDENCE_THRESHOLD: {CONFIDENCE_THRESHOLD}")
+    logger.debug(f"   Nombre d'issues à traiter: {len(issues)}")
     MIN_GRADE = scoring_config.get("min_grade", {}).get("value", 1.0)
     MAX_GRADE = scoring_config.get("max_grade", {}).get("value", 5.0)
 
@@ -7269,12 +7276,28 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput, re
             # FUSIONNER les issues générales + issues d'étapes dans un seul tableau
             all_issues_for_piece = list(piece_analysis.issues) + etapes_issues_for_piece
 
-            # Créer un nouvel objet avec TOUTES les issues fusionnées
+            # 🆕 RECALCULER LE SCORE DE LA PIÈCE avec TOUTES les issues (générales + étapes)
+            recalculated_score = calculate_room_algorithmic_score(
+                issues=all_issues_for_piece,
+                parcours_type=parcours_type
+            )
+
+            # Créer une copie modifiée de l'analyse globale avec le nouveau score
+            updated_analyse_globale = AnalyseGlobale(
+                status=piece_analysis.analyse_globale.status,
+                score=recalculated_score["note_sur_5"],
+                temps_nettoyage_estime=piece_analysis.analyse_globale.temps_nettoyage_estime,
+                commentaire_global=piece_analysis.analyse_globale.commentaire_global
+            )
+
+            logger.debug(f"   🧮 [PARALLEL] Pièce {piece_id}: Score recalculé {piece_analysis.analyse_globale.score} → {recalculated_score['note_sur_5']}/5 ({len(all_issues_for_piece)} issues)")
+
+            # Créer un nouvel objet avec TOUTES les issues fusionnées ET le score recalculé
             updated_piece_analysis = CombinedAnalysisResponse(
                 piece_id=piece_analysis.piece_id,
                 nom_piece=piece_analysis.nom_piece,
                 room_classification=piece_analysis.room_classification,
-                analyse_globale=piece_analysis.analyse_globale,
+                analyse_globale=updated_analyse_globale,
                 issues=all_issues_for_piece  # Issues générales + étapes fusionnées
             )
 
@@ -7469,12 +7492,28 @@ async def analyze_complete_logement_ultra_parallel(input_data: EtapesAnalysisInp
             # Fusionner toutes les issues
             all_issues_for_piece = list(piece_analysis.issues) + etapes_issues_for_piece
 
-            # Créer objet mis à jour
+            # 🆕 RECALCULER LE SCORE DE LA PIÈCE avec TOUTES les issues (générales + étapes)
+            recalculated_score = calculate_room_algorithmic_score(
+                issues=all_issues_for_piece,
+                parcours_type=parcours_type
+            )
+
+            # Créer une copie modifiée de l'analyse globale avec le nouveau score
+            updated_analyse_globale = AnalyseGlobale(
+                status=piece_analysis.analyse_globale.status,
+                score=recalculated_score["note_sur_5"],
+                temps_nettoyage_estime=piece_analysis.analyse_globale.temps_nettoyage_estime,
+                commentaire_global=piece_analysis.analyse_globale.commentaire_global
+            )
+
+            logger.debug(f"   🧮 [PARALLEL-ALT] Pièce {piece_id}: Score recalculé {piece_analysis.analyse_globale.score} → {recalculated_score['note_sur_5']}/5 ({len(all_issues_for_piece)} issues)")
+
+            # Créer objet mis à jour avec score recalculé
             updated_piece_analysis = CombinedAnalysisResponse(
                 piece_id=piece_analysis.piece_id,
                 nom_piece=piece_analysis.nom_piece,
                 room_classification=piece_analysis.room_classification,
-                analyse_globale=piece_analysis.analyse_globale,
+                analyse_globale=updated_analyse_globale,
                 issues=all_issues_for_piece
             )
 
@@ -9484,12 +9523,15 @@ def load_scoring_config(parcours_type: str = "Voyageur") -> dict:
     """
     try:
         # Déterminer le suffixe du fichier selon le type
-        if parcours_type.lower() == "ménage":
+        # Supporter plusieurs variantes: "ménage", "menage", "Ménage", "Menage"
+        parcours_lower = parcours_type.lower().replace("é", "e")
+        if parcours_lower == "menage":
             file_suffix = "-menage"
         else:  # Par défaut: Voyageur
             file_suffix = "-voyageur"
 
         config_path = f"front/scoring-config{file_suffix}.json"
+        logger.debug(f"📂 Chargement config scoring: parcours_type='{parcours_type}' → fichier={config_path}")
 
         if not os.path.exists(config_path):
             logger.warning(f"⚠️ Fichier de configuration scoring non trouvé : {config_path}")
