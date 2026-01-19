@@ -5,9 +5,9 @@
   "scoring_system": {
     "severity_penalty": {
       "description": "Pénalité directe en points par sévérité. Note = 5 - somme(pénalités). MODE VOYAGEUR = TOLÉRANT",
-      "low": 0.2,
+      "low": 0.3,
       "medium": 0.6,
-      "high": 1.2
+      "high": 1.5
     },
     "category_multiplier": {
       "description": "Multiplicateur selon la catégorie d'issue (VOYAGEUR: dégâts et objets manquants prioritaires)",
@@ -16,9 +16,9 @@
       "cleanliness": 1,
       "positioning": 0.5,
       "added_item": 0.4,
-      "image_quality": 1,
-      "wrong_room": 2,
-      "other": 1
+      "image_quality": 2,
+      "wrong_room": 3,
+      "other": 1.2
     },
     "room_importance_weight": {
       "description": "Poids d'importance par type de pièce (pour la moyenne pondérée des notes)",
@@ -33,7 +33,7 @@
       "bureau": 1,
       "entree": 0.8,
       "exterieur": 0.6,
-      "cle": 0.8,
+      "cle": 1.5,
       "autre": 1
     },
     "confidence_threshold": {

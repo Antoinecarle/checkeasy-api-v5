@@ -5,9 +5,9 @@
   "scoring_system": {
     "severity_penalty": {
       "description": "Pénalité directe en points par sévérité. Note = 5 - somme(pénalités). MODE MÉNAGE = STRICT",
-      "high": 1,
-      "medium": 0.4,
-      "low": 0.15
+      "low": 0.15,
+      "medium": 0.6,
+      "high": 1.5
     },
     "category_multiplier": {
       "description": "Multiplicateur selon la catégorie d'issue (MÉNAGE: propreté et positionnement prioritaires)",
@@ -16,8 +16,9 @@
       "damage": 1,
       "missing_item": 1,
       "added_item": 0.5,
-      "image_quality": 0.3,
-      "wrong_room": 2,
+      "image_quality": 1.5,
+      "wrong_room": 3,
+      "etape_non_validee": 0.7,
       "other": 1
     },
     "room_importance_weight": {
@@ -33,7 +34,7 @@
       "bureau": 1,
       "entree": 0.8,
       "exterieur": 0.6,
-      "cle": 0.8,
+      "cle": 1,
       "autre": 0.8
     },
     "confidence_threshold": {
@@ -41,11 +42,9 @@
       "value": 90
     },
     "min_grade": {
-      "description": "Note minimale possible",
       "value": 1
     },
     "max_grade": {
-      "description": "Note maximale possible (note de base sans pénalité)",
       "value": 5
     }
   },
