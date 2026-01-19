@@ -1055,12 +1055,20 @@ def build_dynamic_prompt(input_data: InputData, parcours_type: str = "Voyageur")
         logger.warning("🔄 Utilisation du prompt de secours minimal")
         
         # Fallback minimal - uniquement en cas d'erreur critique
-        return """Tu es un expert en inspection de propreté. Analyse les différences entre les photos d'entrée et de sortie.
+        return """Tu es un expert en inspection de propreté. Compare les PHOTOS DE RÉFÉRENCE avec les PHOTOS DE SORTIE.
+
+🚨 RÈGLE ABSOLUE - ORDRE DES IMAGES:
+📷 Les PREMIÈRES images = PHOTOS DE RÉFÉRENCE = État ATTENDU/IDÉAL (comment ça DOIT être)
+📷 Les DERNIÈRES images = PHOTOS DE SORTIE = État ACTUEL (comment c'EST maintenant)
+
+⚠️ UN PROBLÈME = quelque chose qui est DIFFÉRENT (en pire) sur les PHOTOS DE SORTIE par rapport aux PHOTOS DE RÉFÉRENCE
+⚠️ Si un objet est PRÉSENT sur la RÉFÉRENCE mais ABSENT sur la SORTIE → PROBLÈME (objet manquant)
+⚠️ Si un objet est ABSENT sur la RÉFÉRENCE mais PRÉSENT sur la SORTIE → PAS un problème (sauf si c'est un déchet)
 
 INSTRUCTIONS :
-1. Compare méticuleusement les photos d'entrée avec celles de sortie
-2. Identifie les changements significatifs
-3. Utilise des descriptions précises
+1. D'ABORD analyse les PHOTOS DE RÉFÉRENCE - mémorise l'état idéal
+2. ENSUITE analyse les PHOTOS DE SORTIE - compare avec la référence
+3. Identifie ce qui MANQUE, ce qui est ENDOMMAGÉ, ce qui est SALE par rapport à la référence
 4. Évalue la gravité (low/medium/high)
 
 IMPORTANT :
@@ -1311,7 +1319,7 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
             "content": [
                 {
                     "type": "text",
-                    "text": f"Analyse les différences entre ces photos d'entrée et de sortie d'une {input_data.nom}. Fournis une réponse JSON structurée. forcer l'analyse des images pour detecter mêmes les plus petits détails",
+                    "text": f"Compare les PHOTOS DE RÉFÉRENCE (état attendu) avec les PHOTOS DE SORTIE (état actuel) de cette {input_data.nom}. Identifie ce qui manque, ce qui est endommagé, ou ce qui n'est pas conforme à la référence. Fournis une réponse JSON structurée.",
                     "reasoning": {
                         "effort": "high"
                     }
@@ -1319,26 +1327,54 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
             ]
         }
 
-        # Filtrer et ajouter seulement les photos d'entrée valides
+        # 📸 ÉTAPE 1: Ajouter les PHOTOS DE RÉFÉRENCE avec label explicite
         valid_checkin = []
+        checkin_urls = []
         for photo in processed_checkin:
             normalized_photo_url = normalize_url(photo['url'])
             if is_valid_image_url(normalized_photo_url) and not normalized_photo_url.startswith('data:image/gif;base64,R0lGOD'):
                 valid_checkin.append(photo)
+                checkin_urls.append(normalized_photo_url)
+
+        # Ajouter le label AVANT les photos de référence
+        if checkin_urls:
+            user_message["content"].append({
+                "type": "text",
+                "text": f"📷 ═══ PHOTOS DE RÉFÉRENCE ({len(checkin_urls)} images) ═══\n⬇️ Ces images montrent l'ÉTAT ATTENDU - Comment le logement DOIT être:"
+            })
+            for i, url in enumerate(checkin_urls, 1):
+                user_message["content"].append({
+                    "type": "text",
+                    "text": f"[RÉFÉRENCE {i}/{len(checkin_urls)}]"
+                })
                 user_message["content"].append({
                     "type": "image_url",
-                    "image_url": {"url": normalized_photo_url, "detail": "high"}
+                    "image_url": {"url": url, "detail": "high"}
                 })
 
-        # Filtrer et ajouter seulement les photos de sortie valides
+        # 📸 ÉTAPE 2: Ajouter les PHOTOS DE SORTIE avec label explicite
         valid_checkout = []
+        checkout_urls = []
         for photo in processed_checkout:
             normalized_photo_url = normalize_url(photo['url'])
             if is_valid_image_url(normalized_photo_url) and not normalized_photo_url.startswith('data:image/gif;base64,R0lGOD'):
                 valid_checkout.append(photo)
+                checkout_urls.append(normalized_photo_url)
+
+        # Ajouter le label AVANT les photos de sortie
+        if checkout_urls:
+            user_message["content"].append({
+                "type": "text",
+                "text": f"📷 ═══ PHOTOS DE SORTIE ({len(checkout_urls)} images) ═══\n⬇️ Ces images montrent l'ÉTAT ACTUEL - Comment le logement EST maintenant:"
+            })
+            for i, url in enumerate(checkout_urls, 1):
+                user_message["content"].append({
+                    "type": "text",
+                    "text": f"[SORTIE {i}/{len(checkout_urls)}]"
+                })
                 user_message["content"].append({
                     "type": "image_url",
-                    "image_url": {"url": normalized_photo_url, "detail": "high"}
+                    "image_url": {"url": url, "detail": "high"}
                 })
         
         # Si aucune image valide, ajouter une note
@@ -8957,7 +8993,7 @@ ID ÉTAPE : {etape_id}""",
                 "name": "Message Utilisateur - Analyse Principal",
                 "description": "Message envoyé par l'utilisateur pour l'analyse des images",
                 "endpoint": "/analyze",
-                "template": "Analyse les différences entre ces photos d'entrée et de sortie d'une {piece_nom}. Fournis une réponse JSON structurée.",
+                "template": "Compare les PHOTOS DE RÉFÉRENCE (état attendu) avec les PHOTOS DE SORTIE (état actuel) de cette {piece_nom}. Identifie ce qui manque, ce qui est endommagé, ou ce qui n'est pas conforme à la référence. Fournis une réponse JSON structurée.",
                 "variables": ["piece_nom"]
             }
         }

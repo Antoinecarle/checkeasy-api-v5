@@ -96,7 +96,7 @@
       "name": "Message utilisateur pour analyse principale",
       "description": "Message utilisateur envoyé avec les images pour l'analyse principale",
       "endpoint": "/analyze",
-      "template": "Analyse les différences entre ces photos d'entrée et de sortie d'une {piece_nom}. Fournis une réponse JSON structurée. forcer l'analyse des images pour detecter mêmes les plus petits détails",
+      "template": "Compare les PHOTOS DE RÉFÉRENCE (état attendu) avec les PHOTOS DE SORTIE (état actuel) de cette {piece_nom}. Identifie ce qui manque, ce qui est endommagé, ou ce qui n'est pas conforme à la référence. Fournis une réponse JSON structurée.",
       "variables": [
         "piece_nom"
       ]
