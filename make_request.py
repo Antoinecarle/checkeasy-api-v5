@@ -9607,6 +9607,8 @@ def map_room_type_to_valid(detected_type: str) -> str:
         # Variations salle de bain
         "salle_de_bain_avec_wc": "salle_de_bain_et_toilettes",  # Redirige vers le nouveau type
         "salle_de_bain_wc": "salle_de_bain_et_toilettes",
+        "salle_de_bain_et_toilettee": "salle_de_bain_et_toilettes",  # Typo courante de l'IA (double e)
+        "salle_d_eau_et_toilettes": "salle_d_eau_et_wc",  # Variation de nommage
         "sdb": "salle_de_bain",
         "bathroom": "salle_de_bain",
         
