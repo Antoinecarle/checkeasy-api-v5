@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CheckEasy V5 - Configuration du Système de Notation</title>
+    <title>CheckEasy V5 - Configuration du Système de Notation V2</title>
     <style>
         :root {
             --primary: #4f46e5;
@@ -20,11 +20,7 @@
             --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -35,35 +31,26 @@
             padding: 20px;
         }
 
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
+        .container { max-width: 1400px; margin: 0 auto; }
 
-        .header {
+        .header { text-align: center; margin-bottom: 2rem; color: white; }
+        .header h1 { font-size: 2.5rem; font-weight: 700; margin-bottom: 0.5rem; text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+        .header p { font-size: 1.1rem; opacity: 0.9; }
+
+        .formula-box {
+            background: rgba(255,255,255,0.95);
+            border-radius: 12px;
+            padding: 1rem 2rem;
+            margin: 1rem auto;
+            max-width: 600px;
             text-align: center;
-            margin-bottom: 2rem;
-            color: white;
-        }
-
-        .header h1 {
-            font-size: 2.5rem;
+            font-size: 1.3rem;
             font-weight: 700;
-            margin-bottom: 0.5rem;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            color: var(--primary);
+            box-shadow: var(--shadow);
         }
 
-        .header p {
-            font-size: 1.1rem;
-            opacity: 0.9;
-        }
-
-        .main-content {
-            background: white;
-            border-radius: 16px;
-            box-shadow: var(--shadow-lg);
-            overflow: hidden;
-        }
+        .main-content { background: white; border-radius: 16px; box-shadow: var(--shadow-lg); overflow: hidden; }
 
         .toolbar {
             background: var(--light);
@@ -75,17 +62,8 @@
             flex-wrap: wrap;
             gap: 1rem;
         }
-
-        .toolbar-title {
-            font-size: 1.2rem;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-
-        .toolbar-actions {
-            display: flex;
-            gap: 1rem;
-        }
+        .toolbar-title { font-size: 1.2rem; font-weight: 600; color: var(--text-primary); }
+        .toolbar-actions { display: flex; gap: 1rem; flex-wrap: wrap; }
 
         .btn {
             padding: 0.75rem 1.5rem;
@@ -100,43 +78,14 @@
             text-decoration: none;
             font-size: 0.95rem;
         }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-light); transform: translateY(-1px); box-shadow: var(--shadow); }
+        .btn-secondary { background: var(--secondary); color: white; }
+        .btn-secondary:hover { background: #059669; transform: translateY(-1px); }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-danger:hover { background: #dc2626; transform: translateY(-1px); }
 
-        .btn-primary {
-            background: var(--primary);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: var(--primary-light);
-            transform: translateY(-1px);
-            box-shadow: var(--shadow);
-        }
-
-        .btn-secondary {
-            background: var(--secondary);
-            color: white;
-        }
-
-        .btn-secondary:hover {
-            background: #059669;
-            transform: translateY(-1px);
-            box-shadow: var(--shadow);
-        }
-
-        .btn-danger {
-            background: var(--danger);
-            color: white;
-        }
-
-        .btn-danger:hover {
-            background: #dc2626;
-            transform: translateY(-1px);
-            box-shadow: var(--shadow);
-        }
-
-        .content-area {
-            padding: 2rem;
-        }
+        .content-area { padding: 2rem; }
 
         .section {
             margin-bottom: 2.5rem;
@@ -145,7 +94,6 @@
             border-radius: 12px;
             border: 1px solid var(--border);
         }
-
         .section-header {
             display: flex;
             align-items: center;
@@ -154,17 +102,8 @@
             padding-bottom: 1rem;
             border-bottom: 2px solid var(--primary);
         }
-
-        .section-icon {
-            font-size: 1.5rem;
-        }
-
-        .section-title {
-            font-size: 1.3rem;
-            font-weight: 700;
-            color: var(--text-primary);
-        }
-
+        .section-icon { font-size: 1.5rem; }
+        .section-title { font-size: 1.3rem; font-weight: 700; color: var(--text-primary); }
         .section-description {
             font-size: 0.9rem;
             color: var(--text-secondary);
@@ -175,24 +114,9 @@
             border-radius: 4px;
         }
 
-        .form-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 1.5rem;
-        }
-
-        .form-group {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-
-        .form-label {
-            font-weight: 600;
-            color: var(--text-primary);
-            font-size: 0.95rem;
-        }
-
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.5rem; }
+        .form-label { font-weight: 600; color: var(--text-primary); font-size: 0.95rem; }
         .form-input {
             padding: 0.75rem;
             border: 2px solid var(--border);
@@ -200,79 +124,31 @@
             font-size: 1rem;
             transition: all 0.2s;
         }
+        .form-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
 
-        .form-input:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
-        }
+        .alert { padding: 1rem 1.5rem; border-radius: 8px; margin-bottom: 1.5rem; display: none; align-items: center; gap: 0.75rem; }
+        .alert.show { display: flex; }
+        .alert-success { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+        .alert-error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
 
-        .form-input:disabled {
-            background: #f3f4f6;
-            cursor: not-allowed;
-        }
-
-        .alert {
-            padding: 1rem 1.5rem;
-            border-radius: 8px;
-            margin-bottom: 1.5rem;
-            display: none;
-            align-items: center;
-            gap: 0.75rem;
-        }
-
-        .alert.show {
-            display: flex;
-        }
-
-        .alert-success {
-            background: #d1fae5;
-            color: #065f46;
-            border: 1px solid #6ee7b7;
-        }
-
-        .alert-error {
-            background: #fee2e2;
-            color: #991b1b;
-            border: 1px solid #fca5a5;
-        }
-
-        .threshold-item {
+        .label-item {
             background: white;
-            padding: 1rem;
+            padding: 0.75rem 1rem;
             border-radius: 8px;
             border: 1px solid var(--border);
-            margin-bottom: 1rem;
-        }
-
-        .threshold-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 0.75rem;
+            margin-bottom: 0.5rem;
         }
-
-        .threshold-grade {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--primary);
-        }
-
-        .threshold-label {
-            display: inline-block;
+        .label-badge {
             padding: 0.25rem 0.75rem;
-            background: var(--primary);
-            color: white;
             border-radius: 4px;
             font-size: 0.85rem;
             font-weight: 600;
+            color: white;
         }
-
-        .threshold-inputs {
-            display: grid;
-            grid-template-columns: 1fr 2fr;
-            gap: 1rem;
-        }
+        .label-range { font-size: 0.9rem; color: var(--text-secondary); }
 
         .back-link {
             display: inline-flex;
@@ -287,91 +163,64 @@
             border-radius: 8px;
             transition: all 0.2s;
         }
+        .back-link:hover { background: rgba(255, 255, 255, 0.3); }
 
-        .back-link:hover {
-            background: rgba(255, 255, 255, 0.3);
-        }
-
-        @media (max-width: 768px) {
-            .form-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .threshold-inputs {
-                grid-template-columns: 1fr;
-            }
-        }
+        @media (max-width: 768px) { .form-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
     <div class="container">
-        <a href="/admin" class="back-link">
-            ← Retour à l'administration
-        </a>
+        <a href="/admin" class="back-link">← Retour à l'administration</a>
 
         <div class="header">
-            <h1 id="headerTitle">⚙️ Configuration du Système de Notation - 🧳 Voyageur</h1>
-            <p>Ajustez finement les paramètres du système de notation à score pondéré</p>
+            <h1 id="headerTitle">⚙️ Configuration du Système de Notation V2</h1>
+            <p>Nouvelle logique simple et prévisible</p>
+            <div class="formula-box">📐 Note = 5 - Σ(pénalité × multiplicateur)</div>
         </div>
 
         <div class="main-content">
             <div class="toolbar">
-                <div class="toolbar-title">
-                    📊 Paramètres de Scoring (APPROCHE 2)
-                </div>
+                <div class="toolbar-title">📊 Paramètres de Scoring V2</div>
                 <div class="toolbar-actions">
-                    <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; background: white; border-radius: 8px; border: 2px solid var(--border); margin-right: 1rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; background: white; border-radius: 8px; border: 2px solid var(--border);">
                         <span style="font-weight: 600; color: var(--text-secondary);">Type:</span>
-                        <select id="parcoursTypeSelector" style="padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; font-size: 1rem; cursor: pointer; background: white;">
+                        <select id="parcoursTypeSelector" style="padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; font-size: 1rem; cursor: pointer;">
                             <option value="Voyageur">🧳 Voyageur</option>
                             <option value="Ménage">🧹 Ménage</option>
                         </select>
                     </div>
-                    <button class="btn btn-secondary" onclick="exportJson()">
-                        📥 Exporter JSON
-                    </button>
-                    <button class="btn btn-secondary" onclick="triggerImport()">
-                        📤 Importer JSON
-                    </button>
-                    <input type="file" id="importFile" accept=".json" style="display: none;" onchange="importJson(event)">
-                    <button class="btn btn-danger" onclick="resetToDefaults()">
-                        🔄 Réinitialiser
-                    </button>
-                    <button class="btn btn-primary" onclick="saveConfig()">
-                        💾 Sauvegarder
-                    </button>
+                    <button class="btn btn-secondary" onclick="exportJson()">📥 Exporter</button>
+                    <button class="btn btn-danger" onclick="resetToDefaults()">🔄 Reset</button>
+                    <button class="btn btn-primary" onclick="saveConfig()">💾 Sauvegarder</button>
                 </div>
             </div>
 
             <div class="content-area">
-                <div id="alert-success" class="alert alert-success">
-                    ✅ Configuration sauvegardée avec succès !
-                </div>
-                <div id="alert-error" class="alert alert-error">
-                    ❌ Erreur lors de la sauvegarde. Veuillez réessayer.
-                </div>
+                <div id="alert-success" class="alert alert-success">✅ Configuration sauvegardée !</div>
+                <div id="alert-error" class="alert alert-error">❌ Erreur lors de la sauvegarde.</div>
 
-                <!-- Section 1: Scores de base par sévérité -->
+                <!-- Section 1: Pénalités par sévérité -->
                 <div class="section">
                     <div class="section-header">
                         <span class="section-icon">🎯</span>
-                        <h2 class="section-title">Scores de Base par Sévérité</h2>
+                        <h2 class="section-title">Pénalités par Sévérité</h2>
                     </div>
                     <div class="section-description">
-                        Score de base attribué selon la sévérité de l'issue (low/medium/high)
+                        Points retirés de la note (5) pour chaque issue selon sa sévérité.<br>
+                        <strong>Exemple:</strong> 1 issue HIGH (-1.0) + 2 issues MEDIUM (-0.4×2) = Note finale: 5 - 1.0 - 0.8 = <strong>3.2/5</strong>
                     </div>
                     <div class="form-grid">
                         <div class="form-group">
-                            <label class="form-label">Low (Faible)</label>
-                            <input type="number" id="severity_low" class="form-input" min="0" step="0.1" value="1">
+                            <label class="form-label">🟢 Low (Faible)</label>
+                            <input type="number" id="penalty_low" class="form-input" min="0" step="0.05" value="0.1">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Medium (Moyen)</label>
-                            <input type="number" id="severity_medium" class="form-input" min="0" step="0.1" value="3">
+                            <label class="form-label">🟡 Medium (Moyen)</label>
+                            <input type="number" id="penalty_medium" class="form-input" min="0" step="0.05" value="0.3">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">High (Élevé)</label>
-                            <input type="number" id="severity_high" class="form-input" min="0" step="0.1" value="10">
+                            <label class="form-label">🔴 High (Élevé)</label>
+                            <input type="number" id="penalty_high" class="form-input" min="0" step="0.05" value="0.8">
                         </div>
                     </div>
                 </div>
@@ -380,76 +229,63 @@
                 <div class="section">
                     <div class="section-header">
                         <span class="section-icon">📂</span>
-                        <h2 class="section-title">Multiplicateurs par Catégorie d'Issue</h2>
+                        <h2 class="section-title">Multiplicateurs par Catégorie</h2>
                     </div>
                     <div class="section-description">
-                        Multiplicateur appliqué selon le type d'issue détectée
+                        Multiplicateur appliqué à la pénalité selon le type d'issue.<br>
+                        <strong>Exemple Ménage:</strong> Issue propreté (×1.5) = pénalité plus forte. Issue positionnement (×0.8) = moins grave.
                     </div>
-                    <div class="form-grid" id="category-multipliers">
-                        <!-- Sera rempli dynamiquement -->
-                    </div>
+                    <div class="form-grid" id="category-multipliers"></div>
                 </div>
 
-                <!-- Section 3: Poids d'importance par type de pièce -->
+                <!-- Section 3: Poids par type de pièce -->
                 <div class="section">
                     <div class="section-header">
                         <span class="section-icon">🏠</span>
-                        <h2 class="section-title">Poids d'Importance par Type de Pièce</h2>
+                        <h2 class="section-title">Poids d'Importance par Pièce</h2>
                     </div>
                     <div class="section-description">
-                        Poids utilisé pour la moyenne pondérée (cuisine > chambre > entrée)
+                        Poids utilisé pour la moyenne pondérée des notes.<br>
+                        <strong>Exemple:</strong> Cuisine (×2.0) compte 2× plus que Chambre (×1.0) dans la note globale.
                     </div>
-                    <div class="form-grid" id="room-weights">
-                        <!-- Sera rempli dynamiquement -->
-                    </div>
+                    <div class="form-grid" id="room-weights"></div>
                 </div>
 
-                <!-- Section 4: Facteur de réduction étapes -->
-                <div class="section">
-                    <div class="section-header">
-                        <span class="section-icon">📉</span>
-                        <h2 class="section-title">Facteur de Réduction pour Issues d'Étapes</h2>
-                    </div>
-                    <div class="section-description">
-                        Facteur appliqué aux issues détectées lors de l'analyse des étapes (0.6 = réduction de 40%)
-                    </div>
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label class="form-label">Facteur de Réduction (0.0 - 1.0)</label>
-                            <input type="number" id="etape_reduction" class="form-input" min="0" max="1" step="0.1" value="0.6">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Section 5: Seuils de conversion -->
-                <div class="section">
-                    <div class="section-header">
-                        <span class="section-icon">📊</span>
-                        <h2 class="section-title">Seuils de Conversion Score → Note</h2>
-                    </div>
-                    <div class="section-description">
-                        Seuils utilisés pour convertir le score moyen pondéré en note /5
-                    </div>
-                    <div id="thresholds-container">
-                        <!-- Sera rempli dynamiquement -->
-                    </div>
-                </div>
-
-                <!-- Section 6: Seuil de confiance -->
+                <!-- Section 4: Seuil de confiance -->
                 <div class="section">
                     <div class="section-header">
                         <span class="section-icon">🎲</span>
-                        <h2 class="section-title">Seuil de Confiance Minimum</h2>
+                        <h2 class="section-title">Seuil de Confiance</h2>
                     </div>
                     <div class="section-description">
-                        Seuil de confiance minimum pour qu'une issue soit prise en compte (0-100%)
+                        Confiance minimum pour qu'une issue soit comptée dans le score.
                     </div>
                     <div class="form-grid">
                         <div class="form-group">
                             <label class="form-label">Confiance Minimum (%)</label>
                             <input type="number" id="confidence_threshold" class="form-input" min="0" max="100" step="1" value="90">
                         </div>
+                        <div class="form-group">
+                            <label class="form-label">Note Minimale</label>
+                            <input type="number" id="min_grade" class="form-input" min="0" max="5" step="0.5" value="1">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Note Maximale</label>
+                            <input type="number" id="max_grade" class="form-input" min="0" max="5" step="0.5" value="5">
+                        </div>
                     </div>
+                </div>
+
+                <!-- Section 5: Labels -->
+                <div class="section">
+                    <div class="section-header">
+                        <span class="section-icon">🏷️</span>
+                        <h2 class="section-title">Labels par Plage de Notes</h2>
+                    </div>
+                    <div class="section-description">
+                        Labels affichés selon la note obtenue.
+                    </div>
+                    <div id="labels-container"></div>
                 </div>
             </div>
         </div>
@@ -458,314 +294,189 @@
     <script>
         let config = {{ config_json | safe }};
 
-        // Initialiser l'interface au chargement
+        const urlParams = new URLSearchParams(window.location.search);
+        let currentParcoursType = urlParams.get('type') || 'Voyageur';
+
+        const labelColors = {
+            'EXCELLENT': '#10b981',
+            'TRÈS BON': '#22c55e',
+            'BON': '#84cc16',
+            'MOYEN': '#f59e0b',
+            'INSUFFISANT': '#ef4444'
+        };
+
         window.onload = function() {
             loadConfig();
+            updateParcoursIndicator();
+            document.getElementById('parcoursTypeSelector').value = currentParcoursType;
+            document.getElementById('parcoursTypeSelector').addEventListener('change', async (e) => {
+                currentParcoursType = e.target.value;
+                await loadConfigByType(currentParcoursType);
+            });
         };
 
         function loadConfig() {
-            // Charger les scores de sévérité
-            document.getElementById('severity_low').value = config.scoring_system.severity_base_score.low;
-            document.getElementById('severity_medium').value = config.scoring_system.severity_base_score.medium;
-            document.getElementById('severity_high').value = config.scoring_system.severity_base_score.high;
+            const ss = config.scoring_system;
 
-            // Charger les multiplicateurs de catégorie
-            const categoryContainer = document.getElementById('category-multipliers');
-            categoryContainer.innerHTML = '';
-            for (const [category, value] of Object.entries(config.scoring_system.category_multiplier)) {
-                if (category !== 'description') {
-                    categoryContainer.innerHTML += `
+            // Pénalités par sévérité
+            document.getElementById('penalty_low').value = ss.severity_penalty?.low ?? 0.1;
+            document.getElementById('penalty_medium').value = ss.severity_penalty?.medium ?? 0.3;
+            document.getElementById('penalty_high').value = ss.severity_penalty?.high ?? 0.8;
+
+            // Multiplicateurs de catégorie
+            const catContainer = document.getElementById('category-multipliers');
+            catContainer.innerHTML = '';
+            const catMult = ss.category_multiplier || {};
+            for (const [cat, val] of Object.entries(catMult)) {
+                if (cat !== 'description') {
+                    catContainer.innerHTML += `
                         <div class="form-group">
-                            <label class="form-label">${category}</label>
-                            <input type="number" id="cat_${category}" class="form-input" min="0" step="0.1" value="${value}">
-                        </div>
-                    `;
+                            <label class="form-label">${cat}</label>
+                            <input type="number" id="cat_${cat}" class="form-input" min="0" step="0.1" value="${val}">
+                        </div>`;
                 }
             }
 
-            // Charger les poids de pièces
+            // Poids des pièces
             const roomContainer = document.getElementById('room-weights');
             roomContainer.innerHTML = '';
-            for (const [room, value] of Object.entries(config.scoring_system.room_importance_weight)) {
+            const roomWeights = ss.room_importance_weight || {};
+            for (const [room, val] of Object.entries(roomWeights)) {
                 if (room !== 'description') {
                     roomContainer.innerHTML += `
                         <div class="form-group">
                             <label class="form-label">${room}</label>
-                            <input type="number" id="room_${room}" class="form-input" min="0" step="0.1" value="${value}">
-                        </div>
-                    `;
+                            <input type="number" id="room_${room}" class="form-input" min="0" step="0.1" value="${val}">
+                        </div>`;
                 }
             }
 
-            // Charger le facteur de réduction
-            document.getElementById('etape_reduction').value = config.scoring_system.etape_reduction_factor.value;
+            // Seuil de confiance et notes min/max
+            document.getElementById('confidence_threshold').value = ss.confidence_threshold?.value ?? 90;
+            document.getElementById('min_grade').value = ss.min_grade?.value ?? ss.min_grade ?? 1;
+            document.getElementById('max_grade').value = ss.max_grade?.value ?? ss.max_grade ?? 5;
 
-            // Charger les seuils
-            const thresholdsContainer = document.getElementById('thresholds-container');
-            thresholdsContainer.innerHTML = '';
-            config.scoring_system.grade_thresholds.thresholds.forEach((threshold, index) => {
-                thresholdsContainer.innerHTML += `
-                    <div class="threshold-item">
-                        <div class="threshold-header">
-                            <span class="threshold-grade">${threshold.grade}/5</span>
-                            <span class="threshold-label">${threshold.label}</span>
-                        </div>
-                        <div class="threshold-inputs">
-                            <div class="form-group">
-                                <label class="form-label">Score Maximum</label>
-                                <input type="number" id="threshold_${index}_max" class="form-input" min="0" step="0.1" value="${threshold.max_score}">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Description</label>
-                                <input type="text" id="threshold_${index}_desc" class="form-input" value="${threshold.description}">
-                            </div>
-                        </div>
-                    </div>
-                `;
+            // Labels (peut être dans config.labels ou config.scoring_system.labels)
+            const labelsContainer = document.getElementById('labels-container');
+            labelsContainer.innerHTML = '';
+            const ranges = config.labels?.ranges || ss.labels?.ranges || [];
+            ranges.forEach((r, i) => {
+                const color = labelColors[r.label] || '#6b7280';
+                labelsContainer.innerHTML += `
+                    <div class="label-item">
+                        <span class="label-badge" style="background: ${color}">${r.label}</span>
+                        <span class="label-range">${r.min} - ${r.max}</span>
+                    </div>`;
             });
-
-            // Charger le seuil de confiance
-            document.getElementById('confidence_threshold').value = config.scoring_system.confidence_threshold.value;
         }
 
-
-
-        function exportJson() {
-            try {
-                const dataStr = JSON.stringify(config, null, 2);
-                const dataBlob = new Blob([dataStr], { type: 'application/json' });
-
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(dataBlob);
-                const typeSuffix = currentParcoursType.toLowerCase() === 'ménage' ? 'menage' : 'voyageur';
-                link.download = `scoring-config-${typeSuffix}-${new Date().toISOString().split('T')[0]}.json`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-
-                showAlert('success');
-                console.log(`Configuration ${currentParcoursType} exportée avec succès`);
-            } catch (error) {
-                console.error('Erreur lors de l\'export:', error);
-                showAlert('error');
-            }
-        }
-
-        function triggerImport() {
-            document.getElementById('importFile').click();
-        }
-
-        async function importJson(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            try {
-                const text = await file.text();
-                const importedData = JSON.parse(text);
-
-                // Validation basique de la structure
-                if (!importedData.scoring_system) {
-                    alert('❌ Format de fichier invalide : la structure "scoring_system" est manquante.');
-                    return;
-                }
-
-                // Validation des sections requises
-                const requiredSections = ['severity_base_score', 'category_multiplier', 'room_importance_weight', 'grade_thresholds'];
-                for (const section of requiredSections) {
-                    if (!importedData.scoring_system[section]) {
-                        alert(`❌ Format de fichier invalide : la section "${section}" est manquante.`);
-                        return;
-                    }
-                }
-
-                // Confirmer l'import
-                if (confirm(`Voulez-vous importer cette configuration pour le type "${currentParcoursType}" ?\n\nCela remplacera la configuration actuelle.\n\nPensez à sauvegarder après l'import pour persister les changements.`)) {
-                    // Remplacer la configuration
-                    config = importedData;
-
-                    // Recharger l'interface
-                    loadConfig();
-
-                    alert('✅ Configuration importée avec succès !\n\n⚠️ N\'oubliez pas de cliquer sur "Sauvegarder" pour persister les changements.');
-                    console.log('Configuration importée:', importedData);
-                }
-            } catch (error) {
-                console.error('Erreur lors de l\'import:', error);
-                alert('❌ Erreur lors de l\'import: ' + error.message);
-            }
-
-            // Reset le file input
-            event.target.value = '';
-        }
-
-        async function resetToDefaults() {
-            if (confirm('Êtes-vous sûr de vouloir réinitialiser tous les paramètres aux valeurs par défaut ?')) {
-                try {
-                    const response = await fetch(`/scoring-config/reset?type=${currentParcoursType}`, {
-                        method: 'POST'
-                    });
-
-                    if (response.ok) {
-                        const data = await response.json();
-                        config = data.config;
-                        loadConfig();
-                        showAlert('success');
-                    } else {
-                        showAlert('error');
-                    }
-                } catch (error) {
-                    console.error('Erreur:', error);
-                    showAlert('error');
-                }
-            }
-        }
-
-        function showAlert(type) {
-            const alertSuccess = document.getElementById('alert-success');
-            const alertError = document.getElementById('alert-error');
-
-            alertSuccess.classList.remove('show');
-            alertError.classList.remove('show');
-
-            if (type === 'success') {
-                alertSuccess.classList.add('show');
-                setTimeout(() => alertSuccess.classList.remove('show'), 3000);
-            } else {
-                alertError.classList.add('show');
-                setTimeout(() => alertError.classList.remove('show'), 3000);
-            }
-        }
-
-        // Variable globale pour le type de parcours actuel
-        // Détecter le type depuis l'URL
-        const urlParams = new URLSearchParams(window.location.search);
-        let currentParcoursType = urlParams.get('type') || 'Voyageur';
-
-        // Fonction pour mettre à jour l'indicateur de type dans le header
         function updateParcoursIndicator() {
             const header = document.getElementById('headerTitle');
-            const typeEmoji = currentParcoursType === 'Voyageur' ? '🧳' : '🧹';
-            header.textContent = `⚙️ Configuration du Système de Notation - ${typeEmoji} ${currentParcoursType}`;
+            const emoji = currentParcoursType === 'Voyageur' ? '🧳' : '🧹';
+            header.textContent = `⚙️ Configuration V2 - ${emoji} ${currentParcoursType}`;
         }
 
-        // Fonction pour charger la configuration selon le type
         async function loadConfigByType(type) {
             try {
-                const response = await fetch(`/scoring-config?type=${type}`);
-                if (response.ok) {
-                    const html = await response.text();
-                    // Extraire la configuration JSON du HTML
-                    const configMatch = html.match(/let config = ({[\s\S]*?});/);
-                    if (configMatch) {
-                        config = JSON.parse(configMatch[1]);
+                const resp = await fetch(`/scoring-config?type=${type}`);
+                if (resp.ok) {
+                    const html = await resp.text();
+                    const match = html.match(/let config = ({[\s\S]*?});/);
+                    if (match) {
+                        config = JSON.parse(match[1]);
                         loadConfig();
                         updateParcoursIndicator();
                     }
                 }
-            } catch (error) {
-                console.error('Erreur lors du chargement de la configuration:', error);
-            }
+            } catch (e) { console.error('Erreur chargement:', e); }
         }
 
-        // Event listener pour le changement de type
-        document.addEventListener('DOMContentLoaded', function() {
-            // Initialiser le sélecteur avec le type actuel
-            const selector = document.getElementById('parcoursTypeSelector');
-            selector.value = currentParcoursType;
+        function exportJson() {
+            const dataStr = JSON.stringify(config, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            const suffix = currentParcoursType.toLowerCase() === 'ménage' ? 'menage' : 'voyageur';
+            link.download = `scoring-config-${suffix}-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showAlert('success');
+        }
 
-            // Mettre à jour le titre au chargement
-            updateParcoursIndicator();
+        async function resetToDefaults() {
+            if (!confirm('Réinitialiser aux valeurs par défaut ?')) return;
+            try {
+                const resp = await fetch(`/scoring-config/reset?type=${currentParcoursType}`, { method: 'POST' });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    config = data.config;
+                    loadConfig();
+                    showAlert('success');
+                } else { showAlert('error'); }
+            } catch (e) { showAlert('error'); }
+        }
 
-            // Écouter les changements
-            selector.addEventListener('change', async function(e) {
-                currentParcoursType = e.target.value;
-                await loadConfigByType(currentParcoursType);
-            });
-        });
-
-        // Modifier la fonction saveConfig pour passer le type
         async function saveConfig() {
             try {
+                const ss = config.scoring_system;
                 const newConfig = {
-                    version: config.version,
+                    version: config.version || "2.0.0",
                     last_updated: new Date().toISOString().split('T')[0],
                     description: config.description,
                     scoring_system: {
-                        severity_base_score: {
-                            description: config.scoring_system.severity_base_score.description,
-                            low: parseFloat(document.getElementById('severity_low').value),
-                            medium: parseFloat(document.getElementById('severity_medium').value),
-                            high: parseFloat(document.getElementById('severity_high').value)
+                        severity_penalty: {
+                            description: ss.severity_penalty?.description || "Pénalité par sévérité",
+                            low: parseFloat(document.getElementById('penalty_low').value),
+                            medium: parseFloat(document.getElementById('penalty_medium').value),
+                            high: parseFloat(document.getElementById('penalty_high').value)
                         },
-                        category_multiplier: {
-                            description: config.scoring_system.category_multiplier.description
-                        },
-                        room_importance_weight: {
-                            description: config.scoring_system.room_importance_weight.description
-                        },
-                        etape_reduction_factor: {
-                            description: config.scoring_system.etape_reduction_factor.description,
-                            value: parseFloat(document.getElementById('etape_reduction').value)
-                        },
-                        grade_thresholds: {
-                            description: config.scoring_system.grade_thresholds.description,
-                            thresholds: []
-                        },
+                        category_multiplier: { description: ss.category_multiplier?.description || "" },
+                        room_importance_weight: { description: ss.room_importance_weight?.description || "" },
                         confidence_threshold: {
-                            description: config.scoring_system.confidence_threshold.description,
+                            description: ss.confidence_threshold?.description || "",
                             value: parseInt(document.getElementById('confidence_threshold').value)
-                        }
+                        },
+                        min_grade: { value: parseFloat(document.getElementById('min_grade').value) },
+                        max_grade: { value: parseFloat(document.getElementById('max_grade').value) }
                     },
+                    labels: config.labels,
                     metadata: config.metadata
                 };
 
-                // Récupérer les multiplicateurs de catégorie
-                for (const category of Object.keys(config.scoring_system.category_multiplier)) {
-                    if (category !== 'description') {
-                        newConfig.scoring_system.category_multiplier[category] = parseFloat(
-                            document.getElementById(`cat_${category}`).value
-                        );
+                // Catégories
+                for (const cat of Object.keys(ss.category_multiplier || {})) {
+                    if (cat !== 'description') {
+                        newConfig.scoring_system.category_multiplier[cat] = parseFloat(document.getElementById(`cat_${cat}`).value);
                     }
                 }
 
-                // Récupérer les poids de pièces
-                for (const room of Object.keys(config.scoring_system.room_importance_weight)) {
+                // Pièces
+                for (const room of Object.keys(ss.room_importance_weight || {})) {
                     if (room !== 'description') {
-                        newConfig.scoring_system.room_importance_weight[room] = parseFloat(
-                            document.getElementById(`room_${room}`).value
-                        );
+                        newConfig.scoring_system.room_importance_weight[room] = parseFloat(document.getElementById(`room_${room}`).value);
                     }
                 }
 
-                // Récupérer les seuils
-                config.scoring_system.grade_thresholds.thresholds.forEach((threshold, index) => {
-                    newConfig.scoring_system.grade_thresholds.thresholds.push({
-                        grade: threshold.grade,
-                        label: threshold.label,
-                        max_score: parseFloat(document.getElementById(`threshold_${index}_max`).value),
-                        description: document.getElementById(`threshold_${index}_desc`).value
-                    });
-                });
-
-                // Envoyer au serveur avec le type de parcours
-                const response = await fetch(`/scoring-config/save?type=${currentParcoursType}`, {
+                const resp = await fetch(`/scoring-config/save?type=${currentParcoursType}`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(newConfig)
                 });
 
-                if (response.ok) {
-                    config = newConfig;
-                    showAlert('success');
-                } else {
-                    showAlert('error');
-                }
-            } catch (error) {
-                console.error('Erreur:', error);
-                showAlert('error');
-            }
+                if (resp.ok) { config = newConfig; showAlert('success'); }
+                else { showAlert('error'); }
+            } catch (e) { console.error('Erreur:', e); showAlert('error'); }
+        }
+
+        function showAlert(type) {
+            document.getElementById('alert-success').classList.remove('show');
+            document.getElementById('alert-error').classList.remove('show');
+            document.getElementById(type === 'success' ? 'alert-success' : 'alert-error').classList.add('show');
+            setTimeout(() => {
+                document.getElementById('alert-success').classList.remove('show');
+                document.getElementById('alert-error').classList.remove('show');
+            }, 3000);
         }
     </script>
 </body>

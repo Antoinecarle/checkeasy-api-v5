@@ -1,26 +1,27 @@
 {
-  "version": "1.0.0",
-  "last_updated": "2025-11-12",
-  "description": "🧳 Configuration du système de notation VOYAGEUR - Critères souples pour voyageurs - CheckEasy API V5",
+  "version": "2.0.0",
+  "last_updated": "2026-01-19",
+  "description": "🧳 Configuration du système de notation VOYAGEUR - Critères souples pour voyageurs - CheckEasy API V5 - NOUVELLE LOGIQUE: Note = 5 - Pénalités",
   "scoring_system": {
-    "severity_base_score": {
-      "description": "Score de base selon la sévérité de l'issue (VOYAGEUR: scores plus souples, focus sécurité/hygiène)",
-      "low": 1,
-      "medium": 3,
-      "high": 8
+    "severity_penalty": {
+      "description": "Pénalité directe en points par sévérité. Note = 5 - somme(pénalités). MODE VOYAGEUR = TOLÉRANT",
+      "low": 0.2,
+      "medium": 0.6,
+      "high": 1.2
     },
     "category_multiplier": {
       "description": "Multiplicateur selon la catégorie d'issue (VOYAGEUR: dégâts et objets manquants prioritaires)",
-      "damage": 3,
-      "cleanliness": 1.3,
-      "missing_item": 1.8,
+      "damage": 1.5,
+      "missing_item": 1.5,
+      "cleanliness": 1,
       "positioning": 0.5,
       "added_item": 0.4,
-      "image_quality": 0.2,
-      "wrong_room": 10
+      "image_quality": 1,
+      "wrong_room": 2,
+      "other": 1
     },
     "room_importance_weight": {
-      "description": "Poids d'importance par type de pièce (pour la moyenne pondérée)",
+      "description": "Poids d'importance par type de pièce (pour la moyenne pondérée des notes)",
       "cuisine": 2,
       "salle_de_bain": 1.8,
       "salle_de_bain_et_toilettes": 1.8,
@@ -31,149 +32,68 @@
       "chambre": 1,
       "bureau": 1,
       "entree": 0.8,
-      "exterieur": 0.6
-    },
-    "etape_reduction_factor": {
-      "description": "Facteur de réduction pour les issues d'étapes (0.6 = réduction de 40%)",
-      "value": 0.6
-    },
-    "grade_thresholds": {
-      "description": "Seuils de conversion du score moyen pondéré en note /5 - MODE VOYAGEUR: TOLÉRANT (un logement avec quelques défauts mineurs reste bien noté)",
-      "thresholds": [
-        {
-          "grade": 5,
-          "label": "EXCELLENT",
-          "max_score": 2,
-          "description": "État impeccable - Aucune issue ou détails insignifiants"
-        },
-        {
-          "grade": 4.8,
-          "label": "EXCELLENT",
-          "max_score": 5,
-          "description": "Quasi parfait - 1-2 détails très mineurs"
-        },
-        {
-          "grade": 4.5,
-          "label": "TRÈS BON",
-          "max_score": 10,
-          "description": "Très bon état - Quelques détails mineurs"
-        },
-        {
-          "grade": 4,
-          "label": "BON",
-          "max_score": 18,
-          "description": "Bon état - Quelques problèmes mineurs"
-        },
-        {
-          "grade": 3.5,
-          "label": "CORRECT",
-          "max_score": 28,
-          "description": "État correct - Plusieurs problèmes à signaler"
-        },
-        {
-          "grade": 3,
-          "label": "MOYEN",
-          "max_score": 40,
-          "description": "État moyen - Nombreux problèmes détectés"
-        },
-        {
-          "grade": 2.5,
-          "label": "PASSABLE",
-          "max_score": 55,
-          "description": "État passable - Problèmes importants"
-        },
-        {
-          "grade": 2,
-          "label": "INSUFFISANT",
-          "max_score": 75,
-          "description": "État insuffisant - Problèmes graves"
-        },
-        {
-          "grade": 1.5,
-          "label": "MAUVAIS",
-          "max_score": 100,
-          "description": "Mauvais état - Problèmes très graves"
-        },
-        {
-          "grade": 1,
-          "label": "CRITIQUE",
-          "max_score": 999999,
-          "description": "État critique - Intervention urgente requise"
-        }
-      ]
+      "exterieur": 0.6,
+      "cle": 0.8,
+      "autre": 1
     },
     "confidence_threshold": {
       "description": "Seuil de confiance minimum pour qu'une issue soit prise en compte dans le calcul",
       "value": 90
     },
-    "category_grade_thresholds": {
-      "description": "Seuils de conversion pour les sous-notes (score moyen par pièce concernée). Ces seuils sont ajustés car les sous-notes sont calculées par catégorie et normalisées par le nombre de pièces affectées.",
-      "thresholds": [
-        {
-          "grade": 5,
-          "label": "EXCELLENT",
-          "max_score": 0,
-          "description": "Aucune issue détectée dans cette catégorie"
-        },
-        {
-          "grade": 4.8,
-          "label": "EXCELLENT",
-          "max_score": 2,
-          "description": "Quelques détails très mineurs"
-        },
-        {
-          "grade": 4.5,
-          "label": "TRÈS BON",
-          "max_score": 4,
-          "description": "Quelques détails mineurs"
-        },
-        {
-          "grade": 4,
-          "label": "BON",
-          "max_score": 8,
-          "description": "Quelques problèmes"
-        },
-        {
-          "grade": 3.5,
-          "label": "CORRECT",
-          "max_score": 12,
-          "description": "Plusieurs problèmes"
-        },
-        {
-          "grade": 3,
-          "label": "MOYEN",
-          "max_score": 18,
-          "description": "Nombreux problèmes"
-        },
-        {
-          "grade": 2.5,
-          "label": "PASSABLE",
-          "max_score": 25,
-          "description": "Problèmes importants"
-        },
-        {
-          "grade": 2,
-          "label": "INSUFFISANT",
-          "max_score": 35,
-          "description": "Problèmes graves"
-        },
-        {
-          "grade": 1.5,
-          "label": "MAUVAIS",
-          "max_score": 50,
-          "description": "Problèmes très graves"
-        },
-        {
-          "grade": 1,
-          "label": "CRITIQUE",
-          "max_score": 999999,
-          "description": "Problèmes critiques généralisés"
-        }
-      ]
+    "min_grade": {
+      "value": 1
+    },
+    "max_grade": {
+      "value": 5
     }
+  },
+  "labels": {
+    "description": "Labels correspondant aux plages de notes",
+    "ranges": [
+      {
+        "min": 4.5,
+        "max": 5,
+        "label": "EXCELLENT"
+      },
+      {
+        "min": 4,
+        "max": 4.49,
+        "label": "TRÈS BON"
+      },
+      {
+        "min": 3.5,
+        "max": 3.99,
+        "label": "BON"
+      },
+      {
+        "min": 3,
+        "max": 3.49,
+        "label": "CORRECT"
+      },
+      {
+        "min": 2.5,
+        "max": 2.99,
+        "label": "MOYEN"
+      },
+      {
+        "min": 2,
+        "max": 2.49,
+        "label": "PASSABLE"
+      },
+      {
+        "min": 1.5,
+        "max": 1.99,
+        "label": "INSUFFISANT"
+      },
+      {
+        "min": 1,
+        "max": 1.49,
+        "label": "CRITIQUE"
+      }
+    ]
   },
   "metadata": {
     "created_by": "CheckEasy Admin",
-    "notes": "Cette configuration permet d'ajuster finement le système de notation sans modifier le code Python. Toute modification est appliquée immédiatement."
+    "notes": "NOUVELLE LOGIQUE V2: Note = 5 - Σ(pénalité × multiplicateur). Simple, prévisible, pas de seuils arbitraires."
   }
 }

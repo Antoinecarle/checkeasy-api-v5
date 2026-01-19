@@ -5495,7 +5495,7 @@ def transform_to_individual_report(
 
 
 # ═══════════════════════════════════════════════════════════════
-# SYSTÈME DE NOTATION À SCORE PONDÉRÉ (APPROCHE 2)
+# SYSTÈME DE NOTATION V2 - Note = 5 - Σ(pénalités)
 # ═══════════════════════════════════════════════════════════════
 
 def calculate_weighted_severity_score(
@@ -5505,19 +5505,17 @@ def calculate_weighted_severity_score(
     parcours_type: str = "Voyageur"
 ) -> dict:
     """
-    Calcule le score de gravité avec moyenne pondérée par pièce
+    Calcule le score global du logement.
 
-    SOLUTION RETENUE : Score moyen par pièce avec pondération par type
+    🆕 NOUVELLE LOGIQUE V2 : Moyenne pondérée des NOTES (pas des scores bruts)
 
-    Avantages :
-    - Équitable : Même qualité par pièce = même note (quelle que soit la taille)
-    - Juste : Tient compte de l'importance des pièces (cuisine > entrée)
-    - Flexible : Facile d'ajuster les poids d'importance via scoring-config.json
-    - Déterministe et traçable
+    1. Chaque pièce a sa note calculée via: Note = 5 - Σ(pénalités)
+    2. Le score global = moyenne pondérée des notes de chaque pièce
+    3. Simple, prévisible, logique !
 
     Returns:
         dict: {
-            "weighted_average_score": float,
+            "weighted_average_grade": float,  # Note moyenne pondérée
             "total_weight": float,
             "final_grade": float,
             "label": str,
@@ -5526,108 +5524,100 @@ def calculate_weighted_severity_score(
         }
     """
 
-    # ═══════════════════════════════════════════════════════════
-    # CHARGEMENT DE LA CONFIGURATION DYNAMIQUE
-    # ═══════════════════════════════════════════════════════════
-
     logger.debug("")
     logger.debug("═" * 80)
-    logger.info("🧮 CALCUL DU SCORE ALGORITHMIQUE (APPROCHE 2 - MOYENNE PONDÉRÉE)")
+    logger.info("🧮 CALCUL DU SCORE GLOBAL V2 - Moyenne pondérée des NOTES")
     logger.debug("═" * 80)
 
-    # 🔍 DEBUG: Logger ce que la fonction reçoit
+    # Debug logging
     logger.debug(f"🔍 DEBUG - calculate_weighted_severity_score reçoit:")
     logger.debug(f"   - {len(pieces_analysis)} pièces")
-    logger.debug(f"   - {general_issues_count} issues générales (paramètre)")
-    logger.debug(f"   - {etapes_issues_count} issues d'étapes (paramètre)")
-    total_issues_in_pieces = sum(len(p.issues) for p in pieces_analysis)
-    logger.debug(f"   - {total_issues_in_pieces} issues TOTALES dans les objets pieces_analysis (générales + étapes fusionnées)")
-    for piece in pieces_analysis:
-        logger.debug(f"      Pièce {piece.piece_id}: {len(piece.issues)} issues totales")
+    logger.debug(f"   - {general_issues_count} issues générales")
+    logger.debug(f"   - {etapes_issues_count} issues d'étapes")
 
     config = load_scoring_config(parcours_type)
     scoring_config = config.get("scoring_system", {})
 
-    logger.debug(f"📊 Utilisation de la configuration scoring pour le parcours: {parcours_type}")
+    logger.debug(f"📊 Configuration chargée pour: {parcours_type}")
 
-    # Extraire les paramètres de configuration
-    SEVERITY_BASE_SCORE = scoring_config.get("severity_base_score", {"low": 1, "medium": 3, "high": 10})
+    # Paramètres de configuration
+    SEVERITY_PENALTY = scoring_config.get("severity_penalty", {"low": 0.1, "medium": 0.3, "high": 0.8})
     CATEGORY_MULTIPLIER = scoring_config.get("category_multiplier", {
-        "damage": 2.0, "cleanliness": 1.5, "missing_item": 1.3,
-        "positioning": 0.5, "added_item": 0.4, "image_quality": 0.2, "wrong_room": 0.3
+        "damage": 1.5, "cleanliness": 1.0, "missing_item": 1.2,
+        "positioning": 0.5, "added_item": 0.4, "image_quality": 0.3, "wrong_room": 2.0, "other": 1.0
     })
     ROOM_IMPORTANCE_WEIGHT = scoring_config.get("room_importance_weight", {
         "cuisine": 2.0, "salle_de_bain": 1.8, "salle_de_bain_et_toilettes": 1.8,
         "salle_d_eau": 1.7, "salle_d_eau_et_wc": 1.7, "wc": 1.5,
-        "salon": 1.2, "chambre": 1.0, "bureau": 1.0, "entree": 0.8, "exterieur": 0.6
+        "salon": 1.2, "chambre": 1.0, "bureau": 1.0, "entree": 0.8, "exterieur": 0.6,
+        "cle": 0.8, "autre": 0.8
     })
-    ETAPE_REDUCTION_FACTOR = scoring_config.get("etape_reduction_factor", {}).get("value", 0.6)
     CONFIDENCE_THRESHOLD = scoring_config.get("confidence_threshold", {}).get("value", 90)
+    MIN_GRADE = scoring_config.get("min_grade", {}).get("value", 1.0)
+    MAX_GRADE = scoring_config.get("max_grade", {}).get("value", 5.0)
 
     # ═══════════════════════════════════════════════════════════
-    # CALCUL DU SCORE PAR PIÈCE
+    # CALCUL DE LA NOTE PAR PIÈCE
     # ═══════════════════════════════════════════════════════════
 
     room_scores = []
     total_weight = 0
-    weighted_sum = 0
+    weighted_grade_sum = 0
 
     logger.debug(f"")
-    logger.debug(f"🔢 CALCUL DU SCORE MOYEN PONDÉRÉ PAR PIÈCE")
-    logger.debug(f"   📊 Nombre de pièces à analyser : {len(pieces_analysis)}")
-    logger.debug(f"   🎯 Seuil de confiance : {CONFIDENCE_THRESHOLD}%")
+    logger.debug(f"🔢 CALCUL DES NOTES PAR PIÈCE (Note = 5 - pénalités)")
+    logger.debug(f"   📊 Nombre de pièces : {len(pieces_analysis)}")
     logger.debug(f"")
 
     for idx, piece in enumerate(pieces_analysis, 1):
         room_type = piece.room_classification.room_type
         room_weight = ROOM_IMPORTANCE_WEIGHT.get(room_type, 1.0)
 
-        # Calculer le score de cette pièce uniquement
-        piece_score = 0
+        # Calculer la pénalité totale de cette pièce
+        total_penalty = 0
         piece_issues_details = []
 
-        # Traiter TOUTES les issues (générales + étapes fusionnées)
         if hasattr(piece, 'issues') and piece.issues:
             for issue in piece.issues:
                 if issue.confidence >= CONFIDENCE_THRESHOLD:
-                    # 🆕 FILTRE : Ignorer les étapes VALIDÉES (ne doivent pas impacter la note)
+                    # Ignorer les étapes VALIDÉES
                     if hasattr(issue, 'validation_status') and issue.validation_status == "VALIDÉ":
-                        logger.debug(f"   ⏭️  Étape VALIDÉE ignorée dans le calcul de score: {issue.description[:50]}")
-                        continue  # Ne pas compter cette issue dans le score
+                        logger.debug(f"   ⏭️  Étape VALIDÉE ignorée: {issue.description[:50]}")
+                        continue
 
-                    base_score = SEVERITY_BASE_SCORE.get(issue.severity, 1)
+                    # Calculer la pénalité
+                    base_penalty = SEVERITY_PENALTY.get(issue.severity, 0.3)
                     category_mult = CATEGORY_MULTIPLIER.get(issue.category, 1.0)
+                    issue_penalty = base_penalty * category_mult
 
-                    # Détecter si c'est une issue d'étape (description commence par "[ÉTAPE]")
+                    total_penalty += issue_penalty
+
                     is_etape_issue = issue.description.startswith("[ÉTAPE]")
-
-                    # Appliquer le facteur de réduction pour les issues d'étapes
-                    if is_etape_issue:
-                        issue_score = base_score * category_mult * ETAPE_REDUCTION_FACTOR
-                    else:
-                        issue_score = base_score * category_mult
-
-                    piece_score += issue_score
 
                     piece_issues_details.append({
                         "description": issue.description,
                         "category": issue.category,
                         "severity": issue.severity,
-                        "score": round(issue_score, 2),
+                        "penalty": round(issue_penalty, 2),
                         "is_etape": is_etape_issue
                     })
 
-        # Ajouter au calcul de la moyenne pondérée
-        weighted_score = piece_score * room_weight
-        weighted_sum += weighted_score
+        # Calculer la note de la pièce : Note = MAX_GRADE - pénalité
+        piece_grade = max(MIN_GRADE, MAX_GRADE - total_penalty)
+        piece_grade = round(piece_grade, 1)
+
+        # Moyenne pondérée des NOTES (pas des pénalités)
+        weighted_grade = piece_grade * room_weight
+        weighted_grade_sum += weighted_grade
         total_weight += room_weight
 
         room_scores.append({
             "piece_id": piece.piece_id,
             "room_type": room_type,
-            "score": round(piece_score, 2),
+            "total_penalty": round(total_penalty, 2),
+            "grade": piece_grade,
             "weight": room_weight,
-            "weighted_score": round(weighted_score, 2),
+            "weighted_grade": round(weighted_grade, 2),
             "num_issues": len(piece_issues_details),
             "issues_details": piece_issues_details
         })
@@ -5635,32 +5625,32 @@ def calculate_weighted_severity_score(
         logger.info(
             f"   [{idx}] {room_type} (poids {room_weight}) : "
             f"{len(piece_issues_details)} issue(s), "
-            f"Score {piece_score:.2f} × {room_weight} = {weighted_score:.2f}"
+            f"Note: 5 - {total_penalty:.2f} = {piece_grade}/5"
         )
 
     # ═══════════════════════════════════════════════════════════
-    # CALCUL DE LA MOYENNE PONDÉRÉE
+    # CALCUL DE LA MOYENNE PONDÉRÉE DES NOTES
     # ═══════════════════════════════════════════════════════════
 
     if total_weight > 0:
-        weighted_average_score = weighted_sum / total_weight
+        final_grade = weighted_grade_sum / total_weight
     else:
-        weighted_average_score = 0
+        final_grade = MAX_GRADE  # Pas de pièce = note parfaite
+
+    # Arrondir à 1 décimale
+    final_grade = round(final_grade, 1)
+
+    # S'assurer que la note est dans les limites
+    final_grade = max(MIN_GRADE, min(MAX_GRADE, final_grade))
+
+    # Obtenir le label
+    label = get_label_for_grade(final_grade, config)
 
     logger.debug(f"")
-    logger.debug(f"📊 RÉSULTAT DU CALCUL :")
-    logger.debug(f"   📈 Somme pondérée : {weighted_sum:.2f}")
-    logger.debug(f"   ⚖️  Poids total : {total_weight:.2f}")
-    logger.debug(f"   📉 Moyenne pondérée : {weighted_average_score:.2f}")
-
-    # ═══════════════════════════════════════════════════════════
-    # CONVERSION EN NOTE /5
-    # ═══════════════════════════════════════════════════════════
-
-    final_grade, label = convert_weighted_average_to_grade(weighted_average_score, config)
-
-    logger.debug(f"   🏆 Note finale : {final_grade}/5")
-    logger.debug(f"   🏷️  Label : {label}")
+    logger.debug(f"📊 RÉSULTAT GLOBAL :")
+    logger.debug(f"   ⚖️  Somme pondérée des notes : {weighted_grade_sum:.2f}")
+    logger.debug(f"   📏 Poids total : {total_weight:.2f}")
+    logger.debug(f"   🏆 Note finale : {final_grade}/5 ({label})")
 
     # ═══════════════════════════════════════════════════════════
     # RÉSUMÉ
@@ -5674,7 +5664,6 @@ def calculate_weighted_severity_score(
         "room_breakdown": {}
     }
 
-    # Compter par sévérité et catégorie
     for room in room_scores:
         for issue in room["issues_details"]:
             summary["severity_breakdown"][issue["severity"]] += 1
@@ -5685,7 +5674,7 @@ def calculate_weighted_severity_score(
         summary["room_breakdown"][room_type] = summary["room_breakdown"].get(room_type, 0) + room["num_issues"]
 
     return {
-        "weighted_average_score": round(weighted_average_score, 2),
+        "weighted_average_grade": final_grade,
         "total_weight": round(total_weight, 2),
         "final_grade": final_grade,
         "label": label,
@@ -5694,69 +5683,48 @@ def calculate_weighted_severity_score(
     }
 
 
-def convert_weighted_average_to_grade(weighted_average_score: float, config: dict) -> tuple:
+def get_label_for_grade(grade: float, config: dict) -> str:
     """
-    Convertit le score moyen pondéré en note /5 selon les seuils configurés
+    Retourne le label correspondant à une note.
 
-    ⚠️ UTILISÉ POUR LE SCORE GLOBAL DU LOGEMENT (seuils plus souples)
+    NOUVELLE LOGIQUE V2 : Utilise les plages de labels définies dans la config.
 
     Args:
-        weighted_average_score: Score moyen pondéré calculé
+        grade: Note sur 5
         config: Configuration du scoring
 
     Returns:
-        tuple: (grade, label)
+        str: Label (EXCELLENT, TRÈS BON, BON, etc.)
     """
-    thresholds = config.get("scoring_system", {}).get("grade_thresholds", {}).get("thresholds", [])
+    # Récupérer les plages de labels
+    labels_config = config.get("labels", {})
+    ranges = labels_config.get("ranges", [])
 
-    # Trier les seuils par max_score croissant
-    sorted_thresholds = sorted(thresholds, key=lambda x: x["max_score"])
+    # Fallback si pas de config labels
+    if not ranges:
+        if grade >= 4.5:
+            return "EXCELLENT"
+        elif grade >= 4.0:
+            return "TRÈS BON"
+        elif grade >= 3.5:
+            return "BON"
+        elif grade >= 3.0:
+            return "CORRECT"
+        elif grade >= 2.5:
+            return "MOYEN"
+        elif grade >= 2.0:
+            return "PASSABLE"
+        elif grade >= 1.5:
+            return "INSUFFISANT"
+        else:
+            return "CRITIQUE"
 
-    # Trouver le seuil correspondant
-    for threshold in sorted_thresholds:
-        if weighted_average_score <= threshold["max_score"]:
-            return (threshold["grade"], threshold["label"])
+    # Chercher dans les plages configurées
+    for range_item in ranges:
+        if range_item["min"] <= grade <= range_item["max"]:
+            return range_item["label"]
 
-    # Par défaut, retourner la note la plus basse
-    return (1.0, "CRITIQUE")
-
-
-def convert_room_score_to_grade(room_score: float, config: dict) -> tuple:
-    """
-    Convertit le score d'une pièce en note /5 selon les seuils SPÉCIFIQUES aux pièces
-
-    🏠 UTILISÉ POUR LE SCORE INDIVIDUEL D'UNE PIÈCE (seuils plus stricts)
-
-    Les pièces utilisent category_grade_thresholds car :
-    - Une pièce est une unité plus petite qu'un logement
-    - 2 issues dans 1 pièce = plus grave que 2 issues dans 5 pièces
-    - Les seuils sont donc plus stricts pour être justes
-
-    Args:
-        room_score: Score brut de la pièce (points de pénalité)
-        config: Configuration du scoring
-
-    Returns:
-        tuple: (grade, label)
-    """
-    # Utiliser les seuils spécifiques aux pièces/catégories (plus stricts)
-    thresholds = config.get("scoring_system", {}).get("category_grade_thresholds", {}).get("thresholds", [])
-
-    # Fallback sur les seuils globaux si category_grade_thresholds n'existe pas
-    if not thresholds:
-        logger.warning("⚠️ category_grade_thresholds non trouvé, fallback sur grade_thresholds")
-        thresholds = config.get("scoring_system", {}).get("grade_thresholds", {}).get("thresholds", [])
-
-    # Trier les seuils par max_score croissant
-    sorted_thresholds = sorted(thresholds, key=lambda x: x["max_score"])
-
-    # Trouver le seuil correspondant
-    for threshold in sorted_thresholds:
-        if room_score <= threshold["max_score"]:
-            return (threshold["grade"], threshold["label"])
-
-    # Par défaut, retourner la note la plus basse
-    return (1.0, "CRITIQUE")
+    return "CRITIQUE"
 
 
 def calculate_room_algorithmic_score(
@@ -5764,14 +5732,14 @@ def calculate_room_algorithmic_score(
     parcours_type: str = "Voyageur"
 ) -> dict:
     """
-    Calcule le score algorithmique d'une pièce basé sur ses issues
+    Calcule le score algorithmique d'une pièce basé sur ses issues.
 
-    🏠 UTILISE DES SEUILS SPÉCIFIQUES POUR LES PIÈCES (plus stricts que le logement global)
+    🆕 NOUVELLE LOGIQUE V2 : Note = 5 - Σ(pénalité × multiplicateur)
 
-    Une pièce avec 2 issues sera notée plus sévèrement qu'un logement avec 2 issues
-    réparties sur plusieurs pièces. C'est plus juste car :
-    - 2 problèmes dans 1 pièce = concentration de défauts
-    - 2 problèmes dans 5 pièces = défauts isolés
+    Simple, prévisible, pas de seuils arbitraires :
+    - Chaque issue retire directement des points
+    - HIGH retire plus que MEDIUM, MEDIUM plus que LOW
+    - Les multiplicateurs de catégorie ajustent l'importance relative
 
     Args:
         issues: Liste des issues détectées dans la pièce
@@ -5779,62 +5747,73 @@ def calculate_room_algorithmic_score(
 
     Returns:
         dict: {
-            "score_brut": float,      # Score brut (points de pénalité)
-            "note_sur_5": float,      # Note convertie sur 5 (1.0 à 5.0)
+            "total_penalty": float,   # Total des pénalités
+            "note_sur_5": float,      # Note finale sur 5 (1.0 à 5.0)
             "label": str,             # Label (EXCELLENT, BON, PASSABLE, etc.)
             "issues_count": int,      # Nombre d'issues prises en compte
-            "issues_details": list    # Détails des issues avec leur score
+            "issues_details": list    # Détails des issues avec leur pénalité
         }
     """
     config = load_scoring_config(parcours_type)
     scoring_config = config.get("scoring_system", {})
 
-    SEVERITY_BASE_SCORE = scoring_config.get("severity_base_score", {"low": 1, "medium": 3, "high": 10})
+    # 🆕 NOUVELLE CONFIG : severity_penalty (pénalités directes)
+    SEVERITY_PENALTY = scoring_config.get("severity_penalty", {"low": 0.1, "medium": 0.3, "high": 0.8})
     CATEGORY_MULTIPLIER = scoring_config.get("category_multiplier", {
-        "damage": 2.0, "cleanliness": 1.5, "missing_item": 1.3,
-        "positioning": 0.5, "added_item": 0.4, "image_quality": 0.2, "wrong_room": 0.3
+        "damage": 1.5, "cleanliness": 1.0, "missing_item": 1.2,
+        "positioning": 0.5, "added_item": 0.4, "image_quality": 0.3, "wrong_room": 2.0, "other": 1.0
     })
     CONFIDENCE_THRESHOLD = scoring_config.get("confidence_threshold", {}).get("value", 90)
-    ETAPE_REDUCTION_FACTOR = scoring_config.get("etape_reduction_factor", {}).get("value", 0.6)
+    MIN_GRADE = scoring_config.get("min_grade", {}).get("value", 1.0)
+    MAX_GRADE = scoring_config.get("max_grade", {}).get("value", 5.0)
 
-    # Calculer le score brut de la pièce
-    piece_score = 0
+    # Calculer la somme des pénalités
+    total_penalty = 0
     issues_details = []
 
     for issue in issues:
         if issue.confidence >= CONFIDENCE_THRESHOLD:
-            # 🆕 FILTRE : Ignorer les étapes VALIDÉES (ne doivent pas impacter la note)
+            # Ignorer les étapes VALIDÉES (ne doivent pas impacter la note)
             if hasattr(issue, 'validation_status') and issue.validation_status == "VALIDÉ":
-                logger.debug(f"   ⏭️  Étape VALIDÉE ignorée dans le calcul de score: {issue.description[:50]}")
-                continue  # Ne pas compter cette issue dans le score
+                logger.debug(f"   ⏭️  Étape VALIDÉE ignorée: {issue.description[:50]}")
+                continue
 
-            base_score = SEVERITY_BASE_SCORE.get(issue.severity, 1)
+            # Récupérer la pénalité de base selon la sévérité
+            base_penalty = SEVERITY_PENALTY.get(issue.severity, 0.3)
+
+            # Récupérer le multiplicateur de catégorie
             category_mult = CATEGORY_MULTIPLIER.get(issue.category, 1.0)
 
-            # Détecter si c'est une issue d'étape (description commence par "[ÉTAPE]")
-            is_etape_issue = issue.description.startswith("[ÉTAPE]")
-            if is_etape_issue:
-                issue_score = base_score * category_mult * ETAPE_REDUCTION_FACTOR
-            else:
-                issue_score = base_score * category_mult
+            # Calculer la pénalité finale pour cette issue
+            issue_penalty = base_penalty * category_mult
 
-            piece_score += issue_score
+            total_penalty += issue_penalty
+
+            # Détecter si c'est une issue d'étape
+            is_etape_issue = issue.description.startswith("[ÉTAPE]")
+
             issues_details.append({
                 "description": issue.description[:50] + "..." if len(issue.description) > 50 else issue.description,
                 "category": issue.category,
                 "severity": issue.severity,
-                "score": round(issue_score, 2),
+                "penalty": round(issue_penalty, 2),
                 "is_etape": is_etape_issue
             })
 
-    # 🆕 Convertir le score brut en note /5 avec les SEUILS SPÉCIFIQUES AUX PIÈCES
-    # (category_grade_thresholds = plus stricts que grade_thresholds)
-    grade, label = convert_room_score_to_grade(piece_score, config)
+    # 🆕 NOUVELLE FORMULE : Note = MAX_GRADE - total_penalty
+    # Avec un minimum de MIN_GRADE
+    grade = max(MIN_GRADE, MAX_GRADE - total_penalty)
 
-    logger.debug(f"   🧮 Score pièce calculé: {piece_score:.2f} pts → {grade}/5 ({label}) [seuils pièce]")
+    # Arrondir à 1 décimale
+    grade = round(grade, 1)
+
+    # Obtenir le label correspondant
+    label = get_label_for_grade(grade, config)
+
+    logger.debug(f"   🧮 Score pièce: 5 - {total_penalty:.2f} = {grade}/5 ({label})")
 
     return {
-        "score_brut": round(piece_score, 2),
+        "total_penalty": round(total_penalty, 2),
         "note_sur_5": grade,
         "label": label,
         "issues_count": len(issues_details),
@@ -9375,30 +9354,32 @@ async def reset_scoring_config_endpoint(type: str = "Voyageur"):
 
         config_path = f"front/scoring-config{file_suffix}.json"
 
-        # Valeurs par défaut
+        # Valeurs par défaut V2 - Nouvelle logique: Note = 5 - Σ(pénalités)
+        is_menage = type.lower() == "ménage"
         default_config = {
-            "version": "1.0.0",
+            "version": "2.0.0",
             "last_updated": datetime.now().strftime("%Y-%m-%d"),
-            "description": f"Configuration du système de notation à score pondéré (APPROCHE 2) - CheckEasy API V5 - {description_suffix}",
+            "description": f"Configuration du système de notation V2 - Note = 5 - pénalités - {description_suffix}",
             "scoring_system": {
-                "severity_base_score": {
-                    "description": "Score de base selon la sévérité de l'issue",
-                    "low": 1,
-                    "medium": 3,
-                    "high": 10
+                "severity_penalty": {
+                    "description": "Pénalité directe soustraite de la note selon la sévérité",
+                    "high": 1.0 if is_menage else 0.8,
+                    "medium": 0.4 if is_menage else 0.3,
+                    "low": 0.15 if is_menage else 0.1
                 },
                 "category_multiplier": {
-                    "description": "Multiplicateur selon la catégorie d'issue",
-                    "damage": 2.0,
-                    "cleanliness": 1.5,
-                    "missing_item": 1.3,
-                    "positioning": 0.5,
-                    "added_item": 0.4,
-                    "image_quality": 0.2,
-                    "wrong_room": 0.3
+                    "description": "Multiplicateur de la pénalité selon la catégorie d'issue",
+                    "cleanliness": 1.5 if is_menage else 1.0,
+                    "positioning": 1.2 if is_menage else 0.8,
+                    "damage": 1.0 if is_menage else 1.5,
+                    "missing_item": 1.0 if is_menage else 1.2,
+                    "added_item": 0.5 if is_menage else 0.4,
+                    "image_quality": 0.3,
+                    "wrong_room": 2.0,
+                    "other": 1.0
                 },
                 "room_importance_weight": {
-                    "description": "Poids d'importance par type de pièce (pour la moyenne pondérée)",
+                    "description": "Poids d'importance par type de pièce (pour la moyenne pondérée des notes)",
                     "cuisine": 2.0,
                     "salle_de_bain": 1.8,
                     "salle_de_bain_et_toilettes": 1.8,
@@ -9409,35 +9390,39 @@ async def reset_scoring_config_endpoint(type: str = "Voyageur"):
                     "chambre": 1.0,
                     "bureau": 1.0,
                     "entree": 0.8,
-                    "exterieur": 0.6
-                },
-                "etape_reduction_factor": {
-                    "description": "Facteur de réduction pour les issues d'étapes (0.6 = réduction de 40%)",
-                    "value": 0.6
-                },
-                "grade_thresholds": {
-                    "description": "Seuils de conversion du score moyen pondéré en note /5",
-                    "thresholds": [
-                        {"grade": 5.0, "label": "EXCELLENT", "max_score": 0, "description": "Aucune issue détectée"},
-                        {"grade": 4.8, "label": "EXCELLENT", "max_score": 1.5, "description": "Quelques détails très mineurs"},
-                        {"grade": 4.5, "label": "TRÈS BON", "max_score": 3.0, "description": "Quelques détails mineurs par pièce"},
-                        {"grade": 4.0, "label": "BON", "max_score": 5.0, "description": "Quelques problèmes par pièce"},
-                        {"grade": 3.5, "label": "CORRECT", "max_score": 8.0, "description": "Plusieurs problèmes par pièce"},
-                        {"grade": 3.0, "label": "MOYEN", "max_score": 12.0, "description": "Nombreux problèmes par pièce"},
-                        {"grade": 2.5, "label": "PASSABLE", "max_score": 18.0, "description": "Problèmes importants"},
-                        {"grade": 2.0, "label": "INSUFFISANT", "max_score": 25.0, "description": "Problèmes graves"},
-                        {"grade": 1.5, "label": "MAUVAIS", "max_score": 35.0, "description": "Problèmes très graves"},
-                        {"grade": 1.0, "label": "CRITIQUE", "max_score": 999999, "description": "Problèmes critiques généralisés"}
-                    ]
+                    "exterieur": 0.6,
+                    "cle": 0.8,
+                    "autre": 0.8
                 },
                 "confidence_threshold": {
-                    "description": "Seuil de confiance minimum pour qu'une issue soit prise en compte dans le calcul",
+                    "description": "Seuil de confiance minimum pour qu'une issue soit prise en compte",
                     "value": 90
+                },
+                "min_grade": {
+                    "description": "Note minimale possible",
+                    "value": 1.0
+                },
+                "max_grade": {
+                    "description": "Note maximale possible (note de départ sans pénalité)",
+                    "value": 5.0
                 }
+            },
+            "labels": {
+                "description": "Labels correspondant aux plages de notes",
+                "ranges": [
+                    {"min": 4.5, "max": 5.0, "label": "EXCELLENT"},
+                    {"min": 4.0, "max": 4.49, "label": "TRÈS BON"},
+                    {"min": 3.5, "max": 3.99, "label": "BON"},
+                    {"min": 3.0, "max": 3.49, "label": "CORRECT"},
+                    {"min": 2.5, "max": 2.99, "label": "MOYEN"},
+                    {"min": 2.0, "max": 2.49, "label": "PASSABLE"},
+                    {"min": 1.5, "max": 1.99, "label": "INSUFFISANT"},
+                    {"min": 1.0, "max": 1.49, "label": "CRITIQUE"}
+                ]
             },
             "metadata": {
                 "created_by": "CheckEasy Admin",
-                "notes": "Cette configuration permet d'ajuster finement le système de notation sans modifier le code Python. Toute modification est appliquée immédiatement."
+                "notes": "Configuration V2 - Logique simple: Note = 5 - Σ(pénalités). Chaque issue retire directement des points."
             }
         }
 
@@ -9481,71 +9466,51 @@ def load_scoring_config(parcours_type: str = "Voyageur") -> dict:
 
         if not os.path.exists(config_path):
             logger.warning(f"⚠️ Fichier de configuration scoring non trouvé : {config_path}")
-            logger.info("📝 Création du fichier avec les valeurs par défaut...")
+            logger.info("📝 Création du fichier avec les valeurs par défaut V2...")
 
-            # Créer le fichier avec les valeurs par défaut
+            # Configuration V2 par défaut
+            is_menage = parcours_type.lower() == "ménage"
             default_config = {
-                "version": "1.0.0",
+                "version": "2.0.0",
                 "last_updated": datetime.now().strftime("%Y-%m-%d"),
-                "description": "Configuration du système de notation à score pondéré (APPROCHE 2) - CheckEasy API V5",
+                "description": f"Configuration V2 - Note = 5 - pénalités - {'Ménage' if is_menage else 'Voyageur'}",
                 "scoring_system": {
-                    "severity_base_score": {
-                        "description": "Score de base selon la sévérité de l'issue",
-                        "low": 1,
-                        "medium": 3,
-                        "high": 10
+                    "severity_penalty": {
+                        "high": 1.0 if is_menage else 0.8,
+                        "medium": 0.4 if is_menage else 0.3,
+                        "low": 0.15 if is_menage else 0.1
                     },
                     "category_multiplier": {
-                        "description": "Multiplicateur selon la catégorie d'issue",
-                        "damage": 2.0,
-                        "cleanliness": 1.5,
-                        "missing_item": 1.3,
-                        "positioning": 0.5,
-                        "added_item": 0.4,
-                        "image_quality": 0.2,
-                        "wrong_room": 0.3
+                        "cleanliness": 1.5 if is_menage else 1.0,
+                        "positioning": 1.2 if is_menage else 0.8,
+                        "damage": 1.0 if is_menage else 1.5,
+                        "missing_item": 1.0 if is_menage else 1.2,
+                        "added_item": 0.5 if is_menage else 0.4,
+                        "image_quality": 0.3,
+                        "wrong_room": 2.0,
+                        "other": 1.0
                     },
                     "room_importance_weight": {
-                        "description": "Poids d'importance par type de pièce (pour la moyenne pondérée)",
-                        "cuisine": 2.0,
-                        "salle_de_bain": 1.8,
-                        "salle_de_bain_et_toilettes": 1.8,
-                        "salle_d_eau": 1.7,
-                        "salle_d_eau_et_wc": 1.7,
-                        "wc": 1.5,
-                        "salon": 1.2,
-                        "chambre": 1.0,
-                        "bureau": 1.0,
-                        "entree": 0.8,
-                        "exterieur": 0.6
+                        "cuisine": 2.0, "salle_de_bain": 1.8, "salle_de_bain_et_toilettes": 1.8,
+                        "salle_d_eau": 1.7, "salle_d_eau_et_wc": 1.7, "wc": 1.5,
+                        "salon": 1.2, "chambre": 1.0, "bureau": 1.0, "entree": 0.8,
+                        "exterieur": 0.6, "cle": 0.8, "autre": 0.8
                     },
-                    "etape_reduction_factor": {
-                        "description": "Facteur de réduction pour les issues d'étapes (0.6 = réduction de 40%)",
-                        "value": 0.6
-                    },
-                    "grade_thresholds": {
-                        "description": "Seuils de conversion du score moyen pondéré en note /5",
-                        "thresholds": [
-                            {"grade": 5.0, "label": "EXCELLENT", "max_score": 0, "description": "Aucune issue détectée"},
-                            {"grade": 4.8, "label": "EXCELLENT", "max_score": 1.5, "description": "Quelques détails très mineurs"},
-                            {"grade": 4.5, "label": "TRÈS BON", "max_score": 3.0, "description": "Quelques détails mineurs par pièce"},
-                            {"grade": 4.0, "label": "BON", "max_score": 5.0, "description": "Quelques problèmes par pièce"},
-                            {"grade": 3.5, "label": "CORRECT", "max_score": 8.0, "description": "Plusieurs problèmes par pièce"},
-                            {"grade": 3.0, "label": "MOYEN", "max_score": 12.0, "description": "Nombreux problèmes par pièce"},
-                            {"grade": 2.5, "label": "PASSABLE", "max_score": 18.0, "description": "Problèmes importants"},
-                            {"grade": 2.0, "label": "INSUFFISANT", "max_score": 25.0, "description": "Problèmes graves"},
-                            {"grade": 1.5, "label": "MAUVAIS", "max_score": 35.0, "description": "Problèmes très graves"},
-                            {"grade": 1.0, "label": "CRITIQUE", "max_score": 999999, "description": "Problèmes critiques généralisés"}
-                        ]
-                    },
-                    "confidence_threshold": {
-                        "description": "Seuil de confiance minimum pour qu'une issue soit prise en compte dans le calcul",
-                        "value": 90
-                    }
+                    "confidence_threshold": {"value": 90},
+                    "min_grade": {"value": 1.0},
+                    "max_grade": {"value": 5.0}
                 },
-                "metadata": {
-                    "created_by": "CheckEasy Admin",
-                    "notes": "Cette configuration permet d'ajuster finement le système de notation sans modifier le code Python. Toute modification est appliquée immédiatement."
+                "labels": {
+                    "ranges": [
+                        {"min": 4.5, "max": 5.0, "label": "EXCELLENT"},
+                        {"min": 4.0, "max": 4.49, "label": "TRÈS BON"},
+                        {"min": 3.5, "max": 3.99, "label": "BON"},
+                        {"min": 3.0, "max": 3.49, "label": "CORRECT"},
+                        {"min": 2.5, "max": 2.99, "label": "MOYEN"},
+                        {"min": 2.0, "max": 2.49, "label": "PASSABLE"},
+                        {"min": 1.5, "max": 1.99, "label": "INSUFFISANT"},
+                        {"min": 1.0, "max": 1.49, "label": "CRITIQUE"}
+                    ]
                 }
             }
 
@@ -9562,35 +9527,36 @@ def load_scoring_config(parcours_type: str = "Voyageur") -> dict:
 
     except Exception as e:
         logger.error(f"❌ Erreur lors du chargement de la configuration scoring: {e}")
-        # Retourner une configuration par défaut en cas d'erreur
+        # Configuration V2 de fallback en cas d'erreur
         return {
             "scoring_system": {
-                "severity_base_score": {"low": 1, "medium": 3, "high": 10},
+                "severity_penalty": {"high": 0.8, "medium": 0.3, "low": 0.1},
                 "category_multiplier": {
-                    "damage": 2.0, "cleanliness": 1.5, "missing_item": 1.3,
-                    "positioning": 0.5, "added_item": 0.4, "image_quality": 0.2, "wrong_room": 0.3
+                    "damage": 1.5, "cleanliness": 1.0, "missing_item": 1.2,
+                    "positioning": 0.8, "added_item": 0.4, "image_quality": 0.3,
+                    "wrong_room": 2.0, "other": 1.0
                 },
                 "room_importance_weight": {
                     "cuisine": 2.0, "salle_de_bain": 1.8, "salle_de_bain_et_toilettes": 1.8,
                     "salle_d_eau": 1.7, "salle_d_eau_et_wc": 1.7, "wc": 1.5,
-                    "salon": 1.2, "chambre": 1.0, "bureau": 1.0, "entree": 0.8, "exterieur": 0.6
+                    "salon": 1.2, "chambre": 1.0, "bureau": 1.0, "entree": 0.8,
+                    "exterieur": 0.6, "cle": 0.8, "autre": 0.8
                 },
-                "etape_reduction_factor": {"value": 0.6},
-                "grade_thresholds": {
-                    "thresholds": [
-                        {"grade": 5.0, "label": "EXCELLENT", "max_score": 0},
-                        {"grade": 4.8, "label": "EXCELLENT", "max_score": 1.5},
-                        {"grade": 4.5, "label": "TRÈS BON", "max_score": 3.0},
-                        {"grade": 4.0, "label": "BON", "max_score": 5.0},
-                        {"grade": 3.5, "label": "CORRECT", "max_score": 8.0},
-                        {"grade": 3.0, "label": "MOYEN", "max_score": 12.0},
-                        {"grade": 2.5, "label": "PASSABLE", "max_score": 18.0},
-                        {"grade": 2.0, "label": "INSUFFISANT", "max_score": 25.0},
-                        {"grade": 1.5, "label": "MAUVAIS", "max_score": 35.0},
-                        {"grade": 1.0, "label": "CRITIQUE", "max_score": 999999}
-                    ]
-                },
-                "confidence_threshold": {"value": 90}
+                "confidence_threshold": {"value": 90},
+                "min_grade": {"value": 1.0},
+                "max_grade": {"value": 5.0}
+            },
+            "labels": {
+                "ranges": [
+                    {"min": 4.5, "max": 5.0, "label": "EXCELLENT"},
+                    {"min": 4.0, "max": 4.49, "label": "TRÈS BON"},
+                    {"min": 3.5, "max": 3.99, "label": "BON"},
+                    {"min": 3.0, "max": 3.49, "label": "CORRECT"},
+                    {"min": 2.5, "max": 2.99, "label": "MOYEN"},
+                    {"min": 2.0, "max": 2.49, "label": "PASSABLE"},
+                    {"min": 1.5, "max": 1.99, "label": "INSUFFISANT"},
+                    {"min": 1.0, "max": 1.49, "label": "CRITIQUE"}
+                ]
             }
         }
 
