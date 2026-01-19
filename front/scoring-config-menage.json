@@ -30,6 +30,7 @@
       "salle_d_eau_et_wc": 1.7,
       "wc": 1.5,
       "salon": 1.2,
+      "salon_cuisine": 1.8,
       "chambre": 1,
       "bureau": 1,
       "entree": 0.8,

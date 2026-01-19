@@ -3050,13 +3050,34 @@ def verify_checkin_checkout_coherence(
         logger.debug(f"✅ [COHERENCE] Checkout classifié comme: {checkout_room_type}")
 
         # 3️⃣ COMPARER LES DEUX CLASSIFICATIONS
-        # Considérer comme incohérent si les types sont différents ET ne sont pas "autre"
+        # Définir les groupes de pièces compatibles (ex: salon/cuisine ouverte = même pièce)
+        COMPATIBLE_ROOMS = {
+            "salon": ["cuisine", "salon_cuisine", "sejour"],
+            "cuisine": ["salon", "salon_cuisine", "sejour"],
+            "salon_cuisine": ["salon", "cuisine", "sejour"],
+            "sejour": ["salon", "cuisine", "salon_cuisine"],
+            "chambre": ["bureau"],
+            "bureau": ["chambre"],
+        }
+
+        # Considérer comme incohérent si les types sont différents ET ne sont pas "autre" ET pas compatibles
         is_coherent = True
         message = "Photos cohérentes"
 
         if checkin_room_type != checkout_room_type:
-            # Si l'un des deux est "autre", tolérer (classification incertaine)
-            if checkin_room_type != "autre" and checkout_room_type != "autre":
+            # Vérifier si les types sont compatibles (ex: salon et cuisine ouverte)
+            compatible_types = COMPATIBLE_ROOMS.get(checkin_room_type, [])
+
+            if checkout_room_type in compatible_types:
+                # ✅ Types différents mais compatibles (ex: salon/cuisine ouverte)
+                is_coherent = True
+                message = f"Types compatibles: {checkin_room_type} et {checkout_room_type} (pièce ouverte)"
+                logger.info(f"✅ [COHERENCE] Types différents mais COMPATIBLES: {checkin_room_type} / {checkout_room_type}")
+                logger.info(f"✅ [COHERENCE] Interprété comme une pièce de vie ouverte (salon/cuisine)")
+            elif checkin_room_type == "autre" or checkout_room_type == "autre":
+                # Si l'un des deux est "autre", tolérer (classification incertaine)
+                logger.debug(f"🔍 [COHERENCE] Types différents mais l'un est 'autre' → Toléré (checkin={checkin_room_type}, checkout={checkout_room_type})")
+            else:
                 is_coherent = False
                 message = f"Incohérence détectée: checkin={checkin_room_type}, checkout={checkout_room_type}"
                 logger.warning(f"⚠️ [COHERENCE] ═══════════════════════════════════════")
@@ -3066,8 +3087,6 @@ def verify_checkin_checkout_coherence(
                 logger.warning(f"⚠️ [COHERENCE] Checkout photos → {checkout_room_type}")
                 logger.warning(f"⚠️ [COHERENCE] Les photos ne montrent PAS la même pièce!")
                 logger.warning(f"⚠️ [COHERENCE] ═══════════════════════════════════════")
-            else:
-                logger.debug(f"🔍 [COHERENCE] Types différents mais l'un est 'autre' → Toléré (checkin={checkin_room_type}, checkout={checkout_room_type})")
 
         return {
             "is_coherent": is_coherent,
@@ -5549,7 +5568,7 @@ def calculate_weighted_severity_score(
     ROOM_IMPORTANCE_WEIGHT = scoring_config.get("room_importance_weight", {
         "cuisine": 2.0, "salle_de_bain": 1.8, "salle_de_bain_et_toilettes": 1.8,
         "salle_d_eau": 1.7, "salle_d_eau_et_wc": 1.7, "wc": 1.5,
-        "salon": 1.2, "chambre": 1.0, "bureau": 1.0, "entree": 0.8, "exterieur": 0.6,
+        "salon": 1.2, "salon_cuisine": 1.8, "chambre": 1.0, "bureau": 1.0, "entree": 0.8, "exterieur": 0.6,
         "cle": 0.8, "autre": 0.8
     })
     CONFIDENCE_THRESHOLD = scoring_config.get("confidence_threshold", {}).get("value", 90)
@@ -9387,6 +9406,7 @@ async def reset_scoring_config_endpoint(type: str = "Voyageur"):
                     "salle_d_eau_et_wc": 1.7,
                     "wc": 1.5,
                     "salon": 1.2,
+                    "salon_cuisine": 1.8,
                     "chambre": 1.0,
                     "bureau": 1.0,
                     "entree": 0.8,
@@ -9493,7 +9513,7 @@ def load_scoring_config(parcours_type: str = "Voyageur") -> dict:
                     "room_importance_weight": {
                         "cuisine": 2.0, "salle_de_bain": 1.8, "salle_de_bain_et_toilettes": 1.8,
                         "salle_d_eau": 1.7, "salle_d_eau_et_wc": 1.7, "wc": 1.5,
-                        "salon": 1.2, "chambre": 1.0, "bureau": 1.0, "entree": 0.8,
+                        "salon": 1.2, "salon_cuisine": 1.8, "chambre": 1.0, "bureau": 1.0, "entree": 0.8,
                         "exterieur": 0.6, "cle": 0.8, "autre": 0.8
                     },
                     "confidence_threshold": {"value": 90},
@@ -9539,7 +9559,7 @@ def load_scoring_config(parcours_type: str = "Voyageur") -> dict:
                 "room_importance_weight": {
                     "cuisine": 2.0, "salle_de_bain": 1.8, "salle_de_bain_et_toilettes": 1.8,
                     "salle_d_eau": 1.7, "salle_d_eau_et_wc": 1.7, "wc": 1.5,
-                    "salon": 1.2, "chambre": 1.0, "bureau": 1.0, "entree": 0.8,
+                    "salon": 1.2, "salon_cuisine": 1.8, "chambre": 1.0, "bureau": 1.0, "entree": 0.8,
                     "exterieur": 0.6, "cle": 0.8, "autre": 0.8
                 },
                 "confidence_threshold": {"value": 90},

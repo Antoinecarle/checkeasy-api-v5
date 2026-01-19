@@ -169,6 +169,54 @@
         ]
       }
     },
+    "salon_cuisine": {
+      "name": "Pièce de vie (Salon/Cuisine)",
+      "icon": "🏠",
+      "verifications": {
+        "elements_critiques": [
+          "canapé (structure, accoudoirs, coussins)",
+          "table basse (plateau, pieds)",
+          "télécommandes",
+          "meuble TV",
+          "TV & câbles visibles",
+          "tapis",
+          "décor mural (cadres, horloge)",
+          "plan de travail cuisine",
+          "plaques de cuisson",
+          "évier",
+          "frigo extérieur",
+          "micro-ondes / four",
+          "électroménager visible",
+          "élément de décoration",
+          "livret de bienvenue"
+        ],
+        "points_ignorables": [
+          "position exacte des coussins",
+          "couleur des coussins",
+          "état d'éclairage (lumière allumée ou éteinte)",
+          "torchons / chiffons",
+          "vaisselle dans l'évier (si propre)",
+          "position exacte des appareils",
+          "alignement parfait des objets",
+          "ombres naturelles causées par l'éclairage ou l'angle de prise de vue",
+          "zones sombres dues au manque de lumière",
+          "reflets sur surfaces brillantes",
+          "variations de teinte normales du sol ou des murs",
+          "contenu du vase / fleurs / bouquet"
+        ],
+        "defauts_frequents": [
+          "coussin manquant",
+          "déchirure canapé/fauteuil",
+          "télécommande manquante",
+          "trace grasse incrustée crédence",
+          "brûlure ou fissure plan travail",
+          "appareil électroménager cassé ou manquant",
+          "TV ou équipement cassé",
+          "élément de décoration manquant",
+          "tache importante table/tapis/sol"
+        ]
+      }
+    },
     "wc": {
       "name": "toilettes",
       "icon": "🚽",
