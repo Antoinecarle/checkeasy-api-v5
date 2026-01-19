@@ -3049,6 +3049,17 @@ def verify_checkin_checkout_coherence(
         checkout_room_type = checkout_result.get("room_type", "autre")
         logger.debug(f"✅ [COHERENCE] Checkout classifié comme: {checkout_room_type}")
 
+        # 2.5️⃣ APPLIQUER LE MAPPING pour corriger les typos/variations de l'IA
+        checkin_room_type_original = checkin_room_type
+        checkout_room_type_original = checkout_room_type
+        checkin_room_type = map_room_type_to_valid(checkin_room_type)
+        checkout_room_type = map_room_type_to_valid(checkout_room_type)
+
+        if checkin_room_type != checkin_room_type_original:
+            logger.debug(f"🗺️ [COHERENCE] Checkin mappé: {checkin_room_type_original} → {checkin_room_type}")
+        if checkout_room_type != checkout_room_type_original:
+            logger.debug(f"🗺️ [COHERENCE] Checkout mappé: {checkout_room_type_original} → {checkout_room_type}")
+
         # 3️⃣ COMPARER LES DEUX CLASSIFICATIONS
         # Définir les groupes de pièces compatibles (ex: salon/cuisine ouverte = même pièce)
         COMPATIBLE_ROOMS = {
