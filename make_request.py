@@ -1229,17 +1229,27 @@ async def convert_message_urls_to_data_uris_parallel(user_message: dict) -> dict
 
         converted_count = 0
         failed_count = 0
+        placeholder_count = 0
         for url, content_item, data_uri in zip(urls_to_convert, content_items, data_uris):
             if isinstance(data_uri, Exception):
-                failed_count += 1
+                # 🆕 Utiliser un placeholder au lieu de garder l'URL originale
+                placeholder_uri = create_placeholder_image_url()
+                content_item["image_url"]["url"] = placeholder_uri
+                placeholder_count += 1
+                logger.warning(f"⚠️ Conversion échouée (exception), placeholder utilisé pour: {url[:60]}...")
             elif data_uri:
                 content_item["image_url"]["url"] = data_uri
                 with _data_uri_cache_lock:
                     _data_uri_cache[url] = data_uri
                 converted_count += 1
             else:
-                failed_count += 1
+                # 🆕 Utiliser un placeholder au lieu de garder l'URL originale
+                placeholder_uri = create_placeholder_image_url()
+                content_item["image_url"]["url"] = placeholder_uri
+                placeholder_count += 1
+                logger.warning(f"⚠️ Conversion retournée None, placeholder utilisé pour: {url[:60]}...")
 
+        logger.debug(f"🔄 Conversion parallèle: {converted_count} converties, {cached_count} cached, {placeholder_count} placeholders")
         return user_message
 
     except Exception as e:
@@ -1282,9 +1292,13 @@ def convert_message_urls_to_data_uris_sync(user_message: dict) -> dict:
                             _data_uri_cache[original_url] = data_uri
                         converted_count += 1
                     else:
+                        # 🆕 Utiliser un placeholder au lieu de garder l'URL originale
+                        placeholder_uri = create_placeholder_image_url()
+                        content_item["image_url"]["url"] = placeholder_uri
                         failed_count += 1
+                        logger.warning(f"⚠️ Conversion sync échouée, placeholder utilisé pour: {original_url[:60]}...")
 
-        logger.debug(f"🔄 Conversion sync: {converted_count} converties, {cached_count} cached, {failed_count} échouées")
+        logger.debug(f"🔄 Conversion sync: {converted_count} converties, {cached_count} cached, {failed_count} placeholders")
         return user_message
 
     except Exception as e:
@@ -5900,7 +5914,7 @@ def generate_logement_enrichment(logement_id: str, pieces_analysis: List[Combine
 
         algorithmic_score = score_result["final_grade"]
         algorithmic_label = score_result["label"]
-        weighted_average = score_result["weighted_average_score"]
+        weighted_average = score_result["weighted_average_grade"]
 
         logger.debug(f"")
         logger.debug(f"✅ SCORE ALGORITHMIQUE CALCULÉ :")
@@ -6943,7 +6957,59 @@ async def analyze_single_etape_async(etape: Etape, etape_data: dict, piece_id: s
 
                 except Exception as retry_error:
                     logger.error(f"❌ [ASYNC] Échec du retry avec Data URIs pour l'étape {etape.etape_id}: {str(retry_error)}")
-                    raise  # Re-raise pour être catchée par le except principal
+
+                    # 🆕 FALLBACK DERNIER RECOURS: Analyse sans images
+                    logger.warning(f"⚠️ [ASYNC] Fallback dernier recours: analyse sans images pour l'étape {etape.etape_id}")
+                    try:
+                        # Créer un message texte uniquement
+                        fallback_message = {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": f"Analyse de l'étape '{etape.task_name}' (ID: {etape.etape_id}). "
+                                            f"Consigne: {etape.consigne}. "
+                                            f"Les images sont indisponibles (timeout CDN). "
+                                            f"Retourner validation_status='non_verifiable' avec un commentaire explicatif et issues=[]."
+                                }
+                            ]
+                        }
+
+                        messages_fallback = [
+                            {"role": "system", "content": system_prompt},
+                            fallback_message
+                        ]
+                        input_content_fallback = convert_chat_messages_to_responses_input(messages_fallback)
+
+                        if 'async_client' in globals() and async_client:
+                            response = await async_client.responses.create(
+                                model=OPENAI_MODEL,
+                                input=input_content_fallback,
+                                text={"format": {"type": "json_object"}},
+                                max_output_tokens=500,
+                                temperature=0.2
+                            )
+                        else:
+                            response = client.responses.create(
+                                model=OPENAI_MODEL,
+                                input=input_content_fallback,
+                                text={"format": {"type": "json_object"}},
+                                max_output_tokens=500,
+                                temperature=0.2
+                            )
+
+                        response_text = response.output_text if hasattr(response, 'output_text') else str(response.output[0].content[0].text)
+                        logger.info(f"✅ [ASYNC] Fallback sans images réussi pour l'étape {etape.etape_id}")
+
+                    except Exception as fallback_error:
+                        logger.error(f"❌ [ASYNC] Échec total pour l'étape {etape.etape_id}: {str(fallback_error)}")
+                        # Retourner une réponse par défaut en dernier recours absolu
+                        response_text = json.dumps({
+                            "validation_status": "non_verifiable",
+                            "commentaire": f"Analyse impossible : images indisponibles (timeout CDN) pour l'étape {etape.task_name}",
+                            "issues": []
+                        })
+                        logger.warning(f"⚠️ [ASYNC] Réponse par défaut générée pour l'étape {etape.etape_id}")
             else:
                 # Autre type d'erreur, re-raise
                 raise
