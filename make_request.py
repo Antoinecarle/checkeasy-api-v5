@@ -3016,6 +3016,9 @@ def verify_checkin_checkout_coherence(
     Vérifie la cohérence entre les photos checkin et checkout.
     Détecte si les photos montrent des pièces différentes.
 
+    🆕 AMÉLIORATION V2: Comparaison visuelle DIRECTE au lieu de classifications indépendantes
+    pour éviter les faux positifs (ex: même pièce classifiée différemment selon l'angle)
+
     Args:
         checkin_pictures: Photos AVANT (état de référence)
         checkout_pictures: Photos APRÈS (état final)
@@ -3051,155 +3054,153 @@ def verify_checkin_checkout_coherence(
                 "message": "Pas de photos checkin à comparer"
             }
 
-        logger.info(f"🔍 [COHERENCE] Vérification cohérence checkin/checkout pour pièce {piece_id}")
+        logger.info(f"🔍 [COHERENCE V2] Vérification cohérence checkin/checkout pour pièce {piece_id}")
+        logger.info(f"🔍 [COHERENCE V2] Méthode: Comparaison visuelle DIRECTE (évite les faux positifs)")
 
-        # Charger les templates selon le type de parcours
-        room_templates = load_room_templates(parcours_type)
-
-        # Créer le prompt de classification
-        prompts_config = load_prompts_config(parcours_type)
-        classify_room_config = prompts_config.get("prompts", {}).get("classify_room", {})
-
-        room_types_list = list(room_templates["room_types"].keys())
-        room_descriptions = []
-        for room_key, room_info in room_templates["room_types"].items():
-            room_descriptions.append(f"- {room_key}: {room_info['name']} {room_info['icon']}")
-
-        variables = {
-            "room_types_list": ', '.join(room_types_list),
-            "room_descriptions_list": '\n'.join(room_descriptions)
-        }
-
-        classification_prompt = build_full_prompt_from_config(classify_room_config, variables)
-
-        # 1️⃣ CLASSIFIER LES CHECKIN PICTURES
-        logger.debug(f"🔍 [COHERENCE] Étape 1/2 - Classification des CHECKIN pictures...")
+        # 🆕 ÉTAPE 1: PRÉPARER TOUTES LES IMAGES (checkin ET checkout ensemble)
         checkin_pictures_raw = [pic.model_dump() for pic in checkin_pictures]
-        checkin_processed = process_pictures_list(checkin_pictures_raw)
+        checkout_pictures_raw = [pic.model_dump() for pic in checkout_pictures]
 
-        checkin_user_message = {
+        checkin_processed = process_pictures_list(checkin_pictures_raw)
+        checkout_processed = process_pictures_list(checkout_pictures_raw)
+
+        # 🆕 ÉTAPE 2: PROMPT DE COMPARAISON DIRECTE
+        # Demander à l'IA de comparer visuellement si c'est la MÊME pièce
+        comparison_prompt = """🔍 ANALYSE DE COHÉRENCE VISUELLE - PHOTOS AVANT/APRÈS
+
+Tu es un expert en analyse d'images immobilières. Ta mission est de déterminer si les photos AVANT (checkin) et APRÈS (checkout) montrent LA MÊME PIÈCE physique.
+
+⚠️ RÈGLES IMPORTANTES:
+1. Compare les ÉLÉMENTS STRUCTURELS permanents: murs, fenêtres, portes, disposition générale
+2. Compare les MEUBLES FIXES: cuisine intégrée, placards, évier, baignoire, etc.
+3. IGNORE les différences normales: éclairage, angle de vue, objets déplacés, propreté
+4. Une pièce peut être photographiée sous différents angles → c'est NORMAL
+
+🏠 ÉLÉMENTS À COMPARER:
+- Structure de la pièce (forme, dimensions apparentes)
+- Position des fenêtres et portes
+- Revêtements (sol, murs)
+- Meubles fixes et intégrés
+- Éléments caractéristiques (cheminée, poutres, escalier visible...)
+
+📸 FORMAT DES PHOTOS:
+- Les premières photos sont les photos CHECKIN (avant)
+- Les dernières photos sont les photos CHECKOUT (après)
+
+🎯 RETOURNE UNIQUEMENT CE JSON:
+{
+    "is_same_room": true/false,
+    "confidence": 0-100,
+    "checkin_room_type": "type de pièce détecté sur les photos checkin",
+    "checkout_room_type": "type de pièce détecté sur les photos checkout",
+    "reasoning": "Explication courte de ta décision",
+    "matching_elements": ["liste des éléments identiques trouvés"],
+    "different_elements": ["liste des éléments vraiment différents (pas juste angle/éclairage)"]
+}
+
+⚠️ SEUIL DE DÉCISION:
+- is_same_room = true si tu es à 70%+ sûr que c'est la même pièce
+- En cas de doute, privilégie TRUE (même pièce) pour éviter les faux positifs
+- Les différences d'angle de vue, d'éclairage, de rangement ne sont PAS des indices de pièces différentes"""
+
+        # 🆕 ÉTAPE 3: CONSTRUIRE LE MESSAGE AVEC TOUTES LES IMAGES
+        user_message = {
             "role": "user",
-            "content": [{"type": "text", "text": classification_prompt}]
+            "content": [
+                {"type": "text", "text": comparison_prompt},
+                {"type": "text", "text": f"\n📍 Pièce ID: {piece_id}\n\n--- PHOTOS CHECKIN (AVANT) ---"}
+            ]
         }
 
+        # Ajouter les photos checkin
+        valid_checkin_count = 0
         for photo in checkin_processed:
             normalized_url = normalize_url(photo['url'])
             if is_valid_image_url(normalized_url) and not normalized_url.startswith('data:image/gif;base64,R0lGOD'):
-                checkin_user_message["content"].append({
+                user_message["content"].append({
                     "type": "image_url",
                     "image_url": {"url": normalized_url, "detail": "high"}
                 })
+                valid_checkin_count += 1
 
-        # Appel OpenAI pour checkin
-        checkin_response = client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=[checkin_user_message],
-            response_format={"type": "json_object"},
-            temperature=0.3,
-            max_completion_tokens=500
-        )
+        # Séparateur visuel
+        user_message["content"].append({"type": "text", "text": "\n--- PHOTOS CHECKOUT (APRÈS) ---"})
 
-        checkin_result = json.loads(checkin_response.choices[0].message.content)
-        checkin_room_type = checkin_result.get("room_type", "autre")
-        logger.debug(f"✅ [COHERENCE] Checkin classifié comme: {checkin_room_type}")
-
-        # 2️⃣ CLASSIFIER LES CHECKOUT PICTURES
-        logger.debug(f"🔍 [COHERENCE] Étape 2/2 - Classification des CHECKOUT pictures...")
-        checkout_pictures_raw = [pic.model_dump() for pic in checkout_pictures]
-        checkout_processed = process_pictures_list(checkout_pictures_raw)
-
-        checkout_user_message = {
-            "role": "user",
-            "content": [{"type": "text", "text": classification_prompt}]
-        }
-
+        # Ajouter les photos checkout
+        valid_checkout_count = 0
         for photo in checkout_processed:
             normalized_url = normalize_url(photo['url'])
             if is_valid_image_url(normalized_url) and not normalized_url.startswith('data:image/gif;base64,R0lGOD'):
-                checkout_user_message["content"].append({
+                user_message["content"].append({
                     "type": "image_url",
                     "image_url": {"url": normalized_url, "detail": "high"}
                 })
+                valid_checkout_count += 1
 
-        # Appel OpenAI pour checkout
-        checkout_response = client.chat.completions.create(
+        logger.debug(f"🔍 [COHERENCE V2] Photos valides: {valid_checkin_count} checkin, {valid_checkout_count} checkout")
+
+        # 🆕 ÉTAPE 4: APPEL UNIQUE À L'IA POUR COMPARAISON DIRECTE
+        logger.debug(f"🔍 [COHERENCE V2] Appel OpenAI pour comparaison visuelle directe...")
+
+        response = client.chat.completions.create(
             model=OPENAI_MODEL,
-            messages=[checkout_user_message],
+            messages=[user_message],
             response_format={"type": "json_object"},
-            temperature=0.3,
-            max_completion_tokens=500
+            temperature=0.2,  # Température basse pour plus de cohérence
+            max_completion_tokens=800
         )
 
-        checkout_result = json.loads(checkout_response.choices[0].message.content)
-        checkout_room_type = checkout_result.get("room_type", "autre")
-        logger.debug(f"✅ [COHERENCE] Checkout classifié comme: {checkout_room_type}")
+        result = json.loads(response.choices[0].message.content)
 
-        # 2.5️⃣ APPLIQUER LE MAPPING pour corriger les typos/variations de l'IA
-        checkin_room_type_original = checkin_room_type
-        checkout_room_type_original = checkout_room_type
+        is_same_room = result.get("is_same_room", True)  # Par défaut TRUE pour éviter faux positifs
+        confidence = result.get("confidence", 80)
+        checkin_room_type = result.get("checkin_room_type", "autre")
+        checkout_room_type = result.get("checkout_room_type", "autre")
+        reasoning = result.get("reasoning", "")
+        matching_elements = result.get("matching_elements", [])
+        different_elements = result.get("different_elements", [])
+
+        # Appliquer le mapping pour normaliser les types
         checkin_room_type = map_room_type_to_valid(checkin_room_type)
         checkout_room_type = map_room_type_to_valid(checkout_room_type)
 
-        if checkin_room_type != checkin_room_type_original:
-            logger.debug(f"🗺️ [COHERENCE] Checkin mappé: {checkin_room_type_original} → {checkin_room_type}")
-        if checkout_room_type != checkout_room_type_original:
-            logger.debug(f"🗺️ [COHERENCE] Checkout mappé: {checkout_room_type_original} → {checkout_room_type}")
+        logger.debug(f"✅ [COHERENCE V2] Résultat: is_same_room={is_same_room}, confidence={confidence}%")
+        logger.debug(f"✅ [COHERENCE V2] Types détectés: checkin={checkin_room_type}, checkout={checkout_room_type}")
+        logger.debug(f"✅ [COHERENCE V2] Reasoning: {reasoning}")
 
-        # 3️⃣ COMPARER LES DEUX CLASSIFICATIONS
-        # Définir les groupes de pièces compatibles (ex: salon/cuisine ouverte = même pièce)
-        COMPATIBLE_ROOMS = {
-            # Pièces de vie ouvertes
-            "salon": ["cuisine", "salon_cuisine", "sejour"],
-            "cuisine": ["salon", "salon_cuisine", "sejour"],
-            "salon_cuisine": ["salon", "cuisine", "sejour"],
-            "sejour": ["salon", "cuisine", "salon_cuisine"],
-            # Chambres / Bureaux
-            "chambre": ["bureau"],
-            "bureau": ["chambre"],
-            # Salles de bain / Salles d'eau (toutes compatibles entre elles - angle de vue peut masquer WC)
-            "salle_de_bain": ["salle_d_eau", "salle_de_bain_et_toilettes", "salle_d_eau_et_wc"],
-            "salle_d_eau": ["salle_de_bain", "salle_de_bain_et_toilettes", "salle_d_eau_et_wc"],
-            "salle_de_bain_et_toilettes": ["salle_de_bain", "salle_d_eau", "salle_d_eau_et_wc"],
-            "salle_d_eau_et_wc": ["salle_de_bain", "salle_d_eau", "salle_de_bain_et_toilettes"],
-        }
+        # 🆕 ÉTAPE 5: DÉCISION FINALE AVEC SEUIL DE TOLÉRANCE
+        # Si confiance < 80% ET décision "différent", reconsidérer comme cohérent (doute = pas de blocage)
+        if not is_same_room and confidence < 80:
+            logger.info(f"🔍 [COHERENCE V2] Confiance faible ({confidence}%) → Reconsidéré comme COHÉRENT (éviter faux positif)")
+            is_same_room = True
+            reasoning = f"[TOLÉRANCE] Confiance insuffisante ({confidence}%) - Considéré comme même pièce. Original: {reasoning}"
 
-        # Considérer comme incohérent si les types sont différents ET ne sont pas "autre" ET pas compatibles
-        is_coherent = True
-        message = "Photos cohérentes"
-
-        if checkin_room_type != checkout_room_type:
-            # Vérifier si les types sont compatibles (ex: salon et cuisine ouverte)
-            compatible_types = COMPATIBLE_ROOMS.get(checkin_room_type, [])
-
-            if checkout_room_type in compatible_types:
-                # ✅ Types différents mais compatibles (ex: salon/cuisine ouverte)
-                is_coherent = True
-                message = f"Types compatibles: {checkin_room_type} et {checkout_room_type} (pièce ouverte)"
-                logger.info(f"✅ [COHERENCE] Types différents mais COMPATIBLES: {checkin_room_type} / {checkout_room_type}")
-                logger.info(f"✅ [COHERENCE] Interprété comme une pièce de vie ouverte (salon/cuisine)")
-            elif checkin_room_type == "autre" or checkout_room_type == "autre":
-                # Si l'un des deux est "autre", tolérer (classification incertaine)
-                logger.debug(f"🔍 [COHERENCE] Types différents mais l'un est 'autre' → Toléré (checkin={checkin_room_type}, checkout={checkout_room_type})")
-            else:
-                is_coherent = False
-                message = f"Incohérence détectée: checkin={checkin_room_type}, checkout={checkout_room_type}"
-                logger.warning(f"⚠️ [COHERENCE] ═══════════════════════════════════════")
-                logger.warning(f"⚠️ [COHERENCE] INCOHÉRENCE DÉTECTÉE!")
-                logger.warning(f"⚠️ [COHERENCE] Pièce ID: {piece_id}")
-                logger.warning(f"⚠️ [COHERENCE] Checkin photos → {checkin_room_type}")
-                logger.warning(f"⚠️ [COHERENCE] Checkout photos → {checkout_room_type}")
-                logger.warning(f"⚠️ [COHERENCE] Les photos ne montrent PAS la même pièce!")
-                logger.warning(f"⚠️ [COHERENCE] ═══════════════════════════════════════")
+        if is_same_room:
+            message = f"Photos cohérentes (confiance: {confidence}%)"
+            if matching_elements:
+                message += f" - Éléments communs: {', '.join(matching_elements[:3])}"
+            logger.info(f"✅ [COHERENCE V2] COHÉRENT: {reasoning}")
+        else:
+            message = f"Incohérence détectée (confiance: {confidence}%): {reasoning}"
+            logger.warning(f"⚠️ [COHERENCE V2] ═══════════════════════════════════════")
+            logger.warning(f"⚠️ [COHERENCE V2] INCOHÉRENCE DÉTECTÉE!")
+            logger.warning(f"⚠️ [COHERENCE V2] Pièce ID: {piece_id}")
+            logger.warning(f"⚠️ [COHERENCE V2] Confiance: {confidence}%")
+            logger.warning(f"⚠️ [COHERENCE V2] Checkin → {checkin_room_type}")
+            logger.warning(f"⚠️ [COHERENCE V2] Checkout → {checkout_room_type}")
+            logger.warning(f"⚠️ [COHERENCE V2] Éléments différents: {different_elements}")
+            logger.warning(f"⚠️ [COHERENCE V2] Reasoning: {reasoning}")
+            logger.warning(f"⚠️ [COHERENCE V2] ═══════════════════════════════════════")
 
         return {
-            "is_coherent": is_coherent,
+            "is_coherent": is_same_room,
             "checkin_room_type": checkin_room_type,
             "checkout_room_type": checkout_room_type,
             "message": message
         }
 
     except Exception as e:
-        logger.error(f"❌ [COHERENCE] Erreur lors de la vérification: {e}")
+        logger.error(f"❌ [COHERENCE V2] Erreur lors de la vérification: {e}")
         # En cas d'erreur, considérer comme cohérent pour ne pas bloquer
         return {
             "is_coherent": True,
@@ -3287,12 +3288,12 @@ RÉPONDS EN JSON:
 
         # Si incohérence détectée, retourner immédiatement une erreur wrong_room
         if not coherence_check["is_coherent"]:
-            logger.error(f"🚫 INCOHÉRENCE DÉTECTÉE entre checkin et checkout!")
+            logger.error(f"🚫 [COHERENCE V2] INCOHÉRENCE CONFIRMÉE entre checkin et checkout!")
             logger.error(f"   📸 Checkin classifié comme: {coherence_check['checkin_room_type']}")
             logger.error(f"   📸 Checkout classifié comme: {coherence_check['checkout_room_type']}")
-            logger.error(f"   ⚠️ Les photos ne montrent pas la même pièce!")
+            logger.error(f"   📝 Détails: {coherence_check['message']}")
 
-            # Retourner une réponse wrong_room
+            # Retourner une réponse wrong_room avec le message détaillé de la V2
             return RoomClassificationResponse(
                 piece_id=input_data.piece_id,
                 room_type="wrong_room",
@@ -3300,7 +3301,7 @@ RÉPONDS EN JSON:
                 room_icon="⚠️",
                 confidence=95,
                 is_valid_room=False,
-                validation_message=f"Les photos checkin et checkout montrent des pièces différentes: {coherence_check['checkin_room_type']} vs {coherence_check['checkout_room_type']}",
+                validation_message=coherence_check['message'],  # Utiliser le message détaillé de la V2
                 verifications=RoomVerifications(
                     elements_critiques=["Vérifier que les photos correspondent à la même pièce"],
                     points_ignorables=[],
@@ -3308,7 +3309,7 @@ RÉPONDS EN JSON:
                 )
             )
         else:
-            logger.debug(f"✅ [COHERENCE] Photos checkin/checkout cohérentes: {coherence_check['message']}")
+            logger.debug(f"✅ [COHERENCE V2] Photos checkin/checkout cohérentes: {coherence_check['message']}")
 
         # Préparer le message avec les images valides uniquement
         user_message = {
@@ -6316,15 +6317,6 @@ Génère une synthèse en JSON:
 # 🚀 FONCTIONS ASYNC POUR PARALLÉLISATION
 # ═══════════════════════════════════════════════════════════════
 
-# Import du système de parallélisation optimisé
-try:
-    from analysis_parallel_integration import get_parallel_executor
-    PARALLEL_EXECUTOR_AVAILABLE = True
-    logger.info("✅ Système de parallélisation optimisé chargé")
-except ImportError as e:
-    PARALLEL_EXECUTOR_AVAILABLE = False
-    logger.warning(f"⚠️ Système de parallélisation optimisé non disponible: {e}")
-
 async def analyze_single_piece_async(piece: PieceWithEtapes, parcours_type: str = "Voyageur", request_id: str = None) -> CombinedAnalysisResponse:
     """
     Analyse asynchrone d'une seule pièce avec classification automatique
@@ -6505,33 +6497,49 @@ def apply_two_step_validation_logic_sync(
             logger.debug(f"🔍 [2-STEP] Étape {etape_id}: Comparaison checking vs checkout...")
 
             # Construire un prompt simple pour comparer les deux images
-            comparison_prompt = f"""Tu es un expert en comparaison d'images.
+            comparison_prompt = f"""Tu es un expert en comparaison VISUELLE d'images.
 
-🎯 OBJECTIF : Déterminer si deux photos montrent le MÊME ÉTAT ou un état DIFFÉRENT.
+🎯 OBJECTIF : Déterminer si deux photos sont VISUELLEMENT IDENTIQUES ou SIMILAIRES.
 
 📸 CONTEXTE :
-- Photo 1 (AVANT) : État initial
-- Photo 2 (APRÈS) : État final
-- Tâche : {task_name}
+- Photo 1 : Image de référence
+- Photo 2 : Image à comparer
 
-🔍 QUESTION :
-Les deux photos montrent-elles le MÊME ÉTAT (équivalent) ou un état DIFFÉRENT (dégradé/amélioré) ?
+🔍 QUESTION UNIQUE :
+Les deux photos montrent-elles VISUELLEMENT le MÊME CONTENU ?
 
-⚠️ RÈGLES :
-- Ignore les différences d'angle, de luminosité, de cadrage
-- Concentre-toi sur l'ÉTAT RÉEL des éléments visibles
-- Petites variations normales = MÊME ÉTAT
-- Changement significatif = ÉTAT DIFFÉRENT
+⚠️ RÈGLES CRITIQUES :
+- Compare UNIQUEMENT ce qui est VISIBLE sur les photos
+- IGNORE la consigne ou la tâche demandée - tu ne compares QUE les images
+- IGNORE les différences d'angle, de luminosité, de cadrage, de qualité
+- IGNORE ce qui n'est PAS visible (intérieur des placards, objets hors cadre, etc.)
+- Deux photos montrant le même objet dans le même état = MÊME ÉTAT
+
+📸 EXEMPLES DE "MÊME ÉTAT" (same_state = true) :
+- Lave-vaisselle vide (photo 1) vs Lave-vaisselle vide (photo 2) → MÊME ÉTAT ✅
+- Four propre ouvert (photo 1) vs Four propre ouvert (photo 2) → MÊME ÉTAT ✅
+- Lit fait (photo 1) vs Lit fait (photo 2) → MÊME ÉTAT ✅
+- Évier vide (photo 1) vs Évier vide (photo 2) → MÊME ÉTAT ✅
+
+📸 EXEMPLES DE "ÉTAT DIFFÉRENT" (same_state = false) :
+- Lave-vaisselle plein (photo 1) vs Lave-vaisselle vide (photo 2) → DIFFÉRENT ❌
+- Lit défait (photo 1) vs Lit fait (photo 2) → DIFFÉRENT ❌
+- Sol sale (photo 1) vs Sol propre (photo 2) → DIFFÉRENT ❌
+
+🚫 NE PAS CONSIDÉRER COMME "DIFFÉRENT" :
+- "La vaisselle n'est pas visible dans les placards" → Hors sujet, compare ce qui est VISIBLE
+- "On ne peut pas voir les pastilles" → Hors sujet, compare ce qui est VISIBLE
+- Éléments non photographiés → Ignore-les
 
 📋 RÉPONDS EN JSON :
 {{
     "same_state": true/false,
     "confidence": 0-100,
-    "explanation": "Explication courte"
+    "explanation": "Description de ce que tu VOIS sur les deux photos"
 }}
 
-- same_state = true → Les deux photos montrent le même état (équivalent)
-- same_state = false → Les deux photos montrent un état différent"""
+- same_state = true → Les deux photos montrent visuellement le même contenu
+- same_state = false → Les deux photos montrent visuellement un contenu différent"""
 
             # 🚀 CONVERTIR les URLs en Data URI pour éviter les timeouts OpenAI
             checking_url_final = checking_picture_url
@@ -6706,33 +6714,49 @@ async def apply_two_step_validation_logic(
             logger.debug(f"🔍 [2-STEP] Étape {etape_id}: Comparaison checking vs checkout...")
 
             # Construire un prompt simple pour comparer les deux images
-            comparison_prompt = f"""Tu es un expert en comparaison d'images.
+            comparison_prompt = f"""Tu es un expert en comparaison VISUELLE d'images.
 
-🎯 OBJECTIF : Déterminer si deux photos montrent le MÊME ÉTAT ou un état DIFFÉRENT.
+🎯 OBJECTIF : Déterminer si deux photos sont VISUELLEMENT IDENTIQUES ou SIMILAIRES.
 
 📸 CONTEXTE :
-- Photo 1 (AVANT) : État initial
-- Photo 2 (APRÈS) : État final
-- Tâche : {task_name}
+- Photo 1 : Image de référence
+- Photo 2 : Image à comparer
 
-🔍 QUESTION :
-Les deux photos montrent-elles le MÊME ÉTAT (équivalent) ou un état DIFFÉRENT (dégradé/amélioré) ?
+🔍 QUESTION UNIQUE :
+Les deux photos montrent-elles VISUELLEMENT le MÊME CONTENU ?
 
-⚠️ RÈGLES :
-- Ignore les différences d'angle, de luminosité, de cadrage
-- Concentre-toi sur l'ÉTAT RÉEL des éléments visibles
-- Petites variations normales = MÊME ÉTAT
-- Changement significatif = ÉTAT DIFFÉRENT
+⚠️ RÈGLES CRITIQUES :
+- Compare UNIQUEMENT ce qui est VISIBLE sur les photos
+- IGNORE la consigne ou la tâche demandée - tu ne compares QUE les images
+- IGNORE les différences d'angle, de luminosité, de cadrage, de qualité
+- IGNORE ce qui n'est PAS visible (intérieur des placards, objets hors cadre, etc.)
+- Deux photos montrant le même objet dans le même état = MÊME ÉTAT
+
+📸 EXEMPLES DE "MÊME ÉTAT" (same_state = true) :
+- Lave-vaisselle vide (photo 1) vs Lave-vaisselle vide (photo 2) → MÊME ÉTAT ✅
+- Four propre ouvert (photo 1) vs Four propre ouvert (photo 2) → MÊME ÉTAT ✅
+- Lit fait (photo 1) vs Lit fait (photo 2) → MÊME ÉTAT ✅
+- Évier vide (photo 1) vs Évier vide (photo 2) → MÊME ÉTAT ✅
+
+📸 EXEMPLES DE "ÉTAT DIFFÉRENT" (same_state = false) :
+- Lave-vaisselle plein (photo 1) vs Lave-vaisselle vide (photo 2) → DIFFÉRENT ❌
+- Lit défait (photo 1) vs Lit fait (photo 2) → DIFFÉRENT ❌
+- Sol sale (photo 1) vs Sol propre (photo 2) → DIFFÉRENT ❌
+
+🚫 NE PAS CONSIDÉRER COMME "DIFFÉRENT" :
+- "La vaisselle n'est pas visible dans les placards" → Hors sujet, compare ce qui est VISIBLE
+- "On ne peut pas voir les pastilles" → Hors sujet, compare ce qui est VISIBLE
+- Éléments non photographiés → Ignore-les
 
 📋 RÉPONDS EN JSON :
 {{
     "same_state": true/false,
     "confidence": 0-100,
-    "explanation": "Explication courte"
+    "explanation": "Description de ce que tu VOIS sur les deux photos"
 }}
 
-- same_state = true → Les deux photos montrent le même état (équivalent)
-- same_state = false → Les deux photos montrent un état différent"""
+- same_state = true → Les deux photos montrent visuellement le même contenu
+- same_state = false → Les deux photos montrent visuellement un contenu différent"""
 
             # 🚀 CONVERTIR les URLs en Data URI pour éviter les timeouts OpenAI
             checking_url_final = checking_picture_url
@@ -7508,230 +7532,6 @@ async def analyze_complete_logement_parallel(input_data: EtapesAnalysisInput, re
         raise
 
 
-async def analyze_complete_logement_ultra_parallel(input_data: EtapesAnalysisInput, request_id: str = None) -> CompleteAnalysisResponse:
-    """
-    🚀 VERSION ULTRA-PARALLÉLISÉE avec système de cache avancé
-
-    Utilise le ParallelProcessor pour une parallélisation maximale avec:
-    - Cache thread-safe pour les résultats intermédiaires
-    - Contrôle de concurrence optimisé (15+ workers simultanés)
-    - Gestion d'erreurs robuste sans blocage
-    - Compilation finale des résultats en cache
-
-    Gain attendu: 80-90% de réduction du temps vs version séquentielle
-    """
-    if not PARALLEL_EXECUTOR_AVAILABLE:
-        logger.warning("⚠️ Système ultra-parallèle non disponible, fallback sur version parallèle standard")
-        return await analyze_complete_logement_parallel(input_data, request_id)
-
-    try:
-        parcours_type = input_data.type if hasattr(input_data, 'type') else "Voyageur"
-
-        logger.debug(f"🚀🚀 [ULTRA-PARALLEL] ANALYSE COMPLÈTE pour logement {input_data.logement_id}")
-        logger.debug(f"   📊 {len(input_data.pieces)} pièces à analyser")
-        logger.debug(f"   ⚡ Mode: Ultra-parallélisation avec cache avancé")
-
-        if request_id:
-            logs_manager.add_log(
-                request_id=request_id,
-                level="INFO",
-                message=f"🚀 Analyse ultra-parallèle de {len(input_data.pieces)} pièces"
-            )
-
-        # Obtenir l'exécuteur parallèle global (max 15 workers pour haute quota)
-        executor = get_parallel_executor(max_workers=15)
-
-        # ═══════════════════════════════════════════════════════════════
-        # STAGE 1: Analyse ultra-parallèle de toutes les pièces
-        # ═══════════════════════════════════════════════════════════════
-        logger.debug(f"📊 [STAGE 1] Analyse ultra-parallèle de {len(input_data.pieces)} pièces")
-
-        pieces_analysis_results = await executor.analyze_pieces_parallel(
-            pieces=input_data.pieces,
-            analyze_func=analyze_single_piece_async,
-            parcours_type=parcours_type,
-            request_id=request_id
-        )
-
-        logger.debug(f"✅ [STAGE 1] {len(pieces_analysis_results)} pièces analysées")
-
-        # ═══════════════════════════════════════════════════════════════
-        # STAGE 2: Traitement et analyse ultra-parallèle des étapes
-        # ═══════════════════════════════════════════════════════════════
-        logger.debug(f"🎯 [STAGE 2] Traitement et analyse ultra-parallèle des étapes")
-
-        # Préparer toutes les données d'étapes
-        etape_to_piece_mapping = {}
-        all_etapes_data = []
-
-        for piece in input_data.pieces:
-            # Traiter les images des étapes (parallèle)
-            processed_etapes = await process_etapes_images_parallel([etape.model_dump() for etape in piece.etapes])
-
-            for i, etape_data in enumerate(processed_etapes):
-                etape = piece.etapes[i]
-
-                # Skip étapes sans checkout_picture
-                if not etape.checkout_picture or etape.checkout_picture.strip() == "":
-                    logger.debug(f"⏭️ Étape {etape.etape_id} skippée: pas de checkout_picture")
-                    continue
-
-                etape_to_piece_mapping[etape.etape_id] = piece.piece_id
-
-                all_etapes_data.append({
-                    'etape': etape,
-                    'etape_data': etape_data,
-                    'piece_id': piece.piece_id
-                })
-
-        # Analyser toutes les étapes en ultra-parallèle
-        if all_etapes_data:
-            all_etape_issues = await executor.analyze_etapes_parallel(
-                etapes_data=all_etapes_data,
-                analyze_func=analyze_single_etape_async,
-                parcours_type=parcours_type,
-                request_id=request_id
-            )
-        else:
-            all_etape_issues = []
-
-        logger.debug(f"✅ [STAGE 2] {len(all_etape_issues)} issues d'étapes détectées")
-
-        # ═══════════════════════════════════════════════════════════════
-        # STAGE 3: Compilation des résultats (identique à version standard)
-        # ═══════════════════════════════════════════════════════════════
-        logger.debug(f"🔄 [STAGE 3] Compilation des résultats")
-
-        # Grouper les issues d'étapes par piece_id
-        etapes_issues_by_piece = {}
-        for etape_issue in all_etape_issues:
-            piece_id = etape_to_piece_mapping.get(etape_issue.etape_id)
-            if piece_id:
-                if piece_id not in etapes_issues_by_piece:
-                    etapes_issues_by_piece[piece_id] = []
-
-                probleme = Probleme(
-                    description=f"[ÉTAPE] {etape_issue.description}",
-                    category=etape_issue.category,
-                    severity=etape_issue.severity,
-                    confidence=etape_issue.confidence,
-                    etape_id=etape_issue.etape_id
-                )
-                etapes_issues_by_piece[piece_id].append(probleme)
-
-        # Calcul des compteurs
-        total_issues_count = 0
-        general_issues_count = 0
-        etapes_issues_count = len(all_etape_issues)
-
-        # Reconstruire les objets avec issues fusionnées
-        updated_pieces_analysis = []
-
-        for piece_analysis in pieces_analysis_results:
-            piece_id = piece_analysis.piece_id
-
-            # Compter les issues générales
-            general_issues_for_piece = len(piece_analysis.issues) if piece_analysis.issues else 0
-            general_issues_count += general_issues_for_piece
-
-            # Récupérer les issues d'étapes
-            etapes_issues_for_piece = etapes_issues_by_piece.get(piece_id, [])
-
-            # Fusionner toutes les issues
-            all_issues_for_piece = list(piece_analysis.issues) + etapes_issues_for_piece
-
-            # 🆕 RECALCULER LE SCORE DE LA PIÈCE avec TOUTES les issues (générales + étapes)
-            recalculated_score = calculate_room_algorithmic_score(
-                issues=all_issues_for_piece,
-                parcours_type=parcours_type
-            )
-
-            # Créer une copie modifiée de l'analyse globale avec le nouveau score
-            updated_analyse_globale = AnalyseGlobale(
-                status=piece_analysis.analyse_globale.status,
-                score=recalculated_score["note_sur_5"],
-                temps_nettoyage_estime=piece_analysis.analyse_globale.temps_nettoyage_estime,
-                commentaire_global=piece_analysis.analyse_globale.commentaire_global
-            )
-
-            logger.debug(f"   🧮 [PARALLEL-ALT] Pièce {piece_id}: Score recalculé {piece_analysis.analyse_globale.score} → {recalculated_score['note_sur_5']}/5 ({len(all_issues_for_piece)} issues)")
-
-            # Créer objet mis à jour avec score recalculé
-            updated_piece_analysis = CombinedAnalysisResponse(
-                piece_id=piece_analysis.piece_id,
-                nom_piece=piece_analysis.nom_piece,
-                room_classification=piece_analysis.room_classification,
-                analyse_globale=updated_analyse_globale,
-                issues=all_issues_for_piece
-            )
-
-            updated_pieces_analysis.append(updated_piece_analysis)
-            total_issues_count += len(all_issues_for_piece)
-
-        pieces_analysis_results = updated_pieces_analysis
-
-        logger.debug(f"📊 [PARALLEL] Compteurs: {total_issues_count} total ({general_issues_count} générales + {etapes_issues_count} étapes)")
-
-        # 🔍 DEBUG: Logger les issues après reconstruction
-        logger.debug(f"🔍 DEBUG - Après reconstruction des objets (issues fusionnées):")
-        for piece_result in pieces_analysis_results:
-            logger.debug(f"   Pièce {piece_result.piece_id}: {len(piece_result.issues)} issues TOTALES (générales + étapes fusionnées)")
-
-        # ═══════════════════════════════════════════════════════════════
-        # ÉTAPE 4: Génération de la synthèse globale
-        # ═══════════════════════════════════════════════════════════════
-        logger.debug(f"🧠 [PARALLEL] ÉTAPE 4 - Génération de la synthèse globale")
-
-        analysis_enrichment = generate_logement_enrichment(
-            logement_id=input_data.logement_id,
-            pieces_analysis=pieces_analysis_results,
-            total_issues=total_issues_count,
-            general_issues=general_issues_count,
-            etapes_issues=etapes_issues_count,
-            parcours_type=parcours_type,
-            request_id=request_id
-        )
-
-        complete_result = CompleteAnalysisResponse(
-            logement_id=input_data.logement_id,
-            logement_name=input_data.logement_name,  # Nom du logement
-            rapport_id=input_data.rapport_id,
-            pieces_analysis=pieces_analysis_results,
-            total_issues_count=total_issues_count,
-            etapes_issues_count=etapes_issues_count,
-            general_issues_count=general_issues_count,
-            analysis_enrichment=analysis_enrichment
-        )
-
-        # Afficher les statistiques de performance
-        perf_stats = executor.get_performance_stats()
-        logger.debug(f"📊 [ULTRA-PARALLEL] Statistiques de performance:")
-        logger.debug(f"   Cache: {perf_stats['cache_stats']}")
-        logger.debug(f"   Workers: {perf_stats['config']['max_workers']}")
-
-        logger.debug(f"🎉 [ULTRA-PARALLEL] ANALYSE COMPLÈTE terminée pour logement {input_data.logement_id}")
-        logger.debug(f"📊 RÉSUMÉ: {total_issues_count} issues totales")
-        logger.info(f"🏆 NOTE: {analysis_enrichment.global_score.score}/5 - {analysis_enrichment.global_score.label}")
-
-        if request_id:
-            logs_manager.add_log(
-                request_id=request_id,
-                level="INFO",
-                message=f"✅ Analyse ultra-parallèle terminée: {total_issues_count} issues, cache={perf_stats['cache_stats']}"
-            )
-
-        return complete_result
-
-    except Exception as e:
-        logger.error(f"❌ [ULTRA-PARALLEL] Erreur: {str(e)}")
-        if request_id:
-            logs_manager.add_log(
-                request_id=request_id,
-                level="ERROR",
-                message=f"❌ Erreur ultra-parallèle: {str(e)}"
-            )
-        raise
-
 
 # ═══════════════════════════════════════════════════════════════
 # 📌 VERSION ORIGINALE (SÉQUENTIELLE) - CONSERVÉE POUR COMPATIBILITÉ
@@ -8162,23 +7962,14 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
             metadata={"pieces_count": len(input_data.pieces)}
         )
 
-        # Choisir la version de parallélisation selon disponibilité
-        if PARALLEL_EXECUTOR_AVAILABLE:
-            logs_manager.add_log(
-                request_id=request_id,
-                level="INFO",
-                message=f"🚀 Utilisation de la version ULTRA-PARALLÉLISÉE avec cache avancé"
-            )
-            logger.debug(f"🚀 Utilisation de la version ULTRA-PARALLÉLISÉE avec cache avancé")
-            result = await analyze_complete_logement_ultra_parallel(input_data, request_id=request_id)
-        else:
-            logs_manager.add_log(
-                request_id=request_id,
-                level="INFO",
-                message=f"⚡ Utilisation de la version PARALLÉLISÉE standard"
-            )
-            logger.debug(f"⚡ Utilisation de la version PARALLÉLISÉE standard")
-            result = await analyze_complete_logement_parallel(input_data, request_id=request_id)
+        # Utilisation de la version PARALLÉLISÉE standard
+        logs_manager.add_log(
+            request_id=request_id,
+            level="INFO",
+            message=f"⚡ Utilisation de la version PARALLÉLISÉE"
+        )
+        logger.debug(f"⚡ Utilisation de la version PARALLÉLISÉE")
+        result = await analyze_complete_logement_parallel(input_data, request_id=request_id)
 
         logs_manager.complete_step(
             request_id=request_id,
