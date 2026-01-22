@@ -77,7 +77,9 @@
           "tache incrustée vasque",
           "trace de savon sur paroi",
           "carreau fissuré/manquant",
-          "élément de décoration manquant"
+          "élément de décoration manquant",
+          "Serviette de bain absente",
+          "Tapis de bain absent"
         ]
       }
     },
@@ -287,7 +289,9 @@
           "zones sombres dues à l'angle de prise de vue"
         ],
         "defauts_frequents": [
-          "joint silicone noirci"
+          "joint silicone noirci",
+          "Serviette de bain absente",
+          "Tapis de bain absent"
         ]
       }
     },
@@ -321,7 +325,9 @@
           "calcaire épais robinet",
           "tache incrustée vasque",
           "Traces de savon ou dépôt blanchâtre sur parois / vitrage",
-          "Objets de toilette entassés de façon désordonnée"
+          "Objets de toilette entassés de façon désordonnée",
+          "Serviette de bain absente",
+          "Tapis de bain absent"
         ]
       }
     },
@@ -359,7 +365,9 @@
           "carreau fissuré/manquant",
           "abattant cassé",
           "tache au sol pied WC",
-          "Cuvette salle"
+          "Cuvette salle",
+          "Serviette de bain absente",
+          "Tapis de bain absent"
         ]
       }
     },

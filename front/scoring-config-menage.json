@@ -40,7 +40,7 @@
     },
     "confidence_threshold": {
       "description": "Seuil de confiance minimum pour qu'une issue soit prise en compte dans le calcul",
-      "value": 90
+      "value": 75
     },
     "min_grade": {
       "value": 1

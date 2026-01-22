@@ -323,7 +323,7 @@ class ObjectVerificationResult(BaseModel):
     object_id: str
     name: str
     location: str
-    status: str = Field(description="present, missing, moved, damaged")
+    status: str = Field(description="present, missing, moved, damaged, not_verifiable")
     confidence: int = Field(ge=0, le=100)
     details: str = Field(description="Détails de la vérification")
 
@@ -334,6 +334,7 @@ class InventoryVerificationResponse(BaseModel):
     missing_objects: List[ObjectVerificationResult]
     moved_objects: List[ObjectVerificationResult]
     present_objects: List[ObjectVerificationResult]
+    not_verifiable_objects: List[ObjectVerificationResult] = Field(default_factory=list, description="Objets non vérifiables car zone non visible sur photos de sortie")
 
 # ═══════════════════════════════════════════════════════════════
 
@@ -1935,6 +1936,16 @@ Tu es un expert en vérification d'inventaire. Ta mission est de vérifier la PR
 5. Si l'objet est visiblement endommagé → status = "damaged"
 6. Si l'objet est bien présent → status = "present"
 
+🆕 RÈGLE CRITIQUE - COUVERTURE PHOTO :
+7. AVANT de déclarer un objet "missing", vérifie si la ZONE où il se trouvait est visible sur les photos de sortie
+8. Si la zone de l'objet (ex: "à gauche du lit", "coin droit de la pièce") N'EST PAS VISIBLE sur les photos de sortie → status = "not_verifiable"
+9. Un objet est "not_verifiable" quand le CADRAGE ou l'ANGLE des photos de sortie ne couvre pas la zone où il était visible à l'entrée
+
+📸 EXEMPLES DE "not_verifiable" :
+- Armoire visible à gauche sur photo entrée, mais photo sortie cadrée sur la droite
+- Objet dans un coin non photographié en sortie
+- Photo de sortie prise d'un angle différent qui masque certaines zones
+
 🎯 SEUIL DE CONFIANCE :
 - 95-100% : Certitude absolue (objet clairement visible ou clairement absent)
 - 85-94% : Haute confiance (identification quasi certaine)
@@ -1952,14 +1963,27 @@ Tu es un expert en vérification d'inventaire. Ta mission est de vérifier la PR
             "location": "Dernière localisation connue",
             "status": "missing",
             "confidence": 95,
-            "details": "Non visible sur aucune des X photos de sortie"
+            "details": "Non visible sur aucune des X photos de sortie alors que la zone est bien visible"
+        }
+    ],
+    "not_verifiable_objects": [
+        {
+            "object_id": "obj_YYY",
+            "name": "Nom",
+            "location": "Localisation sur photo entrée",
+            "status": "not_verifiable",
+            "confidence": 90,
+            "details": "Zone non couverte par les photos de sortie - cadrage différent empêchant la vérification"
         }
     ],
     "moved_objects": [...],
     "present_objects": [...]
 }
 
-🚨 IMPORTANT : Sois TRÈS RIGOUREUX. Un objet est "missing" UNIQUEMENT s'il n'apparaît sur AUCUNE photo de sortie, même partiellement.
+🚨 IMPORTANT :
+- Un objet est "missing" UNIQUEMENT si la zone où il se trouvait EST VISIBLE sur les photos de sortie ET que l'objet n'y apparaît pas
+- Si la zone n'est pas visible → "not_verifiable" (PAS "missing")
+- Ne pas confondre "objet volé" et "photo mal cadrée"
 """
 
 
@@ -2299,13 +2323,14 @@ def aggregate_verification_responses(
             total_checked=0,
             missing_objects=[],
             moved_objects=[],
-            present_objects=[]
+            present_objects=[],
+            not_verifiable_objects=[]
         )
 
     logger.debug(f"🔀 [AGGREGATE] Agrégation de {len(responses)} réponses de vérification...")
 
     # Collecter les votes pour chaque objet de l'inventaire
-    object_status_votes = {}  # object_id -> {missing: count, moved: count, present: count, details: []}
+    object_status_votes = {}  # object_id -> {missing: count, moved: count, present: count, not_verifiable: count, details: []}
 
     for resp in responses:
         model_weight = resp.get("weight", 1.0)
@@ -2316,7 +2341,7 @@ def aggregate_verification_responses(
             if not obj_id:
                 continue
             if obj_id not in object_status_votes:
-                object_status_votes[obj_id] = {"missing": 0, "moved": 0, "present": 0, "details": [], "name": obj.get("name", ""), "location": obj.get("location", "")}
+                object_status_votes[obj_id] = {"missing": 0, "moved": 0, "present": 0, "not_verifiable": 0, "details": [], "name": obj.get("name", ""), "location": obj.get("location", "")}
             object_status_votes[obj_id]["missing"] += model_weight
             object_status_votes[obj_id]["details"].append(obj.get("details", ""))
 
@@ -2326,8 +2351,18 @@ def aggregate_verification_responses(
             if not obj_id:
                 continue
             if obj_id not in object_status_votes:
-                object_status_votes[obj_id] = {"missing": 0, "moved": 0, "present": 0, "details": [], "name": obj.get("name", ""), "location": obj.get("location", "")}
+                object_status_votes[obj_id] = {"missing": 0, "moved": 0, "present": 0, "not_verifiable": 0, "details": [], "name": obj.get("name", ""), "location": obj.get("location", "")}
             object_status_votes[obj_id]["moved"] += model_weight
+            object_status_votes[obj_id]["details"].append(obj.get("details", ""))
+
+        # 🆕 Traiter les objets non vérifiables (zone non visible sur photos de sortie)
+        for obj in resp.get("response", {}).get("not_verifiable_objects", []):
+            obj_id = obj.get("object_id", "")
+            if not obj_id:
+                continue
+            if obj_id not in object_status_votes:
+                object_status_votes[obj_id] = {"missing": 0, "moved": 0, "present": 0, "not_verifiable": 0, "details": [], "name": obj.get("name", ""), "location": obj.get("location", "")}
+            object_status_votes[obj_id]["not_verifiable"] += model_weight
             object_status_votes[obj_id]["details"].append(obj.get("details", ""))
 
         # Traiter les objets présents
@@ -2336,20 +2371,21 @@ def aggregate_verification_responses(
             if not obj_id:
                 continue
             if obj_id not in object_status_votes:
-                object_status_votes[obj_id] = {"missing": 0, "moved": 0, "present": 0, "details": [], "name": obj.get("name", ""), "location": obj.get("location", "")}
+                object_status_votes[obj_id] = {"missing": 0, "moved": 0, "present": 0, "not_verifiable": 0, "details": [], "name": obj.get("name", ""), "location": obj.get("location", "")}
             object_status_votes[obj_id]["present"] += model_weight
 
     # Déterminer le statut final par consensus
     missing_objects = []
     moved_objects = []
     present_objects = []
+    not_verifiable_objects = []
 
     for obj_id, votes in object_status_votes.items():
-        # Trouver le statut majoritaire
-        max_votes = max(votes["missing"], votes["moved"], votes["present"])
+        # Trouver le statut majoritaire (incluant not_verifiable)
+        max_votes = max(votes["missing"], votes["moved"], votes["present"], votes["not_verifiable"])
 
         # Confidence basée sur le consensus
-        total_votes = votes["missing"] + votes["moved"] + votes["present"]
+        total_votes = votes["missing"] + votes["moved"] + votes["present"] + votes["not_verifiable"]
         confidence = int((max_votes / total_votes) * 100) if total_votes > 0 else 50
 
         # Meilleur détail (le plus long)
@@ -2364,8 +2400,15 @@ def aggregate_verification_responses(
             details=best_detail
         )
 
-        # Seuil de consensus: au moins 3 votes pondérés
-        if votes["missing"] >= CONSENSUS_THRESHOLD and votes["missing"] == max_votes:
+        # Seuil de consensus: au moins 2 votes pondérés (CONSENSUS_THRESHOLD)
+        # 🆕 Priorité: not_verifiable > missing > moved > present
+        # Si la zone n'est pas vérifiable, c'est prioritaire sur "missing"
+        if votes["not_verifiable"] >= CONSENSUS_THRESHOLD and votes["not_verifiable"] == max_votes:
+            result.status = "not_verifiable"
+            if confidence >= 70:
+                not_verifiable_objects.append(result)
+                logger.debug(f"   📸 NON VÉRIFIABLE: {votes['name']} (votes: {votes['not_verifiable']:.1f}, conf: {confidence}%) - zone non couverte")
+        elif votes["missing"] >= CONSENSUS_THRESHOLD and votes["missing"] == max_votes:
             result.status = "missing"
             if confidence >= 70:  # Seuil de confiance minimum
                 missing_objects.append(result)
@@ -2379,14 +2422,15 @@ def aggregate_verification_responses(
             result.status = "present"
             present_objects.append(result)
 
-    logger.debug(f"✅ [AGGREGATE] Résultat: {len(missing_objects)} manquants, {len(moved_objects)} déplacés, {len(present_objects)} présents")
+    logger.debug(f"✅ [AGGREGATE] Résultat: {len(missing_objects)} manquants, {len(moved_objects)} déplacés, {len(not_verifiable_objects)} non vérifiables, {len(present_objects)} présents")
 
     return InventoryVerificationResponse(
         piece_id=piece_id,
         total_checked=len(object_status_votes),
         missing_objects=missing_objects,
         moved_objects=moved_objects,
-        present_objects=present_objects
+        present_objects=present_objects,
+        not_verifiable_objects=not_verifiable_objects
     )
 
 
@@ -2554,7 +2598,8 @@ def verify_inventory_on_checkout(
             total_checked=0,
             missing_objects=[],
             moved_objects=[],
-            present_objects=[]
+            present_objects=[],
+            not_verifiable_objects=[]
         )
 
     # 🔄 CONVERSION DES IMAGES - Utiliser le système de conversion existant
@@ -2569,7 +2614,8 @@ def verify_inventory_on_checkout(
             total_checked=0,
             missing_objects=[],
             moved_objects=[],
-            present_objects=[]
+            present_objects=[],
+            not_verifiable_objects=[]
         )
 
     # Construire la liste d'inventaire formatée
@@ -2644,7 +2690,8 @@ def _verify_inventory_fallback_openai(
             total_checked=0,
             missing_objects=[],
             moved_objects=[],
-            present_objects=[]
+            present_objects=[],
+            not_verifiable_objects=[]
         )
 
     try:
@@ -2670,6 +2717,7 @@ def _verify_inventory_fallback_openai(
         missing = []
         moved = []
         present = []
+        not_verifiable = []
 
         for obj in response_json.get("missing_objects", []):
             if obj.get("confidence", 0) >= 85:
@@ -2693,6 +2741,18 @@ def _verify_inventory_fallback_openai(
                     details=obj.get("details", "")
                 ))
 
+        # 🆕 Parser les objets non vérifiables (zone non visible sur photos de sortie)
+        for obj in response_json.get("not_verifiable_objects", []):
+            if obj.get("confidence", 0) >= 85:
+                not_verifiable.append(ObjectVerificationResult(
+                    object_id=obj.get("object_id", ""),
+                    name=obj.get("name", ""),
+                    location=obj.get("location", ""),
+                    status="not_verifiable",
+                    confidence=obj.get("confidence", 90),
+                    details=obj.get("details", "Zone non couverte par les photos de sortie")
+                ))
+
         for obj in response_json.get("present_objects", []):
             present.append(ObjectVerificationResult(
                 object_id=obj.get("object_id", ""),
@@ -2703,14 +2763,15 @@ def _verify_inventory_fallback_openai(
                 details=obj.get("details", "Présent")
             ))
 
-        logger.debug(f"✅ PHASE 2 terminée (FALLBACK OpenAI): {len(missing)} manquants, {len(moved)} déplacés")
+        logger.debug(f"✅ PHASE 2 terminée (FALLBACK OpenAI): {len(missing)} manquants, {len(moved)} déplacés, {len(not_verifiable)} non vérifiables")
 
         return InventoryVerificationResponse(
             piece_id=piece_id,
             total_checked=inventory.total_objects,
             missing_objects=missing,
             moved_objects=moved,
-            present_objects=present
+            present_objects=present,
+            not_verifiable_objects=not_verifiable
         )
 
     except Exception as e:
@@ -2720,7 +2781,8 @@ def _verify_inventory_fallback_openai(
             total_checked=0,
             missing_objects=[],
             moved_objects=[],
-            present_objects=[]
+            present_objects=[],
+            not_verifiable_objects=[]
         )
 
 
@@ -2751,7 +2813,16 @@ def convert_inventory_to_issues(verification: InventoryVerificationResponse) -> 
             confidence=obj.confidence
         ))
 
-    logger.debug(f"🔄 Conversion: {len(issues)} issues générées depuis l'inventaire")
+    # 🆕 Objets non vérifiables → image_quality (problème de cadrage photo)
+    for obj in verification.not_verifiable_objects:
+        issues.append(Probleme(
+            description=f"Zone non contrôlable: {obj.name} ({obj.location}) visible sur photo d'entrée mais zone non couverte par les photos de sortie. {obj.details}",
+            category="image_quality",
+            severity="medium",
+            confidence=obj.confidence
+        ))
+
+    logger.debug(f"🔄 Conversion: {len(issues)} issues générées depuis l'inventaire (dont {len(verification.not_verifiable_objects)} zones non contrôlables)")
     return issues
 
 
@@ -5947,10 +6018,10 @@ def generate_logement_enrichment(logement_id: str, pieces_analysis: List[Combine
                 logger.warning(f"⚠️ piece.issues est None pour {piece.piece_id}")
                 piece.issues = []
             
-            # Filtrer les issues avec confiance >= 90%
+            # Filtrer les issues avec confiance >= 75%
             issues_filtrees = 0
             for issue in piece.issues:
-                if hasattr(issue, 'confidence') and issue.confidence >= 90:
+                if hasattr(issue, 'confidence') and issue.confidence >= 75:
                     piece_issues.append({
                         "description": issue.description,
                         "category": issue.category,
@@ -9539,7 +9610,7 @@ async def reset_scoring_config_endpoint(type: str = "Voyageur"):
                 },
                 "confidence_threshold": {
                     "description": "Seuil de confiance minimum pour qu'une issue soit prise en compte",
-                    "value": 90
+                    "value": 75
                 },
                 "min_grade": {
                     "description": "Note minimale possible",
@@ -9642,7 +9713,7 @@ def load_scoring_config(parcours_type: str = "Voyageur") -> dict:
                         "salon": 1.2, "salon_cuisine": 1.8, "chambre": 1.0, "bureau": 1.0, "entree": 0.8,
                         "exterieur": 0.6, "cle": 0.8, "autre": 0.8
                     },
-                    "confidence_threshold": {"value": 90},
+                    "confidence_threshold": {"value": 75},
                     "min_grade": {"value": 1.0},
                     "max_grade": {"value": 5.0}
                 },
@@ -9688,7 +9759,7 @@ def load_scoring_config(parcours_type: str = "Voyageur") -> dict:
                     "salon": 1.2, "salon_cuisine": 1.8, "chambre": 1.0, "bureau": 1.0, "entree": 0.8,
                     "exterieur": 0.6, "cle": 0.8, "autre": 0.8
                 },
-                "confidence_threshold": {"value": 90},
+                "confidence_threshold": {"value": 75},
                 "min_grade": {"value": 1.0},
                 "max_grade": {"value": 5.0}
             },
