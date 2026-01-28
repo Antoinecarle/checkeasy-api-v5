@@ -853,22 +853,43 @@ def detect_environment() -> str:
 
 def get_webhook_url(environment: str) -> str:
     """
-    Retourne l'URL du webhook selon l'environnement
+    Retourne l'URL du webhook selon l'environnement et la cible (Bubble ou Supabase)
+
+    Variable d'environnement WEBHOOK_TARGET:
+    - "bubble" (défaut) : Envoie vers Bubble
+    - "supabase" : Envoie vers Supabase
 
     Args:
         environment: "staging" ou "production"
 
     Returns:
-        str: URL du webhook Bubble
+        str: URL du webhook (Bubble ou Supabase selon WEBHOOK_TARGET)
     """
-    if environment == "production":
-        return "https://checkeasy-57905.bubbleapps.io/version-live/api/1.1/wf/webhookia"
-    else:  # staging par défaut
-        return "https://checkeasy-57905.bubbleapps.io/version-test/api/1.1/wf/webhookia"
+    target = os.environ.get("WEBHOOK_TARGET", "bubble").lower()
+
+    if target == "supabase":
+        # 🆕 Supabase webhooks
+        logger.info(f"🔗 WEBHOOK_TARGET=supabase - Envoi vers Supabase ({environment})")
+        if environment == "production":
+            return os.environ.get("SUPABASE_WEBHOOK_URL_PROD", "https://votre-projet.supabase.co/functions/v1/webhook-analyse")
+        else:
+            return os.environ.get("SUPABASE_WEBHOOK_URL_STAGING", "https://votre-projet.supabase.co/functions/v1/webhook-analyse-test")
+    else:
+        # Bubble webhooks (défaut)
+        logger.debug(f"🔗 WEBHOOK_TARGET=bubble - Envoi vers Bubble ({environment})")
+        if environment == "production":
+            return "https://checkeasy-57905.bubbleapps.io/version-live/api/1.1/wf/webhookia"
+        else:  # staging par défaut
+            return "https://checkeasy-57905.bubbleapps.io/version-test/api/1.1/wf/webhookia"
+
 
 def get_webhook_url_individual_report(environment: str) -> str:
     """
-    Retourne l'URL du webhook individual-report selon l'environnement
+    Retourne l'URL du webhook individual-report selon l'environnement et la cible
+
+    Variable d'environnement WEBHOOK_TARGET:
+    - "bubble" (défaut) : Envoie vers Bubble
+    - "supabase" : Envoie vers Supabase
 
     Ce webhook reçoit le payload au format individual-report-data-model.json
     pour la page de rapport détaillé.
@@ -877,12 +898,24 @@ def get_webhook_url_individual_report(environment: str) -> str:
         environment: "staging" ou "production"
 
     Returns:
-        str: URL du webhook Bubble pour le rapport individuel
+        str: URL du webhook (Bubble ou Supabase selon WEBHOOK_TARGET)
     """
-    if environment == "production":
-        return "https://checkeasy-57905.bubbleapps.io/version-live/api/1.1/wf/individual-report-webhook"
-    else:  # staging par défaut
-        return "https://checkeasy-57905.bubbleapps.io/version-test/api/1.1/wf/individual-report-webhook"
+    target = os.environ.get("WEBHOOK_TARGET", "bubble").lower()
+
+    if target == "supabase":
+        # 🆕 Supabase webhooks
+        logger.info(f"🔗 WEBHOOK_TARGET=supabase (individual-report) - Envoi vers Supabase ({environment})")
+        if environment == "production":
+            return os.environ.get("SUPABASE_INDIVIDUAL_WEBHOOK_URL_PROD", "https://votre-projet.supabase.co/functions/v1/individual-report-webhook")
+        else:
+            return os.environ.get("SUPABASE_INDIVIDUAL_WEBHOOK_URL_STAGING", "https://votre-projet.supabase.co/functions/v1/individual-report-webhook-test")
+    else:
+        # Bubble webhooks (défaut)
+        logger.debug(f"🔗 WEBHOOK_TARGET=bubble (individual-report) - Envoi vers Bubble ({environment})")
+        if environment == "production":
+            return "https://checkeasy-57905.bubbleapps.io/version-live/api/1.1/wf/individual-report-webhook"
+        else:  # staging par défaut
+            return "https://checkeasy-57905.bubbleapps.io/version-test/api/1.1/wf/individual-report-webhook"
 
 def get_bubble_debug_endpoint(environment: str) -> str:
     """
