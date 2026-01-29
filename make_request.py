@@ -1110,47 +1110,50 @@ def get_bubble_debug_endpoint(environment: str) -> str:
 async def send_webhook(payload: dict, webhook_url: str) -> bool:
     """
     Envoie le webhook de manière asynchrone
-    
+
     Args:
         payload: Données à envoyer
         webhook_url: URL du webhook Bubble
-        
+
     Returns:
         bool: True si succès, False sinon
     """
     try:
-        logger.debug(f"📤 Envoi webhook vers: {webhook_url}")
-        
+        logger.info(f"📤 WEBHOOK: Envoi vers {webhook_url}")
+        logger.info(f"   📦 Payload size: {len(str(payload))} caractères")
+
         # Configuration du timeout et des headers
         timeout = aiohttp.ClientTimeout(total=30)  # 30 secondes max
         headers = {
             'Content-Type': 'application/json',
             'User-Agent': 'CheckEasy-API-V5'
         }
-        
+
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(
                 webhook_url,
                 json=payload,
                 headers=headers
             ) as response:
+                response_text = await response.text()
+
                 if response.status == 200:
-                    response_text = await response.text()
-                    logger.debug(f"✅ Webhook envoyé avec succès (200): {response_text[:200]}...")
+                    logger.info(f"   ✅ SUCCÈS (HTTP 200)")
+                    logger.info(f"   📥 Réponse: {response_text[:300]}...")
                     return True
                 else:
-                    error_text = await response.text()
-                    logger.warning(f"⚠️ Webhook réponse non-200 ({response.status}): {error_text[:200]}...")
+                    logger.error(f"   ❌ ÉCHEC (HTTP {response.status})")
+                    logger.error(f"   📥 Réponse: {response_text[:500]}")
                     return False
-                    
+
     except asyncio.TimeoutError:
-        logger.error("❌ Timeout lors de l'envoi du webhook")
+        logger.error(f"   ❌ TIMEOUT après 30s vers {webhook_url}")
         return False
     except aiohttp.ClientError as e:
-        logger.error(f"❌ Erreur client lors de l'envoi du webhook: {e}")
+        logger.error(f"   ❌ ERREUR CLIENT: {e}")
         return False
     except Exception as e:
-        logger.error(f"❌ Erreur inattendue lors de l'envoi du webhook: {e}")
+        logger.error(f"   ❌ ERREUR INATTENDUE: {e}")
         return False
 
 def build_dynamic_prompt(input_data: InputData, parcours_type: str = "Voyageur") -> str:
@@ -8265,16 +8268,31 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
         try:
             # Détecter l'environnement
             environment = detect_environment()
+
+            # 🔍 LOG DÉTAILLÉ: Configuration webhook
+            webhook_target = os.environ.get("WEBHOOK_TARGET", "bubble").lower()
+            logger.warning(f"{'='*60}")
+            logger.warning(f"🔗 CONFIGURATION WEBHOOKS")
+            logger.warning(f"{'='*60}")
+            logger.warning(f"   📌 WEBHOOK_TARGET = '{webhook_target}'")
+            logger.warning(f"   📌 Environment = '{environment}'")
+
             webhook_url_current = get_webhook_url(environment)
             webhook_url_individual = get_webhook_url_individual_report(environment)
+
+            logger.warning(f"   📤 URL Webhook 1 (actuel): {webhook_url_current}")
+            logger.warning(f"   📤 URL Webhook 2 (individual): {webhook_url_individual}")
+            logger.warning(f"{'='*60}")
 
             # Préparer le payload pour le webhook actuel (format CompleteAnalysisResponse)
             webhook_payload_current = result.model_dump()
 
+            # Log des payloads (résumé)
+            logger.info(f"📦 Payload webhook actuel: logement_id={result.logement_id}, pieces={len(result.pieces_analysis)}, issues={result.total_issues_count}")
+            logger.info(f"📦 Payload individual-report: rapport_id={webhook_payload_individual.get('rapport_id', 'N/A')}")
+
             # Envoyer les deux webhooks EN PARALLÈLE pour optimiser les performances
-            logger.debug(f"🔗 Envoi de 2 webhooks pour logement {input_data.logement_id} vers {environment}")
-            logger.debug(f"   📤 Webhook 1 (actuel): {webhook_url_current}")
-            logger.debug(f"   📤 Webhook 2 (individual-report): {webhook_url_individual}")
+            logger.warning(f"🚀 ENVOI DES WEBHOOKS pour logement {input_data.logement_id}...")
 
             # Utiliser asyncio.gather pour envoyer les deux webhooks simultanément
             webhook_results = await asyncio.gather(
@@ -8287,24 +8305,30 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
             webhook_current_success = webhook_results[0] if not isinstance(webhook_results[0], Exception) else False
             webhook_individual_success = webhook_results[1] if not isinstance(webhook_results[1], Exception) else False
 
-            # Logger les résultats
+            # 📊 RÉSULTATS DES WEBHOOKS (niveau WARNING pour visibilité)
+            logger.warning(f"{'='*60}")
+            logger.warning(f"📊 RÉSULTATS WEBHOOKS")
+            logger.warning(f"{'='*60}")
+
             if webhook_current_success:
-                logger.debug(f"✅ Webhook actuel envoyé avec succès pour logement {input_data.logement_id}")
+                logger.warning(f"   ✅ Webhook 1 (actuel): SUCCÈS → {webhook_url_current}")
             else:
-                logger.warning(f"⚠️ Échec webhook actuel pour logement {input_data.logement_id}")
+                logger.error(f"   ❌ Webhook 1 (actuel): ÉCHEC → {webhook_url_current}")
                 if isinstance(webhook_results[0], Exception):
-                    logger.error(f"   Erreur: {webhook_results[0]}")
+                    logger.error(f"      Erreur: {webhook_results[0]}")
 
             if webhook_individual_success:
-                logger.debug(f"✅ Webhook individual-report envoyé avec succès pour logement {input_data.logement_id}")
+                logger.warning(f"   ✅ Webhook 2 (individual): SUCCÈS → {webhook_url_individual}")
             else:
-                logger.warning(f"⚠️ Échec webhook individual-report pour logement {input_data.logement_id}")
+                logger.error(f"   ❌ Webhook 2 (individual): ÉCHEC → {webhook_url_individual}")
                 if isinstance(webhook_results[1], Exception):
-                    logger.error(f"   Erreur: {webhook_results[1]}")
+                    logger.error(f"      Erreur: {webhook_results[1]}")
 
             # Résumé
             success_count = sum([webhook_current_success, webhook_individual_success])
-            logger.debug(f"📊 Résumé webhooks: {success_count}/2 envoyés avec succès")
+            logger.warning(f"{'='*60}")
+            logger.warning(f"📊 BILAN: {success_count}/2 webhooks envoyés avec succès")
+            logger.warning(f"{'='*60}")
 
             logs_manager.add_log(
                 request_id=request_id,
