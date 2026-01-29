@@ -258,8 +258,8 @@ class InputData(BaseModel):
     defauts_frequents: List[str] = []
 
 class AnalyseGlobale(BaseModel):
-    status: Literal["ok", "attention", "probleme"]
-    score: float = Field(ge=1, le=5, description="Note algorithmique de 1 à 5 (calculée automatiquement)")
+    status: Literal["ok", "attention", "probleme", "non_evaluable"]
+    score: float = Field(ge=0, le=5, description="Note algorithmique de 0 à 5 (0 = non évaluable, 1-5 = note normale)")
     temps_nettoyage_estime: str
     commentaire_global: str = Field(description="Résumé humain de l'état général de la pièce, incluant propreté et agencement")
 
