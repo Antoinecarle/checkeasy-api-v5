@@ -277,6 +277,144 @@ def truncate_url_for_log(url: str, max_length: int = 100) -> str:
         return url[:max_length] + "..."
     return url
 
+# ========== LOGGING DÉTAILLÉ DES REQUÊTES/RÉPONSES ==========
+
+def log_request_received(endpoint: str, data: dict, request_id: str = None):
+    """Log détaillé des données reçues par un endpoint"""
+    logger.info(f"{'='*60}")
+    logger.info(f"📥 REQUÊTE REÇUE - {endpoint}")
+    logger.info(f"{'='*60}")
+
+    if request_id:
+        logger.info(f"   🆔 Request ID: {request_id}")
+
+    # Log des champs principaux
+    if 'logement_id' in data:
+        logger.info(f"   🏠 Logement ID: {data['logement_id']}")
+    if 'piece_id' in data:
+        logger.info(f"   🚪 Pièce ID: {data['piece_id']}")
+    if 'nom' in data:
+        logger.info(f"   📛 Nom: {data['nom']}")
+    if 'type' in data:
+        logger.info(f"   📋 Type parcours: {data['type']}")
+
+    # Log des images
+    if 'checkin_pictures' in data:
+        pics = data['checkin_pictures']
+        logger.info(f"   📸 Checkin pictures: {len(pics)} images")
+        for i, pic in enumerate(pics[:3]):  # Max 3 pour éviter spam
+            url = pic.get('url', pic) if isinstance(pic, dict) else str(pic)
+            logger.info(f"      [{i+1}] {truncate_url_for_log(url, 80)}")
+        if len(pics) > 3:
+            logger.info(f"      ... et {len(pics) - 3} autres images")
+
+    if 'checkout_pictures' in data:
+        pics = data['checkout_pictures']
+        logger.info(f"   📸 Checkout pictures: {len(pics)} images")
+        for i, pic in enumerate(pics[:3]):
+            url = pic.get('url', pic) if isinstance(pic, dict) else str(pic)
+            logger.info(f"      [{i+1}] {truncate_url_for_log(url, 80)}")
+        if len(pics) > 3:
+            logger.info(f"      ... et {len(pics) - 3} autres images")
+
+    # Log des pièces (pour analyze-complete)
+    if 'pieces' in data:
+        pieces = data['pieces']
+        logger.info(f"   🏠 Pièces: {len(pieces)} pièces")
+        for p in pieces[:5]:
+            piece_id = p.get('piece_id', 'N/A')
+            nom = p.get('nom', 'N/A')
+            checkin = len(p.get('checkin_pictures', []))
+            checkout = len(p.get('checkout_pictures', []))
+            etapes = len(p.get('etapes', []))
+            logger.info(f"      • {nom} ({piece_id}): {checkin} checkin, {checkout} checkout, {etapes} étapes")
+        if len(pieces) > 5:
+            logger.info(f"      ... et {len(pieces) - 5} autres pièces")
+
+    # Log des étapes
+    if 'etapes' in data and isinstance(data['etapes'], list):
+        etapes = data['etapes']
+        if etapes and isinstance(etapes[0], dict):
+            logger.info(f"   📝 Étapes: {len(etapes)} étapes")
+            for e in etapes[:3]:
+                etape_id = e.get('etape_id', 'N/A')
+                consigne = e.get('consigne', 'N/A')[:50]
+                logger.info(f"      • {etape_id}: {consigne}...")
+            if len(etapes) > 3:
+                logger.info(f"      ... et {len(etapes) - 3} autres étapes")
+
+    logger.info(f"{'='*60}")
+
+def log_openai_request_details(model: str, messages: list, endpoint: str = "OpenAI"):
+    """Log détaillé de ce qui est envoyé à OpenAI"""
+    logger.info(f"📤 ENVOI À {endpoint}")
+    logger.info(f"   🤖 Modèle: {model}")
+    logger.info(f"   📨 Messages: {len(messages)}")
+
+    for i, msg in enumerate(messages):
+        role = msg.get('role', 'unknown')
+        content = msg.get('content', '')
+
+        if isinstance(content, str):
+            logger.info(f"   [{i+1}] {role}: {len(content)} caractères")
+        elif isinstance(content, list):
+            text_count = sum(1 for c in content if c.get('type') == 'text')
+            image_count = sum(1 for c in content if c.get('type') == 'image_url')
+            logger.info(f"   [{i+1}] {role}: {text_count} textes, {image_count} images")
+
+def log_openai_response_details(response_content: str, tokens_used: int = None):
+    """Log détaillé de la réponse OpenAI"""
+    logger.info(f"📥 RÉPONSE OPENAI REÇUE")
+    logger.info(f"   📄 Taille: {len(response_content)} caractères")
+    if tokens_used:
+        logger.info(f"   🎫 Tokens utilisés: {tokens_used}")
+
+    # Aperçu du contenu (premiers 200 chars)
+    preview = response_content[:200].replace('\n', ' ')
+    logger.info(f"   👀 Aperçu: {preview}...")
+
+def log_response_sent(endpoint: str, response_data: dict, success: bool = True):
+    """Log détaillé de la réponse envoyée au client"""
+    status = "✅ SUCCÈS" if success else "❌ ERREUR"
+    logger.info(f"{'='*60}")
+    logger.info(f"📤 RÉPONSE ENVOYÉE - {endpoint} - {status}")
+    logger.info(f"{'='*60}")
+
+    if 'piece_id' in response_data:
+        logger.info(f"   🚪 Pièce: {response_data.get('piece_id')}")
+    if 'nom_piece' in response_data:
+        logger.info(f"   📛 Nom: {response_data.get('nom_piece')}")
+    if 'room_type' in response_data:
+        logger.info(f"   🏷️ Type détecté: {response_data.get('room_type')}")
+    if 'confidence' in response_data:
+        logger.info(f"   📊 Confiance: {response_data.get('confidence')}%")
+
+    # Analyse globale
+    if 'analyse_globale' in response_data:
+        ag = response_data['analyse_globale']
+        logger.info(f"   📊 Analyse globale:")
+        logger.info(f"      • Status: {ag.get('status')}")
+        logger.info(f"      • Score: {ag.get('score')}")
+        logger.info(f"      • Temps nettoyage: {ag.get('temps_nettoyage_estime')}")
+
+    # Issues
+    if 'preliminary_issues' in response_data:
+        issues = response_data['preliminary_issues']
+        logger.info(f"   ⚠️ Issues détectées: {len(issues)}")
+        for issue in issues[:3]:
+            desc = issue.get('description', 'N/A')[:60]
+            severity = issue.get('severity', 'N/A')
+            logger.info(f"      • [{severity}] {desc}...")
+        if len(issues) > 3:
+            logger.info(f"      ... et {len(issues) - 3} autres issues")
+
+    # Résumé pièces (pour analyze-complete)
+    if 'pieces_results' in response_data:
+        pieces = response_data['pieces_results']
+        logger.info(f"   🏠 Résultats pièces: {len(pieces)}")
+
+    logger.info(f"{'='*60}")
+
 # Modèles Pydantic pour la structure de réponse et requête
 class Picture(BaseModel):
     piece_id: str
@@ -2985,6 +3123,20 @@ async def analyze_room(input_data: InputData):
     """
     # 🔍 TRACKING DES LOGS EN TEMPS RÉEL
     request_id = str(uuid.uuid4())
+
+    # 📥 LOG DÉTAILLÉ DE LA REQUÊTE REÇUE
+    log_request_received("/analyze", {
+        "piece_id": input_data.piece_id,
+        "nom": input_data.nom,
+        "type": input_data.type,
+        "checkin_pictures": [{"url": p.url} for p in input_data.checkin_pictures],
+        "checkout_pictures": [{"url": p.url} for p in input_data.checkout_pictures],
+        "elements_critiques": input_data.elements_critiques,
+        "points_ignorables": input_data.points_ignorables,
+        "defauts_frequents": input_data.defauts_frequents,
+        "commentaire_ia": input_data.commentaire_ia
+    }, request_id)
+
     logs_manager.start_request(
         request_id=request_id,
         endpoint="/analyze",
@@ -3881,6 +4033,15 @@ async def classify_room(input_data: RoomClassificationInput):
     """
     # 🔍 TRACKING DES LOGS EN TEMPS RÉEL
     request_id = str(uuid.uuid4())
+
+    # 📥 LOG DÉTAILLÉ DE LA REQUÊTE REÇUE
+    log_request_received("/classify-room", {
+        "piece_id": input_data.piece_id,
+        "nom": input_data.nom,
+        "type": input_data.type,
+        "checkin_pictures": [{"url": p.url} for p in input_data.checkin_pictures]
+    }, request_id)
+
     logs_manager.start_request(
         request_id=request_id,
         endpoint="/classify-room",
@@ -3894,6 +4055,14 @@ async def classify_room(input_data: RoomClassificationInput):
         parcours_type = input_data.type if hasattr(input_data, 'type') else "Voyageur"
         result = classify_room_type(input_data, parcours_type, request_id=request_id)
         logger.info(f"Classification terminée pour la pièce {input_data.piece_id}: {result.room_type} (confiance: {result.confidence}%)")
+
+        # 📤 LOG DÉTAILLÉ DE LA RÉPONSE
+        log_response_sent("/classify-room", {
+            "piece_id": result.piece_id,
+            "room_type": result.room_type,
+            "confidence": result.confidence,
+            "is_valid_room": result.is_valid_room
+        }, success=True)
 
         logs_manager.complete_request(
             request_id=request_id,
@@ -8001,6 +8170,26 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
     """
     # 🔍 TRACKING DES LOGS EN TEMPS RÉEL
     request_id = str(uuid.uuid4())
+
+    # 📥 LOG DÉTAILLÉ DE LA REQUÊTE REÇUE
+    log_request_received("/analyze-complete", {
+        "logement_id": input_data.logement_id,
+        "logement_name": input_data.logement_name,
+        "logement_adresse": input_data.logement_adresse,
+        "rapport_id": input_data.rapport_id,
+        "type": input_data.type,
+        "pieces": [
+            {
+                "piece_id": p.piece_id,
+                "nom": p.nom,
+                "checkin_pictures": [{"url": pic.url} for pic in p.checkin_pictures],
+                "checkout_pictures": [{"url": pic.url} for pic in p.checkout_pictures],
+                "etapes": [{"etape_id": e.etape_id, "consigne": e.consigne} for e in p.etapes] if p.etapes else []
+            }
+            for p in input_data.pieces
+        ]
+    }, request_id)
+
     logs_manager.start_request(
         request_id=request_id,
         endpoint="/analyze-complete",
@@ -8166,6 +8355,27 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
             request_id=request_id,
             status="success"
         )
+
+        # 📤 LOG DÉTAILLÉ DE LA RÉPONSE ENVOYÉE
+        log_response_sent("/analyze-complete", {
+            "logement_id": result.logement_id,
+            "pieces_results": [
+                {
+                    "piece_id": p.piece_id,
+                    "nom_piece": p.nom_piece,
+                    "room_type": p.room_classification.room_type if p.room_classification else "N/A",
+                    "issues_count": len(p.issues)
+                }
+                for p in result.pieces_analysis
+            ],
+            "total_issues_count": result.total_issues_count,
+            "general_issues_count": result.general_issues_count,
+            "etapes_issues_count": result.etapes_issues_count,
+            "analyse_globale": {
+                "score": result.analysis_enrichment.global_score.score if result.analysis_enrichment else None,
+                "label": result.analysis_enrichment.global_score.label if result.analysis_enrichment else None
+            }
+        }, success=True)
 
         # 🔥 IMPORTANT: Retourner le rapport transformé, pas le CompleteAnalysisResponse
         return webhook_payload_individual
