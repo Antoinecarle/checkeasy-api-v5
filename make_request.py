@@ -240,6 +240,20 @@ def log_image_processing(checkin_count: int, checkout_count: int, piece_id: str 
     extra = {'piece_id': piece_id} if piece_id else {}
     logger.info(f"Image processing - Checkin: {checkin_count}, Checkout: {checkout_count}", extra=extra)
 
+def truncate_url_for_log(url: str, max_length: int = 100) -> str:
+    """Tronque une URL pour les logs (évite les base64 énormes)"""
+    if not url:
+        return url
+    if url.startswith('data:'):
+        # Pour les data URIs, afficher seulement le type MIME
+        mime_end = url.find(';')
+        if mime_end > 0:
+            return f"{url[:mime_end]}...[base64 truncated]"
+        return "data:...[base64 truncated]"
+    if len(url) > max_length:
+        return url[:max_length] + "..."
+    return url
+
 # Modèles Pydantic pour la structure de réponse et requête
 class Picture(BaseModel):
     piece_id: str
@@ -3360,8 +3374,8 @@ RÉPONDS EN JSON:
         for photo in all_pictures_processed:
             # 🔧 NORMALISER L'URL JUSTE AVANT ENVOI À OPENAI
             normalized_photo_url = normalize_url(photo['url'])
-            logger.debug(f"🔍 URL avant normalisation: '{photo['url']}'")
-            logger.debug(f"�� URL après normalisation: '{normalized_photo_url}'")
+            logger.debug(f"🔍 URL avant normalisation: '{truncate_url_for_log(photo['url'])}'")
+            logger.debug(f"🔍 URL après normalisation: '{truncate_url_for_log(normalized_photo_url)}'")
 
             if is_valid_image_url(normalized_photo_url) and not normalized_photo_url.startswith('data:image/gif;base64,R0lGOD'):
                 valid_images.append(photo)
@@ -3372,9 +3386,9 @@ RÉPONDS EN JSON:
                         "detail": "high"
                     }
                 })
-                logger.debug(f"✅ CLASSIFICATION - Image ajoutée au payload OpenAI: {normalized_photo_url}")
+                logger.debug(f"✅ CLASSIFICATION - Image ajoutée au payload OpenAI: {truncate_url_for_log(normalized_photo_url)}")
             else:
-                logger.warning(f"⚠️ CLASSIFICATION - Image invalide ignorée: {normalized_photo_url}")
+                logger.warning(f"⚠️ CLASSIFICATION - Image invalide ignorée: {truncate_url_for_log(normalized_photo_url)}")
         
         logger.debug(f"📷 Images valides envoyées à OpenAI: {len(valid_images)}/{len(all_pictures_processed)}")
         
@@ -4344,14 +4358,14 @@ Compare les photos avant/après et réponds en JSON:
                 # 🔧 NORMALISER LES URLs JUSTE AVANT ENVOI À OPENAI
                 if checking_url is not None and isinstance(checking_url, str):
                     checking_url_normalized = normalize_url(checking_url)
-                    logger.debug(f"🔍 URL avant normalisation: '{checking_url}'")
-                    logger.debug(f"�� URL après normalisation: '{checking_url_normalized}'")
+                    logger.debug(f"🔍 URL avant normalisation: '{truncate_url_for_log(checking_url)}'")
+                    logger.debug(f"🔍 URL après normalisation: '{truncate_url_for_log(checking_url_normalized)}'")
                     checking_url = checking_url_normalized
 
                 if checkout_url is not None and isinstance(checkout_url, str):
                     checkout_url_normalized = normalize_url(checkout_url)
-                    logger.debug(f"🔍 URL avant normalisation: '{checkout_url}'")
-                    logger.debug(f"�� URL après normalisation: '{checkout_url_normalized}'")
+                    logger.debug(f"🔍 URL avant normalisation: '{truncate_url_for_log(checkout_url)}'")
+                    logger.debug(f"🔍 URL après normalisation: '{truncate_url_for_log(checkout_url_normalized)}'")
                     checkout_url = checkout_url_normalized
 
                 # Déterminer si les URLs sont utilisables (non None et non placeholders)
@@ -4370,7 +4384,7 @@ Compare les photos avant/après et réponds en JSON:
 
                 # Ajouter images seulement si elles sont utilisables
                 if checking_usable:
-                    logger.debug(f"✅ ÉTAPE CHECKING - Image ajoutée au payload OpenAI: {checking_url}")
+                    logger.debug(f"✅ ÉTAPE CHECKING - Image ajoutée au payload OpenAI: {truncate_url_for_log(checking_url)}")
                     user_content.extend([
                         {
                             "type": "text",
@@ -4392,7 +4406,7 @@ Compare les photos avant/après et réponds en JSON:
                     })
 
                 if checkout_usable:
-                    logger.debug(f"✅ ÉTAPE CHECKOUT - Image ajoutée au payload OpenAI: {checkout_url}")
+                    logger.debug(f"✅ ÉTAPE CHECKOUT - Image ajoutée au payload OpenAI: {truncate_url_for_log(checkout_url)}")
                     user_content.extend([
                         {
                             "type": "text",
@@ -6369,31 +6383,31 @@ async def analyze_single_piece_async(piece: PieceWithEtapes, parcours_type: str 
         # Filtrer les images invalides avant l'analyse
         valid_checkin_pictures = []
         for pic in piece.checkin_pictures:
-            logger.debug(f"🔍 Traitement image checkin - URL originale: '{pic.url}'")
+            logger.debug(f"🔍 Traitement image checkin - URL originale: '{truncate_url_for_log(pic.url)}'")
             normalized_url = normalize_url(pic.url)
-            logger.debug(f"🔍 Traitement image checkin - URL normalisée: '{normalized_url}'")
+            logger.debug(f"🔍 Traitement image checkin - URL normalisée: '{truncate_url_for_log(normalized_url)}'")
 
             if is_valid_image_url(normalized_url):
                 normalized_pic = Picture(piece_id=pic.piece_id, url=normalized_url)
                 valid_checkin_pictures.append(normalized_pic)
-                logger.debug(f"✅ Image checkin valide ajoutée: {normalized_url}")
+                logger.debug(f"✅ Image checkin valide ajoutée: {truncate_url_for_log(normalized_url)}")
             else:
-                logger.warning(f"⚠️ Image checkin invalide ignorée - URL originale: {pic.url}")
-                logger.warning(f"⚠️ Image checkin invalide ignorée - URL normalisée: {normalized_url}")
+                logger.warning(f"⚠️ Image checkin invalide ignorée - URL originale: {truncate_url_for_log(pic.url)}")
+                logger.warning(f"⚠️ Image checkin invalide ignorée - URL normalisée: {truncate_url_for_log(normalized_url)}")
 
         valid_checkout_pictures = []
         for pic in piece.checkout_pictures:
-            logger.debug(f"🔍 Traitement image checkout - URL originale: '{pic.url}'")
+            logger.debug(f"🔍 Traitement image checkout - URL originale: '{truncate_url_for_log(pic.url)}'")
             normalized_url = normalize_url(pic.url)
-            logger.debug(f"🔍 Traitement image checkout - URL normalisée: '{normalized_url}'")
+            logger.debug(f"🔍 Traitement image checkout - URL normalisée: '{truncate_url_for_log(normalized_url)}'")
 
             if is_valid_image_url(normalized_url):
                 normalized_pic = Picture(piece_id=pic.piece_id, url=normalized_url)
                 valid_checkout_pictures.append(normalized_pic)
-                logger.debug(f"✅ Image checkout valide ajoutée: {normalized_url}")
+                logger.debug(f"✅ Image checkout valide ajoutée: {truncate_url_for_log(normalized_url)}")
             else:
-                logger.warning(f"⚠️ Image checkout invalide ignorée - URL originale: {pic.url}")
-                logger.warning(f"⚠️ Image checkout invalide ignorée - URL normalisée: {normalized_url}")
+                logger.warning(f"⚠️ Image checkout invalide ignorée - URL originale: {truncate_url_for_log(pic.url)}")
+                logger.warning(f"⚠️ Image checkout invalide ignorée - URL normalisée: {truncate_url_for_log(normalized_url)}")
 
         logger.debug(f"📷 Images valides pour pièce {piece.piece_id}: {len(valid_checkin_pictures)} checkin + {len(valid_checkout_pictures)} checkout")
 
@@ -7594,38 +7608,38 @@ def analyze_complete_logement(input_data: EtapesAnalysisInput, request_id: str =
             valid_checkin_pictures = []
             for pic in piece.checkin_pictures:
                 # 🔍 DEBUG: Logger l'URL originale
-                logger.debug(f"🔍 Traitement image checkin - URL originale: '{pic.url}'")
+                logger.debug(f"🔍 Traitement image checkin - URL originale: '{truncate_url_for_log(pic.url)}'")
 
                 # Normaliser l'URL avant validation
                 normalized_url = normalize_url(pic.url)
-                logger.debug(f"🔍 Traitement image checkin - URL normalisée: '{normalized_url}'")
+                logger.debug(f"🔍 Traitement image checkin - URL normalisée: '{truncate_url_for_log(normalized_url)}'")
 
                 if is_valid_image_url(normalized_url):
                     # Créer un nouveau Picture avec l'URL normalisée
                     normalized_pic = Picture(piece_id=pic.piece_id, url=normalized_url)
                     valid_checkin_pictures.append(normalized_pic)
-                    logger.debug(f"✅ Image checkin valide ajoutée: {normalized_url}")
+                    logger.debug(f"✅ Image checkin valide ajoutée: {truncate_url_for_log(normalized_url)}")
                 else:
-                    logger.warning(f"⚠️ Image checkin invalide ignorée - URL originale: {pic.url}")
-                    logger.warning(f"⚠️ Image checkin invalide ignorée - URL normalisée: {normalized_url}")
+                    logger.warning(f"⚠️ Image checkin invalide ignorée - URL originale: {truncate_url_for_log(pic.url)}")
+                    logger.warning(f"⚠️ Image checkin invalide ignorée - URL normalisée: {truncate_url_for_log(normalized_url)}")
 
             valid_checkout_pictures = []
             for pic in piece.checkout_pictures:
                 # 🔍 DEBUG: Logger l'URL originale
-                logger.debug(f"🔍 Traitement image checkout - URL originale: '{pic.url}'")
+                logger.debug(f"🔍 Traitement image checkout - URL originale: '{truncate_url_for_log(pic.url)}'")
 
                 # Normaliser l'URL avant validation
                 normalized_url = normalize_url(pic.url)
-                logger.debug(f"🔍 Traitement image checkout - URL normalisée: '{normalized_url}'")
+                logger.debug(f"🔍 Traitement image checkout - URL normalisée: '{truncate_url_for_log(normalized_url)}'")
 
                 if is_valid_image_url(normalized_url):
                     # Créer un nouveau Picture avec l'URL normalisée
                     normalized_pic = Picture(piece_id=pic.piece_id, url=normalized_url)
                     valid_checkout_pictures.append(normalized_pic)
-                    logger.debug(f"✅ Image checkout valide ajoutée: {normalized_url}")
+                    logger.debug(f"✅ Image checkout valide ajoutée: {truncate_url_for_log(normalized_url)}")
                 else:
-                    logger.warning(f"⚠️ Image checkout invalide ignorée - URL originale: {pic.url}")
-                    logger.warning(f"⚠️ Image checkout invalide ignorée - URL normalisée: {normalized_url}")
+                    logger.warning(f"⚠️ Image checkout invalide ignorée - URL originale: {truncate_url_for_log(pic.url)}")
+                    logger.warning(f"⚠️ Image checkout invalide ignorée - URL normalisée: {truncate_url_for_log(normalized_url)}")
             
             logger.debug(f"📷 Images valides pour pièce {piece.piece_id}: {len(valid_checkin_pictures)} checkin + {len(valid_checkout_pictures)} checkout")
             
