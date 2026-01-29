@@ -39,30 +39,53 @@ import uuid
 from logs_viewer.logs_manager import logs_manager
 
 # 🚀 CONFIGURATION LOGGING OPTIMISÉE RAILWAY
+import re
+
+def truncate_base64_in_text(text: str, max_base64_length: int = 50) -> str:
+    """Tronque les chaînes base64 dans un texte pour éviter de polluer les logs"""
+    if not text or len(text) < 100:
+        return text
+
+    # Pattern pour détecter les data URIs base64
+    data_uri_pattern = r'data:image/[^;]+;base64,[A-Za-z0-9+/=]{50,}'
+    text = re.sub(data_uri_pattern, lambda m: m.group(0)[:40] + '...[base64 truncated]', text)
+
+    # Pattern pour détecter les longues chaînes base64 brutes (>100 chars de A-Za-z0-9+/=)
+    base64_pattern = r'[A-Za-z0-9+/=]{100,}'
+    text = re.sub(base64_pattern, lambda m: m.group(0)[:50] + '...[truncated ' + str(len(m.group(0))) + ' chars]', text)
+
+    return text
+
 class RailwayJSONFormatter(logging.Formatter):
     """
     Formatter JSON optimisé pour Railway qui produit des logs structurés
     sans caractères spéciaux qui causent des problèmes d'interprétation
     """
-    
+
     def format(self, record):
         # Créer un objet de log structuré
         from datetime import datetime
         timestamp = datetime.fromtimestamp(record.created).strftime("%Y-%m-%d %H:%M:%S")
+
+        # Récupérer et tronquer le message si nécessaire
+        message = record.getMessage()
+        message = truncate_base64_in_text(message)
+
         log_obj = {
             "timestamp": timestamp,
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": message,
             "module": record.module,
             "function": record.funcName,
             "line": record.lineno
         }
-        
-        # Ajouter le traceback si présent
+
+        # Ajouter le traceback si présent (aussi tronqué)
         if record.exc_info:
-            log_obj["exception"] = self.formatException(record.exc_info)
-        
+            exception_text = self.formatException(record.exc_info)
+            log_obj["exception"] = truncate_base64_in_text(exception_text)
+
         # Ajouter des champs personnalisés s'ils existent
         if hasattr(record, 'piece_id'):
             log_obj["piece_id"] = record.piece_id
@@ -70,7 +93,7 @@ class RailwayJSONFormatter(logging.Formatter):
             log_obj["endpoint"] = record.endpoint
         if hasattr(record, 'operation'):
             log_obj["operation"] = record.operation
-            
+
         return json.dumps(log_obj, ensure_ascii=False)
 
 def setup_railway_logging():
