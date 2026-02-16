@@ -497,6 +497,75 @@
             font-size: 0.9rem;
         }
 
+        /* Workflow guide */
+        .workflow-guide {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 2rem 0;
+        }
+        .workflow-guide h3 {
+            font-size: 1.6rem;
+            margin-bottom: 0.5rem;
+            color: white;
+        }
+        .workflow-guide .intro {
+            color: rgba(255,255,255,0.8);
+            font-size: 0.95rem;
+            margin-bottom: 2rem;
+        }
+        .workflow-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .workflow-step {
+            background: rgba(255,255,255,0.95);
+            border-radius: 12px;
+            padding: 1.25rem 1.5rem;
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+            box-shadow: var(--shadow);
+        }
+        .step-number {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 1rem;
+            flex-shrink: 0;
+            color: white;
+        }
+        .step-1 .step-number { background: var(--primary); }
+        .step-2 .step-number { background: var(--warning); }
+        .step-3 .step-number { background: var(--cyan); }
+        .step-4 .step-number { background: var(--secondary); }
+        .workflow-step h4 {
+            font-size: 1rem;
+            margin-bottom: 2px;
+        }
+        .workflow-step p {
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+            margin: 0;
+        }
+        .workflow-step a {
+            color: var(--primary);
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .workflow-step a:hover { text-decoration: underline; }
+        .workflow-step .arrow-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 6px;
+            font-size: 0.85rem;
+        }
+
         @media (max-width: 900px) {
             .app-layout { flex-direction: column; }
             .sidebar { width: 100%; max-height: 40vh; }
@@ -523,10 +592,45 @@
 
         <!-- Main content -->
         <div class="main-content" id="mainContent">
-            <div class="empty-state">
-                <div>
-                    <h3>Rapport Tester</h3>
-                    <p>Selectionnez un rapport dans la liste pour voir les details par piece,<br>les photos et les resultats d'analyse IA.</p>
+            <div class="empty-state" style="height:auto;padding:2rem 2rem 3rem">
+                <div class="workflow-guide">
+                    <h3>Comment ameliorer les prompts IA ?</h3>
+                    <p class="intro">Cet outil vous permet de tester vos modifications de prompts sur des rapports reels, sans impacter les donnees existantes.</p>
+
+                    <div class="workflow-steps">
+                        <div class="workflow-step step-1">
+                            <div class="step-number">1</div>
+                            <div>
+                                <h4>Identifier un probleme</h4>
+                                <p>Selectionnez un rapport dans la liste a gauche. Parcourez les pieces et comparez les photos avec l'analyse IA. Reperer les scores incorrects, problemes manques ou faux positifs.</p>
+                            </div>
+                        </div>
+
+                        <div class="workflow-step step-2">
+                            <div class="step-number">2</div>
+                            <div>
+                                <h4>Modifier les prompts</h4>
+                                <p>Allez dans l'admin des prompts pour ajuster les instructions donnees a l'IA. Vous pouvez modifier le ton, les criteres de notation, les categories de problemes, etc.</p>
+                                <a href="/front/index.html" target="_blank" class="arrow-link">Ouvrir Prompts Admin &rarr;</a>
+                            </div>
+                        </div>
+
+                        <div class="workflow-step step-3">
+                            <div class="step-number">3</div>
+                            <div>
+                                <h4>Re-analyser une piece</h4>
+                                <p>Revenez ici, cliquez sur <strong>"Re-analyser cette piece"</strong> sur la piece concernee. L'API relance l'analyse avec vos nouveaux prompts (sans modifier le rapport original).</p>
+                            </div>
+                        </div>
+
+                        <div class="workflow-step step-4">
+                            <div class="step-number">4</div>
+                            <div>
+                                <h4>Comparer ancien vs nouveau</h4>
+                                <p>Le resultat s'affiche en comparaison cote-a-cote : ancien score/problemes vs nouveau. Iterez jusqu'a obtenir le comportement souhaite, puis deployez les prompts.</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
