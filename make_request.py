@@ -8588,6 +8588,13 @@ async def api_get_rapport(check_id: str):
                             "problemes": pa.get("preliminary_issues") or pa.get("issues") or pa.get("problemes") or []
                         }
 
+        # Fetch parcours etapes for reference photos
+        parcours_etapes_map = {}
+        if rapport.get("logement_id"):
+            parcours_etapes_map = _fetch_parcours_etapes_map(
+                sb, rapport["logement_id"], rapport.get("parcours_index") or 0
+            )
+
         # Build pieces with photos
         progress = rapport.get("progress") or {}
         pieces_result = []
@@ -8598,13 +8605,27 @@ async def api_get_rapport(check_id: str):
             else:
                 checkout_photos = _extract_photos_for_piece(checkout_data, pid, "checkout", progress)
 
+            # Reference photos from DB (non-todo etapes with reference_image_url)
+            ref_photos_from_db = []
+            if parcours_etapes_map.get(pid):
+                for e in parcours_etapes_map[pid]:
+                    if not e.get("is_todo") and e.get("reference_image_url"):
+                        ref_url = e["reference_image_url"]
+                        if ref_url.startswith("//"):
+                            ref_url = "https:" + ref_url
+                        if ref_url.startswith("http"):
+                            ref_photos_from_db.append(ref_url)
+
+            # Use DB reference photos as fallback
+            final_checkin_photos = checkin_photos if checkin_photos else ref_photos_from_db
+
             # Extract task etapes
             etapes = _extract_etapes_for_piece(checkin_data, checkout_data, pid, is_unified)
 
             pieces_result.append({
                 "piece_id": pid,
                 "nom": nom,
-                "checkin_pictures": checkin_photos,
+                "checkin_pictures": final_checkin_photos,
                 "checkout_pictures": checkout_photos,
                 "etapes": etapes,
                 "analysis": analysis_by_piece.get(pid)
@@ -8653,21 +8674,28 @@ async def api_reanalyze_piece(request: Request):
             if log_res.data:
                 logement = log_res.data[0]
 
-        # 3. Build the payload (Python port of buildAnalysePayload)
-        payload = _build_analyse_payload(rapport, logement)
+        # 3. Fetch parcours etapes map (reference photos from DB)
+        parcours_etapes_map = _fetch_parcours_etapes_map(
+            sb, rapport.get("logement_id"), rapport.get("parcours_index") or 0
+        )
 
-        # 4. Filter to keep ONLY the requested piece
+        # 4. Build the payload (Python port of buildAnalysePayload)
+        payload = _build_analyse_payload(rapport, logement, parcours_etapes_map)
+
+        # 5. Filter to keep ONLY the requested piece
         target_pieces = [p for p in payload.get("pieces", []) if p.get("piece_id") == piece_id]
         if not target_pieces:
             raise HTTPException(404, f"Piece {piece_id} not found in payload (may have no photos)")
 
         payload["pieces"] = target_pieces
+        tp = target_pieces[0]
+        logger.info(f"Re-analyze piece '{tp.get('nom')}': {len(tp.get('checkin_pictures', []))} checkin, {len(tp.get('checkout_pictures', []))} checkout, {len(tp.get('etapes', []))} etapes")
 
-        # 5. Call the internal analyze-complete logic
+        # 6. Call the internal analyze-complete logic
         input_data = EtapesAnalysisInput(**payload)
         new_result = await analyze_complete_logement_parallel(input_data)
 
-        # 6. Extract old result from rapports_analyse
+        # 7. Extract old result from rapports_analyse
         old_result = None
         ana_res = sb.table("rapports_analyse").select("raw_response").eq("rapport_id", check_id).execute()
         if ana_res.data and ana_res.data[0].get("raw_response"):
@@ -8688,7 +8716,7 @@ async def api_reanalyze_piece(request: Request):
                         }
                         break
 
-        # 7. Extract new result for the piece
+        # 8. Extract new result for the piece
         new_piece_result = None
         if new_result and hasattr(new_result, "pieces_analysis") and new_result.pieces_analysis:
             for pa in new_result.pieces_analysis:
@@ -8935,9 +8963,44 @@ def _format_date(iso_date):
     except Exception:
         return ""
 
-def _build_analyse_payload(rapport, logement):
+def _fetch_parcours_etapes_map(sb, logement_id, parcours_index=0):
+    """Fetch etapes from DB grouped by piece_id. Same as trigger-analyse step 2b."""
+    parcours_etapes_map = {}
+    try:
+        # Find parcours via logement_parcours
+        lp_res = sb.table("logement_parcours").select("parcours_id").eq("logement_id", logement_id).order("created_at").execute()
+        lp_data = lp_res.data or []
+
+        if lp_data and len(lp_data) > parcours_index:
+            parcours_id = lp_data[parcours_index]["parcours_id"]
+            # Get pieces for this parcours
+            pieces_res = sb.table("pieces").select("id, nom").eq("parcours_id", parcours_id).execute()
+            pieces_data = pieces_res.data or []
+
+            if pieces_data:
+                piece_ids = [p["id"] for p in pieces_data]
+                # Get etapes for all pieces
+                etapes_res = sb.table("etapes").select(
+                    "id, piece_id, is_todo, todo_title, reference_image_url, todo_order, todo_param"
+                ).in_("piece_id", piece_ids).execute()
+
+                for etape in (etapes_res.data or []):
+                    pid = etape["piece_id"]
+                    if pid not in parcours_etapes_map:
+                        parcours_etapes_map[pid] = []
+                    parcours_etapes_map[pid].append(etape)
+
+            logger.info(f"Parcours etapes loaded: {len(parcours_etapes_map)} pieces")
+    except Exception as e:
+        logger.warning(f"Could not load parcours etapes: {e}")
+
+    return parcours_etapes_map
+
+def _build_analyse_payload(rapport, logement, parcours_etapes_map=None):
     """Python port of buildAnalysePayload from trigger-analyse/index.ts.
     Reconstructs the exact same payload format sent to /analyze-complete."""
+    if parcours_etapes_map is None:
+        parcours_etapes_map = {}
 
     checkin_data = rapport.get("checkin_data") or {}
     checkout_data = rapport.get("checkout_data") or {}
@@ -8986,12 +9049,57 @@ def _build_analyse_payload(rapport, logement):
         else:
             checkout_photos = _extract_photos_for_piece(checkout_data, pid, "checkout", progress)
 
-        # Extract task etapes
+        # Reference photos from DB (non-todo etapes with reference_image_url)
+        ref_photos_from_db = []
+        if parcours_etapes_map.get(pid):
+            for e in parcours_etapes_map[pid]:
+                if not e.get("is_todo") and e.get("reference_image_url"):
+                    ref_url = e["reference_image_url"]
+                    if ref_url.startswith("//"):
+                        ref_url = "https:" + ref_url
+                    if ref_url.startswith("http"):
+                        ref_photos_from_db.append(ref_url)
+
+        # Use DB reference photos as fallback if no checkin photos from rapport
+        final_checkin_photos = checkin_photos if checkin_photos else ref_photos_from_db
+
+        # Extract task etapes (with DB fallback for photoRequired filtering)
         etapes = _extract_etapes_for_piece(checkin_data, checkout_data, pid, is_unified)
+
+        # If no etapes from rapport data, try from DB (same as TS lines 637-670)
+        if not etapes and parcours_etapes_map.get(pid):
+            db_etapes = parcours_etapes_map[pid]
+            # Build photo map from raw rapport etapes
+            raw_etapes = []
+            for p in checkin_pieces:
+                if (p.get("piece_id") or p.get("id")) == pid and isinstance(p.get("etapes"), list):
+                    raw_etapes.extend(p["etapes"])
+            if not is_unified:
+                for p in checkout_pieces:
+                    if (p.get("piece_id") or p.get("id")) == pid and isinstance(p.get("etapes"), list):
+                        raw_etapes.extend(p["etapes"])
+
+            photo_by_etape_id = {}
+            for re in raw_etapes:
+                if re.get("photo_url") and re.get("etape_id"):
+                    photo_by_etape_id[re["etape_id"]] = re["photo_url"]
+
+            for e in db_etapes:
+                if e.get("is_todo") and e.get("todo_param") == "photoRequired":
+                    ref_url = e.get("reference_image_url") or ""
+                    if ref_url.startswith("//"):
+                        ref_url = "https:" + ref_url
+                    etapes.append({
+                        "etape_id": e["id"],
+                        "task_name": e.get("todo_title") or "Tache",
+                        "consigne": e.get("todo_order") or "",
+                        "checking_picture": ref_url,
+                        "checkout_picture": photo_by_etape_id.get(e["id"], ""),
+                    })
 
         # Check if piece has any content
         has_checkout = len(checkout_photos) > 0
-        has_checkin = len(checkin_photos) > 0
+        has_checkin = len(final_checkin_photos) > 0
         has_task_photos = any(e.get("checkout_picture") for e in etapes)
 
         if not has_checkout and not has_checkin and not has_task_photos:
@@ -9001,7 +9109,7 @@ def _build_analyse_payload(rapport, logement):
             "piece_id": pid,
             "nom": nom,
             "commentaire_ia": "",
-            "checkin_pictures": [{"piece_id": pid, "url": url} for url in checkin_photos],
+            "checkin_pictures": [{"piece_id": pid, "url": url} for url in final_checkin_photos],
             "checkout_pictures": [{"piece_id": pid, "url": url} for url in checkout_photos],
             "etapes": etapes
         })
