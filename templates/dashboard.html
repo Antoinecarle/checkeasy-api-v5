@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CheckEasy API V5 - Dashboard</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-light: #6366f1;
+            --secondary: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --dark: #1f2937;
+            --light: #f9fafb;
+            --border: #e5e7eb;
+            --text-primary: #111827;
+            --text-secondary: #6b7280;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: var(--text-primary);
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+            color: white;
+        }
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .status-badge {
+            display: inline-block;
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-top: 8px;
+        }
+
+        .tools-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .tool-card {
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: var(--shadow-lg);
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+            position: relative;
+            overflow: hidden;
+        }
+        .tool-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+        .tool-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+        }
+
+        .tool-card.prompts::before { background: var(--primary); }
+        .tool-card.tester::before { background: var(--secondary); }
+        .tool-card.logs::before { background: var(--warning); }
+        .tool-card.scoring::before { background: var(--danger); }
+        .tool-card.rooms::before { background: #8b5cf6; }
+        .tool-card.rapport-tester::before { background: #06b6d4; }
+
+        .tool-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .tool-card.prompts .tool-icon { background: rgba(79, 70, 229, 0.1); }
+        .tool-card.tester .tool-icon { background: rgba(16, 185, 129, 0.1); }
+        .tool-card.logs .tool-icon { background: rgba(245, 158, 11, 0.1); }
+        .tool-card.scoring .tool-icon { background: rgba(239, 68, 68, 0.1); }
+        .tool-card.rooms .tool-icon { background: rgba(139, 92, 246, 0.1); }
+        .tool-card.rapport-tester .tool-icon { background: rgba(6, 182, 212, 0.1); }
+
+        .tool-card h3 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        .tool-card p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .tool-tag {
+            display: inline-block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 6px;
+            margin-top: 12px;
+        }
+        .tag-config { background: #ede9fe; color: #7c3aed; }
+        .tag-test { background: #d1fae5; color: #059669; }
+        .tag-monitor { background: #fef3c7; color: #d97706; }
+        .tag-new { background: #cffafe; color: #0891b2; }
+
+        .endpoints-section {
+            margin-top: 3rem;
+            background: rgba(255,255,255,0.95);
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: var(--shadow-lg);
+        }
+        .endpoints-section h2 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+        .endpoint-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 0.5rem;
+        }
+        .endpoint-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.85rem;
+        }
+        .endpoint-item:hover { background: var(--light); }
+        .method {
+            font-weight: 700;
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            min-width: 40px;
+            text-align: center;
+        }
+        .method.get { background: #d1fae5; color: #059669; }
+        .method.post { background: #dbeafe; color: #2563eb; }
+
+        @media (max-width: 768px) {
+            .tools-grid { grid-template-columns: 1fr; }
+            .header h1 { font-size: 1.8rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>CheckEasy API V5</h1>
+            <p>Plateforme d'analyse IA pour la gestion de logements</p>
+            <span class="status-badge">API Online</span>
+        </div>
+
+        <div class="tools-grid">
+            <a href="/front/index.html" class="tool-card prompts">
+                <div class="tool-icon">&#9998;</div>
+                <h3>Prompts Admin</h3>
+                <p>Configurer et modifier les prompts d'analyse IA (Voyageur / Menage). Preview et export.</p>
+                <span class="tool-tag tag-config">Configuration</span>
+            </a>
+
+            <a href="/rapport-tester" class="tool-card rapport-tester">
+                <div class="tool-icon">&#128269;</div>
+                <h3>Rapport Tester</h3>
+                <p>Parcourir les rapports reels, visualiser les photos et resultats IA par piece, re-analyser pour comparer.</p>
+                <span class="tool-tag tag-new">Nouveau</span>
+            </a>
+
+            <a href="/tester" class="tool-card tester">
+                <div class="tool-icon">&#9889;</div>
+                <h3>API Tester</h3>
+                <p>Tester les endpoints d'analyse avec des payloads personnalises. Voir les reponses en temps reel.</p>
+                <span class="tool-tag tag-test">Test</span>
+            </a>
+
+            <a href="/logs-viewer" class="tool-card logs">
+                <div class="tool-icon">&#128196;</div>
+                <h3>Logs Viewer</h3>
+                <p>Visualiser les logs en temps reel via WebSocket. Filtrer par niveau, rechercher par mot-cle.</p>
+                <span class="tool-tag tag-monitor">Monitoring</span>
+            </a>
+
+            <a href="/prompts-admin" class="tool-card scoring">
+                <div class="tool-icon">&#127919;</div>
+                <h3>Scoring Config</h3>
+                <p>Configurer le systeme de notation: poids des categories, seuils de severite, regles de scoring.</p>
+                <span class="tool-tag tag-config">Configuration</span>
+            </a>
+
+            <a href="/admin" class="tool-card rooms">
+                <div class="tool-icon">&#127968;</div>
+                <h3>Room Types</h3>
+                <p>Gerer les types de pieces et leurs checklists de verification. Ajouter, modifier, supprimer.</p>
+                <span class="tool-tag tag-config">Configuration</span>
+            </a>
+        </div>
+
+        <div class="endpoints-section">
+            <h2>API Endpoints</h2>
+            <div class="endpoint-list">
+                <div class="endpoint-item"><span class="method post">POST</span> /analyze</div>
+                <div class="endpoint-item"><span class="method post">POST</span> /analyze-complete</div>
+                <div class="endpoint-item"><span class="method post">POST</span> /analyze-etapes</div>
+                <div class="endpoint-item"><span class="method post">POST</span> /classify-room</div>
+                <div class="endpoint-item"><span class="method post">POST</span> /extract-inventory</div>
+                <div class="endpoint-item"><span class="method post">POST</span> /verify-inventory</div>
+                <div class="endpoint-item"><span class="method get">GET</span> /prompts</div>
+                <div class="endpoint-item"><span class="method get">GET</span> /scoring-config</div>
+                <div class="endpoint-item"><span class="method get">GET</span> /room-templates</div>
+                <div class="endpoint-item"><span class="method get">GET</span> /api/rapports</div>
+                <div class="endpoint-item"><span class="method get">GET</span> /api/rapports/{check_id}</div>
+                <div class="endpoint-item"><span class="method post">POST</span> /api/rapports/reanalyze-piece</div>
+                <div class="endpoint-item"><span class="method get">GET</span> /health</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

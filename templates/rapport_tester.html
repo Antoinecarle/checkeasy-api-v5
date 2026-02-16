@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CheckEasy V5 - Rapport Tester</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-light: #6366f1;
+            --secondary: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --cyan: #06b6d4;
+            --dark: #1f2937;
+            --light: #f9fafb;
+            --border: #e5e7eb;
+            --text-primary: #111827;
+            --text-secondary: #6b7280;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .app-layout {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 380px;
+            background: white;
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .sidebar-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--light);
+        }
+        .sidebar-header h2 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        .sidebar-header a {
+            color: var(--primary);
+            text-decoration: none;
+            font-size: 0.85rem;
+        }
+
+        .search-box {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .search-box input {
+            width: 100%;
+            padding: 0.6rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            outline: none;
+        }
+        .search-box input:focus { border-color: var(--primary); }
+
+        .rapport-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .rapport-item {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .rapport-item:hover { background: var(--light); }
+        .rapport-item.active { background: #eef2ff; border-left: 3px solid var(--primary); }
+
+        .rapport-item .check-id {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.8rem;
+            color: var(--primary);
+            font-weight: 600;
+        }
+        .rapport-item .logement-name {
+            font-size: 0.95rem;
+            font-weight: 600;
+            margin: 2px 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .rapport-item .meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-dot.completed { background: var(--secondary); }
+        .status-dot.pending { background: var(--warning); }
+        .status-dot.error { background: var(--danger); }
+        .status-dot.none { background: var(--border); }
+
+        .score-badge {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 0.75rem;
+        }
+        .score-excellent { background: #d1fae5; color: #059669; }
+        .score-bon { background: #dbeafe; color: #2563eb; }
+        .score-moyen { background: #fef3c7; color: #d97706; }
+        .score-mauvais { background: #fee2e2; color: #dc2626; }
+
+        /* Main content */
+        .main-content {
+            flex: 1;
+            overflow-y: auto;
+            max-height: 100vh;
+        }
+
+        .main-header {
+            padding: 1.25rem 2rem;
+            background: rgba(255,255,255,0.95);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .main-header h1 {
+            font-size: 1.3rem;
+            font-weight: 700;
+        }
+        .main-header .subtitle {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 60vh;
+            color: white;
+            text-align: center;
+        }
+        .empty-state h3 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            opacity: 0.9;
+        }
+        .empty-state p { opacity: 0.7; }
+
+        /* Piece tabs */
+        .piece-tabs {
+            display: flex;
+            gap: 0;
+            padding: 0 2rem;
+            background: rgba(255,255,255,0.95);
+            border-bottom: 1px solid var(--border);
+            overflow-x: auto;
+        }
+        .piece-tab {
+            padding: 0.75rem 1.25rem;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            border-bottom: 2px solid transparent;
+            white-space: nowrap;
+            transition: all 0.15s;
+            color: var(--text-secondary);
+        }
+        .piece-tab:hover { color: var(--text-primary); background: var(--light); }
+        .piece-tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+            font-weight: 600;
+        }
+
+        /* Piece detail */
+        .piece-detail {
+            padding: 2rem;
+            background: rgba(255,255,255,0.95);
+            min-height: calc(100vh - 160px);
+        }
+
+        .piece-info-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .piece-info-bar h2 {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+
+        .btn {
+            padding: 0.6rem 1.2rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover:not(:disabled) { background: var(--primary-light); }
+        .btn-cyan { background: var(--cyan); color: white; }
+        .btn-cyan:hover:not(:disabled) { background: #0891b2; }
+        .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
+
+        /* Photos grid */
+        .section-title {
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+            color: var(--text-primary);
+        }
+        .section-subtitle {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+        }
+
+        .photos-section {
+            margin-bottom: 2rem;
+        }
+
+        .photos-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 0.75rem;
+        }
+        .photo-thumb {
+            aspect-ratio: 4/3;
+            border-radius: 8px;
+            overflow: hidden;
+            background: var(--light);
+            border: 1px solid var(--border);
+        }
+        .photo-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .photo-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            text-align: center;
+        }
+
+        /* Analysis results */
+        .analysis-section {
+            margin-bottom: 2rem;
+        }
+
+        .analysis-card {
+            background: var(--light);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+
+        .analysis-score {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .score-circle {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: white;
+        }
+        .score-circle.excellent { background: var(--secondary); }
+        .score-circle.bon { background: #3b82f6; }
+        .score-circle.moyen { background: var(--warning); }
+        .score-circle.mauvais { background: var(--danger); }
+        .score-circle.insuffisant { background: #991b1b; }
+
+        .score-label {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        .score-status {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .problems-list {
+            margin-top: 1rem;
+        }
+        .problem-item {
+            padding: 0.75rem 1rem;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+        }
+        .severity-badge {
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+        .severity-high { background: #fee2e2; color: #dc2626; }
+        .severity-medium { background: #fef3c7; color: #d97706; }
+        .severity-low { background: #d1fae5; color: #059669; }
+
+        .problem-desc {
+            font-size: 0.9rem;
+            flex: 1;
+        }
+        .problem-meta {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        /* Tasks section */
+        .tasks-list {
+            margin-top: 1rem;
+        }
+        .task-item {
+            padding: 0.75rem 1rem;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+        .task-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .task-photos {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .task-photo-thumb {
+            width: 80px;
+            height: 60px;
+            border-radius: 6px;
+            overflow: hidden;
+            background: var(--light);
+            border: 1px solid var(--border);
+        }
+        .task-photo-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Comparison view */
+        .comparison-container {
+            margin-top: 2rem;
+            border: 2px solid var(--cyan);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .comparison-header {
+            background: var(--cyan);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .comparison-body {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+        }
+        .comparison-col {
+            padding: 1.5rem;
+        }
+        .comparison-col:first-child {
+            border-right: 1px solid var(--border);
+        }
+        .comparison-col h4 {
+            font-size: 0.9rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .col-old h4 { color: var(--text-secondary); }
+        .col-new h4 { color: var(--cyan); }
+
+        /* Loading */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 3rem;
+            color: var(--text-secondary);
+        }
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 10px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Notification */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+        .notification.success { background: var(--secondary); }
+        .notification.error { background: var(--danger); }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* Rapport metadata */
+        .rapport-meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            padding: 1rem 2rem;
+            background: rgba(255,255,255,0.95);
+        }
+        .meta-item label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        .meta-item .value {
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+
+        .no-data {
+            color: var(--text-secondary);
+            font-style: italic;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 900px) {
+            .app-layout { flex-direction: column; }
+            .sidebar { width: 100%; max-height: 40vh; }
+            .comparison-body { grid-template-columns: 1fr; }
+            .comparison-col:first-child { border-right: none; border-bottom: 1px solid var(--border); }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Sidebar: Rapport list -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>Rapport Tester</h2>
+                <a href="/">&larr; Dashboard</a>
+            </div>
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Rechercher par check_id ou logement...">
+            </div>
+            <div class="rapport-list" id="rapportList">
+                <div class="loading"><div class="spinner"></div> Chargement...</div>
+            </div>
+        </div>
+
+        <!-- Main content -->
+        <div class="main-content" id="mainContent">
+            <div class="empty-state">
+                <div>
+                    <h3>Rapport Tester</h3>
+                    <p>Selectionnez un rapport dans la liste pour voir les details par piece,<br>les photos et les resultats d'analyse IA.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        const state = {
+            rapports: [],
+            selectedRapport: null,
+            rapportDetail: null,
+            selectedPieceIdx: 0,
+            reanalyzing: false,
+            comparison: null
+        };
+
+        // ===== API calls =====
+        async function fetchRapports() {
+            const res = await fetch('/api/rapports');
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || 'Failed to fetch rapports');
+            }
+            return res.json();
+        }
+
+        async function fetchRapportDetail(checkId) {
+            const res = await fetch(`/api/rapports/${encodeURIComponent(checkId)}`);
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || 'Failed to fetch rapport detail');
+            }
+            return res.json();
+        }
+
+        async function reanalyzePiece(checkId, pieceId) {
+            const res = await fetch('/api/rapports/reanalyze-piece', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ check_id: checkId, piece_id: pieceId })
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || 'Re-analysis failed');
+            }
+            return res.json();
+        }
+
+        // ===== Render sidebar =====
+        function renderRapportList(rapports, filter) {
+            const list = document.getElementById('rapportList');
+            let filtered = rapports;
+            if (filter) {
+                const q = filter.toLowerCase();
+                filtered = rapports.filter(r =>
+                    (r.check_id || '').toLowerCase().includes(q) ||
+                    (r.logement_name || '').toLowerCase().includes(q)
+                );
+            }
+
+            if (filtered.length === 0) {
+                list.innerHTML = '<div class="loading">Aucun rapport trouve.</div>';
+                return;
+            }
+
+            list.innerHTML = filtered.map(r => {
+                const scoreClass = getScoreClass(r.score_global);
+                const statusClass = r.analyse_status === 'completed' ? 'completed'
+                    : r.analyse_status === 'pending' ? 'pending'
+                    : r.analyse_status === 'error' ? 'error' : 'none';
+                const date = r.created_at ? new Date(r.created_at).toLocaleDateString('fr-FR', {
+                    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                }) : '';
+                const active = state.selectedRapport?.check_id === r.check_id ? 'active' : '';
+
+                return `<div class="rapport-item ${active}" data-check-id="${r.check_id}">
+                    <div class="check-id">${r.check_id || r.id}</div>
+                    <div class="logement-name">${r.logement_name || 'Logement inconnu'}</div>
+                    <div class="meta">
+                        <span class="status-dot ${statusClass}"></span>
+                        <span>${r.analyse_status || 'non analyse'}</span>
+                        ${r.score_global != null ? `<span class="score-badge ${scoreClass}">${r.score_global}/5</span>` : ''}
+                        <span style="margin-left:auto">${date}</span>
+                    </div>
+                </div>`;
+            }).join('');
+
+            list.querySelectorAll('.rapport-item').forEach(el => {
+                el.addEventListener('click', () => {
+                    const checkId = el.dataset.checkId;
+                    selectRapport(checkId);
+                });
+            });
+        }
+
+        function getScoreClass(score) {
+            if (score == null) return '';
+            if (score >= 4.5) return 'score-excellent';
+            if (score >= 3.5) return 'score-bon';
+            if (score >= 2.5) return 'score-moyen';
+            return 'score-mauvais';
+        }
+
+        function getScoreCircleClass(score) {
+            if (score == null) return 'moyen';
+            if (score >= 4.5) return 'excellent';
+            if (score >= 3.5) return 'bon';
+            if (score >= 2.5) return 'moyen';
+            if (score >= 1.5) return 'mauvais';
+            return 'insuffisant';
+        }
+
+        // ===== Select rapport =====
+        async function selectRapport(checkId) {
+            const rapport = state.rapports.find(r => r.check_id === checkId);
+            if (!rapport) return;
+
+            state.selectedRapport = rapport;
+            state.selectedPieceIdx = 0;
+            state.comparison = null;
+            renderRapportList(state.rapports, document.getElementById('searchInput').value);
+
+            const main = document.getElementById('mainContent');
+            main.innerHTML = '<div class="loading"><div class="spinner"></div> Chargement du rapport...</div>';
+
+            try {
+                state.rapportDetail = await fetchRapportDetail(checkId);
+                renderRapportDetail();
+            } catch (err) {
+                main.innerHTML = `<div class="loading" style="color:var(--danger)">Erreur: ${err.message}</div>`;
+            }
+        }
+
+        // ===== Render rapport detail =====
+        function renderRapportDetail() {
+            const main = document.getElementById('mainContent');
+            const d = state.rapportDetail;
+            if (!d) return;
+
+            const pieces = d.pieces || [];
+
+            let html = `
+                <div class="main-header">
+                    <h1>${d.logement_name || 'Rapport'}</h1>
+                    <div class="subtitle">check_id: ${d.check_id} | Type: ${d.type || 'Voyageur'} | Statut analyse: ${d.analyse_status || 'N/A'}</div>
+                </div>
+                <div class="rapport-meta-grid">
+                    <div class="meta-item"><label>Score Global</label><div class="value">${d.score_global != null ? d.score_global + '/5' : 'N/A'}</div></div>
+                    <div class="meta-item"><label>Pieces</label><div class="value">${pieces.length}</div></div>
+                    <div class="meta-item"><label>Date</label><div class="value">${d.created_at ? new Date(d.created_at).toLocaleDateString('fr-FR') : 'N/A'}</div></div>
+                    <div class="meta-item"><label>Operateur</label><div class="value">${d.operator_name || 'N/A'}</div></div>
+                </div>
+            `;
+
+            if (pieces.length === 0) {
+                html += '<div class="piece-detail"><p class="no-data">Aucune piece trouvee dans ce rapport.</p></div>';
+                main.innerHTML = html;
+                return;
+            }
+
+            // Piece tabs
+            html += '<div class="piece-tabs">';
+            pieces.forEach((p, i) => {
+                const scoreText = p.analysis?.score != null ? ` (${p.analysis.score})` : '';
+                html += `<div class="piece-tab ${i === state.selectedPieceIdx ? 'active' : ''}" data-idx="${i}">${p.nom || 'Piece ' + (i+1)}${scoreText}</div>`;
+            });
+            html += '</div>';
+
+            // Piece detail
+            html += renderPieceDetail(pieces[state.selectedPieceIdx]);
+
+            main.innerHTML = html;
+
+            // Bind tab clicks
+            main.querySelectorAll('.piece-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    state.selectedPieceIdx = parseInt(tab.dataset.idx);
+                    state.comparison = null;
+                    renderRapportDetail();
+                });
+            });
+
+            // Bind reanalyze button
+            const reBtn = main.querySelector('#reanalyzeBtn');
+            if (reBtn) {
+                reBtn.addEventListener('click', handleReanalyze);
+            }
+        }
+
+        function renderPieceDetail(piece) {
+            if (!piece) return '<div class="piece-detail"><p class="no-data">Piece non trouvee.</p></div>';
+
+            let html = '<div class="piece-detail">';
+
+            // Info bar
+            html += `<div class="piece-info-bar">
+                <h2>${piece.nom || 'Piece'} <span style="font-weight:400;font-size:0.85rem;color:var(--text-secondary)">ID: ${piece.piece_id}</span></h2>
+                <button class="btn btn-cyan" id="reanalyzeBtn" data-piece-id="${piece.piece_id}">
+                    Re-analyser cette piece
+                </button>
+            </div>`;
+
+            // Checkout photos
+            if (piece.checkout_pictures?.length > 0) {
+                html += `<div class="photos-section">
+                    <div class="section-title">Photos Checkout (${piece.checkout_pictures.length})</div>
+                    <div class="photos-grid">
+                        ${piece.checkout_pictures.map(url => `<div class="photo-thumb"><img src="${url}" loading="lazy" onerror="this.parentElement.innerHTML='<div style=padding:2rem;text-align:center;color:var(--text-secondary);font-size:0.8rem>Erreur chargement</div>'"></div>`).join('')}
+                    </div>
+                </div>`;
+            }
+
+            // Checkin photos
+            if (piece.checkin_pictures?.length > 0) {
+                html += `<div class="photos-section">
+                    <div class="section-title">Photos Checkin (${piece.checkin_pictures.length})</div>
+                    <div class="photos-grid">
+                        ${piece.checkin_pictures.map(url => `<div class="photo-thumb"><img src="${url}" loading="lazy" onerror="this.parentElement.innerHTML='<div style=padding:2rem;text-align:center;color:var(--text-secondary);font-size:0.8rem>Erreur chargement</div>'"></div>`).join('')}
+                    </div>
+                </div>`;
+            }
+
+            // Tasks
+            if (piece.etapes?.length > 0) {
+                html += `<div class="photos-section">
+                    <div class="section-title">Taches (${piece.etapes.length})</div>
+                    <div class="tasks-list">
+                        ${piece.etapes.map(t => `
+                            <div class="task-item">
+                                <div class="task-name">${t.task_name || t.etape_id}</div>
+                                ${t.consigne ? `<div style="font-size:0.8rem;color:var(--text-secondary)">${t.consigne}</div>` : ''}
+                                <div class="task-photos">
+                                    ${t.checking_picture ? `<div class="task-photo-thumb"><img src="${t.checking_picture}" loading="lazy"><div class="photo-label">Ref</div></div>` : ''}
+                                    ${t.checkout_picture ? `<div class="task-photo-thumb"><img src="${t.checkout_picture}" loading="lazy"><div class="photo-label">Sortie</div></div>` : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>`;
+            }
+
+            // No photos
+            if (!piece.checkout_pictures?.length && !piece.checkin_pictures?.length && !piece.etapes?.length) {
+                html += '<p class="no-data">Aucune photo pour cette piece.</p>';
+            }
+
+            // Analysis results
+            if (piece.analysis) {
+                html += renderAnalysis(piece.analysis, 'Resultat Analyse IA');
+            } else {
+                html += '<div class="analysis-section"><div class="section-title">Analyse IA</div><p class="no-data">Aucune analyse disponible pour cette piece.</p></div>';
+            }
+
+            // Comparison
+            if (state.comparison && state.comparison.piece_id === piece.piece_id) {
+                html += renderComparison(state.comparison);
+            }
+
+            html += '</div>';
+            return html;
+        }
+
+        function renderAnalysis(analysis, title) {
+            if (!analysis) return '';
+
+            const score = analysis.score;
+            const label = analysis.label || getScoreLabel(score);
+            const circleClass = getScoreCircleClass(score);
+            const status = analysis.status || 'ok';
+            const comment = analysis.commentaire_global || analysis.comment || '';
+
+            let html = `<div class="analysis-section">
+                <div class="section-title">${title}</div>
+                <div class="analysis-card">
+                    <div class="analysis-score">
+                        <div class="score-circle ${circleClass}">${score != null ? score.toFixed(1) : '?'}</div>
+                        <div>
+                            <div class="score-label">${label}</div>
+                            <div class="score-status">Statut: ${status}${comment ? ' | ' + comment : ''}</div>
+                        </div>
+                    </div>`;
+
+            // Problems
+            const problems = analysis.problemes || analysis.issues || analysis.preliminary_issues || [];
+            if (problems.length > 0) {
+                html += `<div class="section-title" style="margin-top:1rem">Problemes (${problems.length})</div>
+                    <div class="problems-list">
+                        ${problems.map(p => {
+                            const sev = (p.severity || p.severite || 'medium').toLowerCase();
+                            const sevClass = sev === 'high' || sev === 'haute' ? 'severity-high' :
+                                             sev === 'low' || sev === 'basse' ? 'severity-low' : 'severity-medium';
+                            return `<div class="problem-item">
+                                <span class="severity-badge ${sevClass}">${sev}</span>
+                                <div>
+                                    <div class="problem-desc">${p.description}</div>
+                                    <div class="problem-meta">${p.category || ''} ${p.confidence != null ? '| conf: ' + p.confidence + '%' : ''}</div>
+                                </div>
+                            </div>`;
+                        }).join('')}
+                    </div>`;
+            } else {
+                html += '<p style="color:var(--secondary);font-weight:600;margin-top:0.5rem">Aucun probleme detecte</p>';
+            }
+
+            html += '</div></div>';
+            return html;
+        }
+
+        function renderComparison(comp) {
+            let html = `<div class="comparison-container">
+                <div class="comparison-header">
+                    <span>Comparaison: Ancien vs Nouveau</span>
+                    <button class="btn btn-sm" style="background:white;color:var(--cyan)" onclick="document.querySelector('.comparison-container').remove()">Fermer</button>
+                </div>
+                <div class="comparison-body">
+                    <div class="comparison-col col-old">
+                        <h4>Ancien resultat</h4>
+                        ${renderComparisonContent(comp.old_result)}
+                    </div>
+                    <div class="comparison-col col-new">
+                        <h4>Nouveau resultat</h4>
+                        ${renderComparisonContent(comp.new_result)}
+                    </div>
+                </div>
+            </div>`;
+            return html;
+        }
+
+        function renderComparisonContent(result) {
+            if (!result) return '<p class="no-data">Aucun resultat</p>';
+
+            const score = result.score ?? result.analyse_globale?.score;
+            const label = result.label || getScoreLabel(score);
+            const status = result.status || result.analyse_globale?.status || 'ok';
+            const comment = result.commentaire_global || result.analyse_globale?.commentaire_global || '';
+            const problems = result.problemes || result.issues || result.preliminary_issues || [];
+
+            let html = `<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem">
+                <div class="score-circle ${getScoreCircleClass(score)}" style="width:48px;height:48px;font-size:1.1rem">${score != null ? (typeof score === 'number' ? score.toFixed(1) : score) : '?'}</div>
+                <div><strong>${label}</strong><br><small style="color:var(--text-secondary)">${status} ${comment ? '| ' + comment : ''}</small></div>
+            </div>`;
+
+            if (problems.length > 0) {
+                html += `<div style="font-weight:600;margin-bottom:0.5rem">Problemes (${problems.length})</div>`;
+                problems.forEach(p => {
+                    const sev = (p.severity || p.severite || 'medium').toLowerCase();
+                    const sevClass = sev === 'high' || sev === 'haute' ? 'severity-high' :
+                                     sev === 'low' || sev === 'basse' ? 'severity-low' : 'severity-medium';
+                    html += `<div class="problem-item" style="margin-bottom:4px">
+                        <span class="severity-badge ${sevClass}">${sev}</span>
+                        <div class="problem-desc">${p.description}</div>
+                    </div>`;
+                });
+            } else {
+                html += '<p style="color:var(--secondary);font-size:0.85rem">Aucun probleme</p>';
+            }
+
+            return html;
+        }
+
+        function getScoreLabel(score) {
+            if (score == null) return 'N/A';
+            if (score >= 4.5) return 'EXCELLENT';
+            if (score >= 3.5) return 'BON';
+            if (score >= 2.5) return 'MOYEN';
+            if (score >= 1.5) return 'MAUVAIS';
+            return 'INSUFFISANT';
+        }
+
+        // ===== Re-analyze =====
+        async function handleReanalyze() {
+            const btn = document.getElementById('reanalyzeBtn');
+            if (!btn || state.reanalyzing) return;
+
+            const pieceId = btn.dataset.pieceId;
+            const checkId = state.selectedRapport?.check_id;
+            if (!checkId || !pieceId) return;
+
+            state.reanalyzing = true;
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px;margin-right:6px"></div> Analyse en cours...';
+
+            try {
+                const result = await reanalyzePiece(checkId, pieceId);
+                state.comparison = {
+                    piece_id: pieceId,
+                    old_result: result.old_result,
+                    new_result: result.new_result
+                };
+                showNotification('Re-analyse terminee', 'success');
+                renderRapportDetail();
+            } catch (err) {
+                showNotification('Erreur: ' + err.message, 'error');
+            } finally {
+                state.reanalyzing = false;
+            }
+        }
+
+        // ===== Notification =====
+        function showNotification(msg, type) {
+            const el = document.createElement('div');
+            el.className = `notification ${type}`;
+            el.textContent = msg;
+            document.body.appendChild(el);
+            setTimeout(() => el.remove(), 4000);
+        }
+
+        // ===== Init =====
+        async function init() {
+            try {
+                state.rapports = await fetchRapports();
+                renderRapportList(state.rapports);
+            } catch (err) {
+                document.getElementById('rapportList').innerHTML = `<div class="loading" style="color:var(--danger)">Erreur: ${err.message}</div>`;
+            }
+
+            // Search
+            document.getElementById('searchInput').addEventListener('input', (e) => {
+                renderRapportList(state.rapports, e.target.value);
+            });
+        }
+
+        init();
+    })();
+    </script>
+</body>
+</html>

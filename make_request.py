@@ -34,6 +34,7 @@ from datetime import datetime
 import re
 from tqdm import tqdm
 import uuid
+import traceback
 
 # Import du gestionnaire de logs
 from logs_viewer.logs_manager import logs_manager
@@ -532,6 +533,26 @@ app.add_middleware(
 # Monter les fichiers statiques
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/templates-static", StaticFiles(directory="templates"), name="templates-static")
+
+# ═══════════════════════════════════════════════════════════════
+# SUPABASE CLIENT (READ-ONLY) - Pour le Rapport Tester
+# ═══════════════════════════════════════════════════════════════
+_supabase_client = None
+
+def get_supabase():
+    """Read-only Supabase client. NEVER use for insert/update/delete."""
+    global _supabase_client
+    if _supabase_client is None:
+        try:
+            from supabase import create_client
+        except ImportError:
+            raise HTTPException(500, "supabase package not installed")
+        url = os.environ.get("SUPABASE_URL")
+        key = os.environ.get("SUPABASE_SERVICE_KEY")
+        if not url or not key:
+            raise HTTPException(500, "SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
+        _supabase_client = create_client(url, key)
+    return _supabase_client
 
 @app.get("/admin")
 async def serve_admin_interface():
@@ -8420,28 +8441,631 @@ async def analyze_complete_endpoint(input_data: EtapesAnalysisInput):
 
         raise HTTPException(status_code=500, detail=str(e))
 
-# Endpoint de healthcheck pour Railway
+# Dashboard - Page d'accueil visuelle
 @app.get("/")
-async def healthcheck():
-    """Endpoint simple pour vérifier que l'API fonctionne"""
-    return {
-        "status": "ok",
-        "message": "CheckEasy API V5 is running",
-        "endpoints": [
-            "/analyze",
-            "/classify-room", 
-            "/analyze-with-classification",
-            "/analyze-etapes",
-            "/analyze-complete",
-            "/webhook/test",
-            "/webhook/test-send"
-        ]
-    }
+async def serve_dashboard():
+    """Servir le dashboard visuel avec liens vers tous les outils"""
+    return FileResponse("templates/dashboard.html")
 
 @app.get("/health")
 async def health():
-    """Endpoint de santé pour monitoring"""
-    return {"status": "healthy", "version": "5.0"}
+    """Endpoint de santé pour Railway healthcheck et monitoring"""
+    return {"status": "ok", "message": "CheckEasy API V5 is running", "version": "5.0"}
+
+# ═══════════════════════════════════════════════════════════════
+# RAPPORT TESTER - Browse & re-analyze real rapports
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/rapport-tester")
+async def serve_rapport_tester():
+    """Servir l'interface Rapport Tester"""
+    return FileResponse("templates/rapport_tester.html")
+
+@app.get("/api/rapports")
+async def api_list_rapports():
+    """List last 50 rapports with basic info (READ-ONLY)."""
+    try:
+        sb = get_supabase()
+        # Fetch rapports
+        res = sb.table("rapports").select(
+            "id, check_id, status, logement_id, created_at, completed_at, flow_type, user_info"
+        ).order("created_at", desc=True).limit(50).execute()
+
+        rapports = res.data or []
+
+        # Fetch analyse score for each rapport
+        check_ids = [r.get("check_id") for r in rapports if r.get("check_id")]
+        analyses_map = {}
+        if check_ids:
+            ana_res = sb.table("rapports_analyse").select(
+                "rapport_id, score_global, score_label"
+            ).in_("rapport_id", check_ids).execute()
+            for a in (ana_res.data or []):
+                a["status"] = "completed" if a.get("score_global") is not None else "pending"
+                analyses_map[a["rapport_id"]] = a
+
+        # Fetch logement names
+        logement_ids = list(set(r.get("logement_id") for r in rapports if r.get("logement_id")))
+        logements_map = {}
+        if logement_ids:
+            log_res = sb.table("logements").select("id, name").in_("id", logement_ids).execute()
+            for l in (log_res.data or []):
+                logements_map[l["id"]] = l.get("name", "")
+
+        result = []
+        for r in rapports:
+            check_id = r.get("check_id") or str(r.get("id", ""))
+            ana = analyses_map.get(check_id, {})
+            user_info = r.get("user_info") or {}
+            result.append({
+                "id": r.get("id"),
+                "check_id": check_id,
+                "status": r.get("status"),
+                "analyse_status": ana.get("status"),
+                "score_global": ana.get("score_global"),
+                "logement_name": logements_map.get(r.get("logement_id"), ""),
+                "created_at": r.get("created_at"),
+                "flow_type": r.get("flow_type"),
+                "operator_name": f"{user_info.get('firstName', '')} {user_info.get('lastName', '')}".strip() or None
+            })
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching rapports: {e}")
+        raise HTTPException(500, f"Error fetching rapports: {str(e)}")
+
+@app.get("/api/rapports/{check_id}")
+async def api_get_rapport(check_id: str):
+    """Get full rapport detail with pieces, photos, and analysis (READ-ONLY)."""
+    try:
+        sb = get_supabase()
+
+        # Fetch rapport by check_id
+        res = sb.table("rapports").select("*").eq("check_id", check_id).execute()
+        if not res.data:
+            # Fallback: try by id
+            res = sb.table("rapports").select("*").eq("id", check_id).execute()
+        if not res.data:
+            raise HTTPException(404, f"Rapport {check_id} not found")
+        rapport = res.data[0]
+
+        # Fetch analysis
+        ana_res = sb.table("rapports_analyse").select("*").eq("rapport_id", check_id).execute()
+        analyse = ana_res.data[0] if ana_res.data else None
+
+        # Fetch logement
+        logement_name = ""
+        if rapport.get("logement_id"):
+            log_res = sb.table("logements").select("id, name, address").eq("id", rapport["logement_id"]).execute()
+            if log_res.data:
+                logement_name = log_res.data[0].get("name", "")
+
+        # Extract pieces and photos
+        checkin_data = rapport.get("checkin_data") or {}
+        checkout_data = rapport.get("checkout_data") or {}
+        user_info = rapport.get("user_info") or {}
+
+        # Detect unified format
+        checkout_has_content = any(
+            p.get("etapes") and len(p["etapes"]) > 0
+            for p in (checkout_data.get("pieces") or [])
+        )
+        is_unified = not checkout_has_content and bool(checkin_data.get("pieces"))
+
+        checkin_pieces = checkin_data.get("pieces") or []
+        checkout_pieces = checkout_data.get("pieces") or []
+
+        # Merge piece IDs
+        all_piece_ids = {}
+        for p in checkin_pieces:
+            pid = p.get("piece_id") or p.get("id")
+            if pid:
+                all_piece_ids[pid] = p.get("nom") or all_piece_ids.get(pid, f"Piece {str(pid)[:8]}")
+        for p in checkout_pieces:
+            pid = p.get("piece_id") or p.get("id")
+            if pid:
+                all_piece_ids[pid] = p.get("nom") or all_piece_ids.get(pid, f"Piece {str(pid)[:8]}")
+
+        # Parse analysis results per piece
+        analysis_by_piece = {}
+        if analyse and analyse.get("raw_response"):
+            raw = analyse["raw_response"]
+            # Handle both direct format and nested
+            pieces_analysis = None
+            if isinstance(raw, dict):
+                pieces_analysis = raw.get("pieces_analysis") or raw.get("detailParPieceSection")
+            if pieces_analysis and isinstance(pieces_analysis, list):
+                for pa in pieces_analysis:
+                    pid = pa.get("piece_id") or pa.get("pieceId")
+                    if pid:
+                        ag = pa.get("analyse_globale") or {}
+                        analysis_by_piece[pid] = {
+                            "score": ag.get("score"),
+                            "label": ag.get("label") or _score_to_label(ag.get("score")),
+                            "status": ag.get("status"),
+                            "commentaire_global": ag.get("commentaire_global") or ag.get("comment"),
+                            "problemes": pa.get("preliminary_issues") or pa.get("issues") or pa.get("problemes") or []
+                        }
+
+        # Build pieces with photos
+        progress = rapport.get("progress") or {}
+        pieces_result = []
+        for pid, nom in all_piece_ids.items():
+            checkin_photos = _extract_photos_for_piece(checkin_data, pid, "checkin", progress)
+            if is_unified:
+                checkout_photos = _extract_photos_for_piece(checkin_data, pid, "checkout", progress)
+            else:
+                checkout_photos = _extract_photos_for_piece(checkout_data, pid, "checkout", progress)
+
+            # Extract task etapes
+            etapes = _extract_etapes_for_piece(checkin_data, checkout_data, pid, is_unified)
+
+            pieces_result.append({
+                "piece_id": pid,
+                "nom": nom,
+                "checkin_pictures": checkin_photos,
+                "checkout_pictures": checkout_photos,
+                "etapes": etapes,
+                "analysis": analysis_by_piece.get(pid)
+            })
+
+        return {
+            "check_id": check_id,
+            "id": rapport.get("id"),
+            "logement_name": logement_name,
+            "type": (rapport.get("parcours_info") or {}).get("type") or "Voyageur",
+            "status": rapport.get("status"),
+            "analyse_status": ("completed" if analyse and analyse.get("score_global") is not None else "pending") if analyse else None,
+            "score_global": analyse.get("score_global") if analyse else None,
+            "created_at": rapport.get("created_at"),
+            "operator_name": f"{user_info.get('firstName', '')} {user_info.get('lastName', '')}".strip() or None,
+            "pieces": pieces_result
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching rapport detail: {e}\n{traceback.format_exc()}")
+        raise HTTPException(500, f"Error fetching rapport detail: {str(e)}")
+
+@app.post("/api/rapports/reanalyze-piece")
+async def api_reanalyze_piece(request: Request):
+    """Re-analyze a single piece using current prompts. IN-MEMORY ONLY, no DB writes."""
+    try:
+        body = await request.json()
+        check_id = body.get("check_id")
+        piece_id = body.get("piece_id")
+        if not check_id or not piece_id:
+            raise HTTPException(400, "check_id and piece_id are required")
+
+        sb = get_supabase()
+
+        # 1. Fetch rapport (READ-ONLY)
+        res = sb.table("rapports").select("*").eq("check_id", check_id).execute()
+        if not res.data:
+            raise HTTPException(404, f"Rapport {check_id} not found")
+        rapport = res.data[0]
+
+        # 2. Fetch logement (READ-ONLY)
+        logement = {"id": rapport.get("logement_id"), "name": "", "address": "", "fields": {}}
+        if rapport.get("logement_id"):
+            log_res = sb.table("logements").select("*").eq("id", rapport["logement_id"]).execute()
+            if log_res.data:
+                logement = log_res.data[0]
+
+        # 3. Build the payload (Python port of buildAnalysePayload)
+        payload = _build_analyse_payload(rapport, logement)
+
+        # 4. Filter to keep ONLY the requested piece
+        target_pieces = [p for p in payload.get("pieces", []) if p.get("piece_id") == piece_id]
+        if not target_pieces:
+            raise HTTPException(404, f"Piece {piece_id} not found in payload (may have no photos)")
+
+        payload["pieces"] = target_pieces
+
+        # 5. Call the internal analyze-complete logic
+        input_data = EtapesAnalysisInput(**payload)
+        new_result = await analyze_complete_logement_parallel(input_data)
+
+        # 6. Extract old result from rapports_analyse
+        old_result = None
+        ana_res = sb.table("rapports_analyse").select("raw_response").eq("rapport_id", check_id).execute()
+        if ana_res.data and ana_res.data[0].get("raw_response"):
+            raw = ana_res.data[0]["raw_response"]
+            pieces_analysis = None
+            if isinstance(raw, dict):
+                pieces_analysis = raw.get("pieces_analysis") or raw.get("detailParPieceSection")
+            if pieces_analysis:
+                for pa in pieces_analysis:
+                    if (pa.get("piece_id") or pa.get("pieceId")) == piece_id:
+                        ag = pa.get("analyse_globale") or {}
+                        old_result = {
+                            "score": ag.get("score"),
+                            "label": ag.get("label") or _score_to_label(ag.get("score")),
+                            "status": ag.get("status"),
+                            "commentaire_global": ag.get("commentaire_global"),
+                            "problemes": pa.get("preliminary_issues") or pa.get("issues") or []
+                        }
+                        break
+
+        # 7. Extract new result for the piece
+        new_piece_result = None
+        if new_result and hasattr(new_result, "pieces_analysis") and new_result.pieces_analysis:
+            for pa in new_result.pieces_analysis:
+                pa_dict = pa.model_dump() if hasattr(pa, "model_dump") else (pa.dict() if hasattr(pa, "dict") else pa)
+                if pa_dict.get("piece_id") == piece_id:
+                    ag = pa_dict.get("analyse_globale") or {}
+                    if hasattr(ag, "model_dump"):
+                        ag = ag.model_dump()
+                    elif hasattr(ag, "dict"):
+                        ag = ag.dict()
+                    issues_raw = pa_dict.get("issues") or []
+                    new_piece_result = {
+                        "score": ag.get("score"),
+                        "label": ag.get("label") or _score_to_label(ag.get("score")),
+                        "status": ag.get("status"),
+                        "commentaire_global": ag.get("commentaire_global"),
+                        "problemes": [
+                            i.model_dump() if hasattr(i, "model_dump") else (i.dict() if hasattr(i, "dict") else i)
+                            for i in issues_raw
+                        ]
+                    }
+                    break
+
+        return {
+            "check_id": check_id,
+            "piece_id": piece_id,
+            "old_result": old_result,
+            "new_result": new_piece_result
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error re-analyzing piece: {e}\n{traceback.format_exc()}")
+        raise HTTPException(500, f"Error re-analyzing piece: {str(e)}")
+
+
+# ═══════════════════════════════════════════════════════════════
+# RAPPORT TESTER - Helper functions (Python port of trigger-analyse logic)
+# ═══════════════════════════════════════════════════════════════
+
+def _score_to_label(score):
+    """Convert score to label (same as rapport.types.ts scoreToLabel)"""
+    if score is None:
+        return "N/A"
+    if score >= 4.5:
+        return "EXCELLENT"
+    if score >= 3.5:
+        return "BON"
+    if score >= 2.5:
+        return "MOYEN"
+    if score >= 1.5:
+        return "MAUVAIS"
+    return "INSUFFISANT"
+
+def _extract_photos_for_piece(flow_data, piece_id, flow_type, progress=None):
+    """Python port of extractPhotosForPiece from trigger-analyse/index.ts.
+    Extracts photo URLs for a piece, handling all 5 formats."""
+    photos = []
+    if not flow_data:
+        return photos
+
+    # Helper to match piece id
+    def matches_piece(p):
+        pid = p.get("id") or p.get("piece_id") or p.get("pieceId")
+        return pid == piece_id
+
+    # Format 1: flow_data.photos[pieceId]
+    if isinstance(flow_data.get("photos"), dict):
+        piece_photos = flow_data["photos"].get(piece_id)
+        if piece_photos:
+            if isinstance(piece_photos, list):
+                photos.extend(piece_photos)
+            elif isinstance(piece_photos, str):
+                photos.append(piece_photos)
+
+    # Format 2: flow_data.pieces[].photos or .images
+    pieces = flow_data.get("pieces")
+    if isinstance(pieces, list):
+        piece = next((p for p in pieces if matches_piece(p)), None)
+        if piece:
+            for key in ("photos", "images"):
+                val = piece.get(key)
+                if val:
+                    if isinstance(val, list):
+                        photos.extend(val)
+                    elif isinstance(val, str):
+                        photos.append(val)
+
+    # Format 3: progress.interactions.photosTaken
+    if progress and isinstance(progress.get("interactions", {}).get("photosTaken"), dict):
+        photos_taken = progress["interactions"]["photosTaken"]
+        for key, value in photos_taken.items():
+            if key.startswith(piece_id) or piece_id in key:
+                if isinstance(value, str):
+                    photos.append(value)
+                elif isinstance(value, dict) and value.get("url"):
+                    photos.append(value["url"])
+
+    # Format 4: Array format with piece_id
+    if isinstance(flow_data.get("photos"), list):
+        for p in flow_data["photos"]:
+            if isinstance(p, dict) and (p.get("piece_id") == piece_id or p.get("pieceId") == piece_id):
+                if p.get("url"):
+                    photos.append(p["url"])
+                if p.get("photo_url"):
+                    photos.append(p["photo_url"])
+
+    # Format 5: Webhook checkapp-supabase unified format (etapes array)
+    if isinstance(pieces, list):
+        piece = next((p for p in pieces if matches_piece(p)), None)
+        if piece and isinstance(piece.get("etapes"), list):
+            # Build todo etape_ids set to exclude from general photos
+            todo_ids = set()
+            for etape in piece["etapes"]:
+                if etape.get("is_todo") is True and etape.get("etape_id"):
+                    todo_ids.add(etape["etape_id"])
+
+            for etape in piece["etapes"]:
+                etape_type = etape.get("etape_type") or etape.get("flowType") or "unified"
+                should_include = (
+                    etape_type == "unified" or
+                    etape_type == flow_type or
+                    (flow_type == "checkout" and etape_type != "checkin")
+                )
+                if not should_include:
+                    continue
+
+                # Exclude todo task photos
+                if etape.get("etape_id") and etape["etape_id"] in todo_ids:
+                    continue
+
+                # photo_taken events
+                if etape.get("type") == "photo_taken" and etape.get("photo_url"):
+                    photos.append(etape["photo_url"])
+
+                # photos_attached
+                if isinstance(etape.get("photos_attached"), list):
+                    for photo in etape["photos_attached"]:
+                        if isinstance(photo, str):
+                            photos.append(photo)
+                        elif isinstance(photo, dict):
+                            photos.append(photo.get("url") or photo.get("photo_url") or "")
+
+    # Deduplicate and filter: only valid HTTP URLs
+    seen = set()
+    result = []
+    for url in photos:
+        if not url or not isinstance(url, str):
+            continue
+        if url.startswith("data:"):
+            continue
+        if not url.startswith("http") and len(url) > 100:
+            continue
+        if not (url.startswith("http://") or url.startswith("https://")):
+            continue
+        if url not in seen:
+            seen.add(url)
+            result.append(url)
+
+    return result
+
+def _extract_etapes_for_piece(checkin_data, checkout_data, piece_id, is_unified):
+    """Extract task etapes (photo-required) for a piece from raw rapport data."""
+    etapes = []
+    seen_ids = set()
+
+    # Combine etapes from both checkin and checkout pieces
+    all_pieces_data = []
+    for p in (checkin_data.get("pieces") or []):
+        pid = p.get("piece_id") or p.get("id")
+        if pid == piece_id and isinstance(p.get("etapes"), list):
+            all_pieces_data.extend(p["etapes"])
+    if not is_unified:
+        for p in (checkout_data.get("pieces") or []):
+            pid = p.get("piece_id") or p.get("id")
+            if pid == piece_id and isinstance(p.get("etapes"), list):
+                all_pieces_data.extend(p["etapes"])
+
+    # Find button_click events that represent tasks
+    for etape in all_pieces_data:
+        etype = etape.get("type", "")
+        is_todo = etape.get("is_todo")
+        eid = etape.get("etape_id")
+
+        if etype == "button_click" and is_todo is True and eid and eid not in seen_ids:
+            etape_data = etape.get("etapeData") or {}
+            # Only include photoRequired tasks (simple checkbox tasks don't need AI analysis)
+            todo_param = etape_data.get("todo_param") or etape.get("todo_param")
+            if todo_param and todo_param != "photoRequired":
+                continue
+
+            seen_ids.add(eid)
+            # Find photo for this task
+            task_photo = ""
+            for e2 in all_pieces_data:
+                if e2.get("type") == "photo_taken" and e2.get("etape_id") == eid and e2.get("photo_url"):
+                    task_photo = e2["photo_url"]
+                    break
+
+            ref_photo = etape_data.get("reference_image_url") or etape_data.get("todoImage") or ""
+            if ref_photo.startswith("//"):
+                ref_photo = "https:" + ref_photo
+
+            etapes.append({
+                "etape_id": eid,
+                "task_name": etape_data.get("todo_title") or etape_data.get("name") or "Tache",
+                "consigne": etape_data.get("todo_order") or "",
+                "checking_picture": ref_photo,
+                "checkout_picture": task_photo
+            })
+
+    return etapes
+
+def _find_task_photo(flow_data, piece_id, task_id):
+    """Find a photo for a specific task (Python port of findTaskPhoto)."""
+    if not flow_data:
+        return ""
+    # Check flowData.pieces[].etapes[]
+    for p in (flow_data.get("pieces") or []):
+        pid = p.get("piece_id") or p.get("id")
+        if pid != piece_id:
+            continue
+        for etape in (p.get("etapes") or []):
+            if etape.get("type") == "photo_taken" and etape.get("photo_url") and etape.get("etape_id") == task_id:
+                return etape["photo_url"]
+    return ""
+
+def _map_severity(severity):
+    """Map severity string to expected format."""
+    s = (severity or "").lower()
+    if s in ("high", "haute", "critical"):
+        return "haute"
+    if s in ("low", "basse", "minor"):
+        return "basse"
+    return "moyenne"
+
+def _format_date(iso_date):
+    """Format ISO date to DD/MM/YY."""
+    if not iso_date:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso_date.replace("Z", "+00:00"))
+        return dt.strftime("%d/%m/%y")
+    except Exception:
+        return ""
+
+def _build_analyse_payload(rapport, logement):
+    """Python port of buildAnalysePayload from trigger-analyse/index.ts.
+    Reconstructs the exact same payload format sent to /analyze-complete."""
+
+    checkin_data = rapport.get("checkin_data") or {}
+    checkout_data = rapport.get("checkout_data") or {}
+    user_info = rapport.get("user_info") or {}
+    parcours_info = rapport.get("parcours_info") or {}
+    progress = rapport.get("progress") or {}
+
+    # Get parcours from logement
+    fields = logement.get("fields") or {}
+    parcours_list = fields.get("parcours") or []
+    parcours_index = rapport.get("parcours_index") or 0
+    current_parcours = {}
+    if parcours_list and len(parcours_list) > parcours_index:
+        current_parcours = parcours_list[parcours_index]
+    elif parcours_list:
+        current_parcours = parcours_list[0]
+
+    # Merge pieces from checkin and checkout
+    checkin_pieces = checkin_data.get("pieces") or []
+    checkout_pieces = checkout_data.get("pieces") or []
+
+    all_piece_ids = {}  # {id: nom}
+    for p in checkin_pieces:
+        pid = p.get("piece_id") or p.get("id")
+        if pid:
+            all_piece_ids[pid] = p.get("nom") or f"Piece {str(pid)[:8]}"
+    for p in checkout_pieces:
+        pid = p.get("piece_id") or p.get("id")
+        if pid:
+            if pid not in all_piece_ids:
+                all_piece_ids[pid] = p.get("nom") or f"Piece {str(pid)[:8]}"
+
+    # Detect unified format
+    checkout_has_content = any(
+        p.get("etapes") and len(p["etapes"]) > 0
+        for p in (checkout_data.get("pieces") or [])
+    )
+    is_unified = not checkout_has_content and bool(checkin_data.get("pieces"))
+
+    # Build pieces
+    pieces = []
+    for pid, nom in all_piece_ids.items():
+        checkin_photos = _extract_photos_for_piece(checkin_data, pid, "checkin", progress)
+        if is_unified:
+            checkout_photos = _extract_photos_for_piece(checkin_data, pid, "checkout", progress)
+        else:
+            checkout_photos = _extract_photos_for_piece(checkout_data, pid, "checkout", progress)
+
+        # Extract task etapes
+        etapes = _extract_etapes_for_piece(checkin_data, checkout_data, pid, is_unified)
+
+        # Check if piece has any content
+        has_checkout = len(checkout_photos) > 0
+        has_checkin = len(checkin_photos) > 0
+        has_task_photos = any(e.get("checkout_picture") for e in etapes)
+
+        if not has_checkout and not has_checkin and not has_task_photos:
+            continue  # Skip pieces with no photos
+
+        pieces.append({
+            "piece_id": pid,
+            "nom": nom,
+            "commentaire_ia": "",
+            "checkin_pictures": [{"piece_id": pid, "url": url} for url in checkin_photos],
+            "checkout_pictures": [{"piece_id": pid, "url": url} for url in checkout_photos],
+            "etapes": etapes
+        })
+
+    # Signalements
+    signalements = []
+    for s in (rapport.get("signalements") or []):
+        s_piece_id = s.get("piece_id") or s.get("pieceId") or s.get("roomId") or s.get("room_id")
+        if not s_piece_id and s.get("roomName"):
+            for pid, nom in all_piece_ids.items():
+                if nom.lower().strip() == s["roomName"].lower().strip():
+                    s_piece_id = pid
+                    break
+        signalements.append({
+            "id": s.get("id", str(uuid.uuid4())),
+            "piece_id": s_piece_id or "unknown",
+            "titre": s.get("title") or s.get("titre") or s.get("description") or "Signalement",
+            "description": s.get("description") or s.get("comment") or s.get("title") or s.get("titre") or "",
+            "severite": _map_severity(s.get("severity") or s.get("severite") or s.get("status")),
+            "photo": s.get("photo") or s.get("photo_url") or s.get("photoUrl") or "",
+            "date_signalement": s.get("createdAt") or s.get("timestamp") or s.get("date_signalement") or datetime.utcnow().isoformat()
+        })
+
+    # Checklist finale
+    checklist = []
+    for q in (rapport.get("exit_questions") or []):
+        checklist.append({
+            "id": q.get("id") or q.get("question_id") or str(uuid.uuid4()),
+            "text": q.get("text") or q.get("question") or q.get("question_text") or q.get("question_content") or q.get("intitule") or "Question",
+            "completed": q.get("completed") or q.get("answer") is True or q.get("checked") or False,
+            "icon": q.get("icon") or "V",
+            "photo": q.get("photo") or q.get("image_url") or q.get("image_base64") or ""
+        })
+
+    # Detect type
+    detected_type = (
+        current_parcours.get("parcoursType") or
+        parcours_info.get("type") or
+        parcours_info.get("parcoursType") or
+        ("menage" if user_info.get("type") == "AGENT" else None) or
+        "voyageur"
+    )
+    is_menage = "menage" in detected_type.lower() or "ménage" in detected_type.lower()
+    parcours_type = "Ménage" if is_menage else "Voyageur"
+
+    return {
+        "logement_id": logement.get("id") or "",
+        "rapport_id": rapport.get("check_id") or str(rapport.get("id", "")),
+        "type": parcours_type,
+        "logementName": logement.get("name") or "",
+        "adresseLogement": logement.get("address") or "",
+        "operatorFirstName": user_info.get("firstName"),
+        "operatorLastName": user_info.get("lastName"),
+        "operatorPhone": user_info.get("phone"),
+        "date_debut": _format_date(rapport.get("checkin_date") or rapport.get("created_at")),
+        "date_fin": _format_date(rapport.get("checkout_date") or rapport.get("completed_at") or datetime.utcnow().isoformat()),
+        "voyageur_nom": f"{user_info.get('firstName', '')} {user_info.get('lastName', '')}".strip() if user_info.get("type") == "CLIENT" else None,
+        "voyageur_email": user_info.get("email"),
+        "voyageur_telephone": user_info.get("phone"),
+        "etat_lieux_moment": "arrivee-sortie" if rapport.get("flow_type") == "checkin" else "sortie",
+        "pieces": pieces,
+        "signalements_utilisateur": signalements if signalements else None,
+        "checklist_finale": checklist if checklist else None
+    }
 
 # ═══════════════════════════════════════════════════════════════
 # LOGS VIEWER - VISUALISATION EN TEMPS RÉEL

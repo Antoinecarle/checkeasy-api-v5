@@ -17,3 +17,6 @@ imageio>=2.31.0      # Fallback pour formats exotiques
 # Système d'analyse des logs
 tqdm>=4.66.0
 colorama>=0.4.6
+
+# Supabase client (read-only, for rapport tester)
+supabase>=2.0.0
