@@ -522,9 +522,10 @@ app = FastAPI(
 )
 
 # Configurer CORS
+ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "https://app.checkeasy.co,https://checkeasy.co,https://www.checkeasy.co,https://check.checkeasy.co").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -2008,9 +2009,9 @@ def analyze_images(input_data: InputData, parcours_type: str = "Voyageur", reque
                                     score_match = re.search(r'score["\s:]*(\d+(?:\.\d+)?)', str(value), re.IGNORECASE)
                                     if score_match:
                                         corrected_response["analyse_globale"]["score"] = float(score_match.group(1))
-                                except:
+                                except Exception:
                                     pass
-                            
+
                             if "problème" in str(value).lower() or "issue" in str(value).lower():
                                 corrected_response["preliminary_issues"].append({
                                     "description": f"Analyse récupérée: {str(value)[:200]}",
@@ -2223,7 +2224,7 @@ Tu es un expert en vérification d'inventaire. Ta mission est de vérifier la PR
 # SYSTÈME MULTI-MODÈLES OPENROUTER - CONSENSUS VOTING (5 modèles)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-OPENROUTER_API_KEY = "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"
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # 5 modèles de vision économiques pour le consensus
@@ -9253,7 +9254,7 @@ async def websocket_logs(websocket: WebSocket):
                     # Envoyer un ping pour garder la connexion vivante
                     try:
                         await websocket.send_json({"type": "ping"})
-                    except:
+                    except Exception:
                         break
         except WebSocketDisconnect:
             logger.info(f"❌ WebSocket déconnecté")
